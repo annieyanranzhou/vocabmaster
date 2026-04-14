@@ -1,0 +1,7739 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import GameMode from './GameMode.jsx';
+import PetSystem, { addPetFood } from './PetSystem.jsx';
+
+/* ═══ SUPABASE CLIENT ═══ */
+const SUPABASE_URL = "https://pjrtgwmesbswwydhdbor.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqcnRnd21lc2Jzd3d5ZGhkYm9yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MDg1NzIsImV4cCI6MjA4ODI4NDU3Mn0.AYj1fFFGK6dz3JKkU5IMli__LXeG9ssdudyKyGJVFmw";
+
+// Minimal Supabase client (no npm needed)
+const supabase = (() => {
+  const headers = {
+    "apikey": SUPABASE_KEY,
+    "Content-Type": "application/json",
+  };
+  const authHeaders = () => {
+    const token = localStorage.getItem("sb_token");
+    return token ? { ...headers, "Authorization": `Bearer ${token}` } : headers;
+  };
+  return {
+    auth: {
+      async signUp(email, password, username, role="student") {
+        const r = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+          method:"POST", headers,
+          body: JSON.stringify({ email, password, options:{ data:{ username, role } } })
+        });
+        const d = await r.json();
+        if (d.access_token) localStorage.setItem("sb_token", d.access_token);
+        if (d.user) localStorage.setItem("sb_user", JSON.stringify(d.user));
+        return d;
+      },
+      async signIn(email, password) {
+        const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+          method:"POST", headers,
+          body: JSON.stringify({ email, password })
+        });
+        const d = await r.json();
+        if (d.access_token) localStorage.setItem("sb_token", d.access_token);
+        if (d.refresh_token) localStorage.setItem("sb_refresh", d.refresh_token);
+        if (d.user) localStorage.setItem("sb_user", JSON.stringify(d.user));
+        return d;
+      },
+      signOut() {
+        localStorage.removeItem("sb_token");
+        localStorage.removeItem("sb_refresh");
+        localStorage.removeItem("sb_user");
+      },
+      async refreshToken() {
+        const refresh = localStorage.getItem("sb_refresh");
+        if (!refresh) return false;
+        try {
+          const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+            method:"POST", headers,
+            body: JSON.stringify({ refresh_token: refresh })
+          });
+          const d = await r.json();
+          if (d.access_token) {
+            localStorage.setItem("sb_token", d.access_token);
+            if (d.refresh_token) localStorage.setItem("sb_refresh", d.refresh_token);
+            return true;
+          }
+        } catch(e) {}
+        return false;
+      },
+      getUser() {
+        const u = localStorage.getItem("sb_user");
+        return u ? JSON.parse(u) : null;
+      },
+    },
+    async getProfile(userId) {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=*`, {
+        headers: authHeaders()
+      });
+      const d = await r.json();
+      return (Array.isArray(d) && d[0]) ? d[0] : null;
+    },
+    async getProgress(userId) {
+      // Always try to refresh token first to avoid 401
+      await supabase.auth.refreshToken().catch(()=>{});
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/progress?user_id=eq.${userId}&select=*`, {
+        headers: authHeaders()
+      });
+      if (!r.ok) {
+        console.warn("[getProgress] failed:", r.status);
+        return null;
+      }
+      const d = await r.json();
+      return (Array.isArray(d) && d[0]) ? d[0] : null;
+    },
+    async saveProgress(userId, mastered, totalAnswered, bestStreak, petFood) {
+      const body = {
+        user_id: userId,
+        mastered_words: mastered,
+        total_answered: totalAnswered,
+        best_streak: bestStreak,
+        last_active: new Date().toISOString().split("T")[0],
+        updated_at: new Date().toISOString(),
+      };
+      // Only include pet_food if provided (avoid overwriting with undefined)
+      if (typeof petFood === "number") body.pet_food = petFood;
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/progress?on_conflict=user_id`, {
+        method:"POST", headers: { ...authHeaders(), "Prefer":"resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(body)
+      });
+      if (!r.ok) {
+        const err = await r.text().catch(()=>"");
+        console.warn("[saveProgress] failed:", r.status, err);
+        // Token expired → try refresh and retry once
+        if (r.status === 401 || r.status === 403) {
+          const refreshed = await supabase.auth.refreshToken();
+          if (refreshed) {
+            await fetch(`${SUPABASE_URL}/rest/v1/progress`, {
+              method:"POST", headers: { ...authHeaders(), "Prefer":"resolution=merge-duplicates,return=minimal" },
+              body: JSON.stringify(body)
+            });
+          }
+        }
+      }
+    },
+    async saveChallengeScore(userId, score, correct) {
+      await fetch(`${SUPABASE_URL}/rest/v1/challenge_scores`, {
+        method:"POST", headers: { ...authHeaders(), "Prefer":"return=minimal" },
+        body: JSON.stringify({ user_id:userId, score, correct, total:20 })
+      });
+    },
+    async saveDrillScore(userId, drillType, score) {
+      await fetch(`${SUPABASE_URL}/rest/v1/drill_scores`, {
+        method:"POST", headers: { ...authHeaders(), "Prefer":"return=minimal" },
+        body: JSON.stringify({ user_id:userId, drill_type:drillType, score })
+      });
+    },
+    async getLeaderboard() {
+      // Top 20 by best single challenge score
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/challenge_scores?select=score,correct,played_at,user_id,profiles(username,class_name)&order=score.desc&limit=20`,
+        { headers: authHeaders() }
+      );
+      return await r.json();
+    },
+    async getClassProgress(className) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?class_name=eq.${encodeURIComponent(className)}&select=id,username,class_name,progress(mastered_words,total_answered,best_streak,last_active)`,
+        { headers: authHeaders() }
+      );
+      return await r.json();
+    },
+    async getAllStudents() {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?role=eq.student&select=id,username,class_name,created_at,progress(mastered_words,total_answered,best_streak,last_active)&order=class_name.asc`,
+        { headers: authHeaders() }
+      );
+      return await r.json();
+    },
+
+    // ── 班级管理 ──
+    async createClass(name) {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/classes`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Prefer": "return=representation" },
+        body: JSON.stringify({ name, teacher_id: supabase.auth.getUser()?.id })
+      });
+      const d = await r.json();
+      return d[0] || d;
+    },
+    async getMyClasses() {
+      const user = supabase.auth.getUser();
+      if (!user) return [];
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/classes?teacher_id=eq.${user.id}&select=*`,
+        { headers: authHeaders() }
+      );
+      return await r.json();
+    },
+    async getClassStudents(classId) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/class_members?class_id=eq.${classId}&select=user_id,joined_at,profiles(username,class_name),progress(mastered_words,total_answered,best_streak,last_active)`,
+        { headers: authHeaders() }
+      );
+      return await r.json();
+    },
+    async joinClass(inviteCode) {
+      // Find class by invite code
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/classes?invite_code=eq.${inviteCode}&select=id,name`,
+        { headers: authHeaders() }
+      );
+      const classes = await r.json();
+      if (!classes.length) throw new Error("班级码不存在");
+      const classId = classes[0].id;
+      const user = supabase.auth.getUser();
+      // Join
+      await fetch(`${SUPABASE_URL}/rest/v1/class_members`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Prefer": "return=minimal" },
+        body: JSON.stringify({ class_id: classId, user_id: user.id })
+      });
+      return classes[0];
+    },
+
+    // ── 定制词单 ──
+    async createCustomList(title, words, classId) {
+      const user = supabase.auth.getUser();
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/custom_lists`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Prefer": "return=representation" },
+        body: JSON.stringify({
+          teacher_id: user.id,
+          class_id: classId || null,
+          title,
+          words: JSON.stringify(words)
+        })
+      });
+      const d = await r.json();
+      return d[0] || d;
+    },
+    async getMyCustomLists() {
+      const user = supabase.auth.getUser();
+      if (!user) return [];
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/custom_lists?teacher_id=eq.${user.id}&select=*&order=created_at.desc`,
+        { headers: authHeaders() }
+      );
+      return await r.json();
+    },
+    async getCustomListByCode(shareCode) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/custom_lists?share_code=eq.${shareCode}&select=*`,
+        { headers: authHeaders() }
+      );
+      const d = await r.json();
+      return (Array.isArray(d) && d[0]) ? d[0] : null;
+    },
+    async isTeacher() {
+      const user = supabase.auth.getUser();
+      if (!user) return false;
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${user.id}&select=role`,
+        { headers: authHeaders() }
+      );
+      const d = await r.json();
+      return d[0]?.role === 'teacher';
+    },
+
+    // ── 访问码系统 ──
+    async activateCode(code) {
+      const user = supabase.auth.getUser();
+      if (!user) throw new Error("请先登录");
+      // 查询访问码
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/access_codes?code=eq.${code.toUpperCase().trim()}&select=*`,
+        { headers: authHeaders() }
+      );
+      const codes = await r.json();
+      if (!codes.length) throw new Error("访问码不存在，请检查后重试");
+      const ac = codes[0];
+      if (ac.activated_by) throw new Error("此访问码已被使用");
+      // 计算到期时间
+      const now = new Date();
+      const expires = new Date(now.getTime() + ac.duration_days * 24 * 60 * 60 * 1000);
+      // 标记访问码已使用
+      await fetch(`${SUPABASE_URL}/rest/v1/access_codes?id=eq.${ac.id}`, {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Prefer": "return=minimal" },
+        body: JSON.stringify({ activated_by: user.id, activated_at: now.toISOString(), expires_at: expires.toISOString() })
+      });
+      // 写入用户访问记录
+      await fetch(`${SUPABASE_URL}/rest/v1/user_access`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Prefer": "return=minimal,resolution=merge-duplicates" },
+        body: JSON.stringify({ user_id: user.id, code: ac.code, type: ac.type, expires_at: expires.toISOString(), activated_at: now.toISOString() })
+      });
+      return { type: ac.type, expires_at: expires.toISOString(), duration_days: ac.duration_days };
+    },
+    async getUserAccess(userId) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/user_access?user_id=eq.${userId}&select=*`,
+        { headers: authHeaders() }
+      );
+      const d = await r.json();
+      return (Array.isArray(d) && d[0]) ? d[0] : null;
+    },
+    async generateCodes(count, type, durationDays, note) {
+      // 生成批量访问码（仅老师用）
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      const codes = [];
+      for (let i = 0; i < count; i++) {
+        let code = "";
+        for (let j = 0; j < 8; j++) code += chars[Math.floor(Math.random() * chars.length)];
+        codes.push({ code, type, duration_days: durationDays, note: note || "" });
+      }
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/access_codes`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Prefer": "return=representation" },
+        body: JSON.stringify(codes)
+      });
+      return await r.json();
+    },
+    async getAccessCodes() {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/access_codes?select=*&order=created_at.desc&limit=100`,
+        { headers: authHeaders() }
+      );
+      return await r.json();
+    },
+  };
+})();
+
+
+/* ═══ TTS — now returns a promise so we can wait for it to finish ═══ */
+// ── TTS: 预录MP3 + 浏览器语音备用 ──
+const _audioCache = new Map();
+const _AUDIO_BASE = "/audio/";  // 预录音频路径
+// AUDIO_HASH_MAP: alias for the existing inline hash table (populated below)
+let AUDIO_HASH_MAP = {};
+const _AUDIO_MAP = {
+"internet access": "p_948585f5", "access to information": "p_15a98e6b", "gain access": "p_56f40ae3", "aerospace industry": "p_cc63c376", "aerospace engineer": "p_e8216c98", "aerospace technology": "p_054fc27f", "search algorithm": "p_b44252a7", "design an algorithm": "p_f076d761", "recommendation algorithm": "p_66460521", "analyze data": "p_fe065bf4", "carefully analyze": "p_79657533", "analyze a problem": "p_04e55860", "become an astronaut": "p_462409fa", "astronaut training": "p_5b76b93e", "experienced astronaut": "p_eb1b8f82", "factory automation": "p_841ff1e5", "office automation": "p_dae7d4d8", "automation technology": "p_d458de06", "protect biodiversity": "p_aa61b152", "loss of biodiversity": "p_3dd249d2", "rich biodiversity": "p_dcaf6e8f", "contaminate water": "p_b1fd4d1c", "contaminate soil": "p_291cc226", "contaminate food": "p_fe430e98", "delivery drone": "p_025c90d8", "military drone": "p_52b979c6", "operate a drone": "p_91ab1794", "carbon emission": "p_5630a4e6", "cut emissions": "p_2aaa674f", "zero emission": "p_d9078242", "endangered species": "p_72f0ac93", "endangered animal": "p_c01163f6", "critically endangered": "p_ccb5051c", "become extinct": "p_a7ccbf29", "extinct species": "p_8c11061a", "nearly extinct": "p_dcf46af6", "natural habitat": "p_931ce555", "habitat destruction": "p_e79f8e22", "protect habitats": "p_fe9746e7", "technological innovation": "p_c6ec4471", "drive innovation": "p_c1a56676", "spirit of innovation": "p_3119bcdb", "launch a rocket": "p_0b41a758", "launch a satellite": "p_6ad43308", "successful launch": "p_78b3f400", "microplastic pollution": "p_9a5e66f6", "contain microplastics": "p_ed703fe2", "microplastic problem": "p_c0d6fd70", "space mission": "p_c4414e84", "complete a mission": "p_77f47208", "on a mission": "p_70c45c67", "air pollution": "p_6018c5c0", "water pollution": "p_1d7224d7", "reduce pollution": "p_d584d87d", "industrial robot": "p_e3665955", "robot technology": "p_4cd0d216", "program a robot": "p_c2821832", "communication satellite": "p_42795c74", "weather satellite": "p_d54af293", "sustainable development": "p_dcc7f926", "sustainable energy": "p_ee5a1da0", "sustainable lifestyle": "p_a560d8c5", "Chinese taikonaut": "p_598c0d5e", "become a taikonaut": "p_25b142c2", "taikonaut mission": "p_bab7139c", "space telescope": "p_357a60b1", "look through a telescope": "p_b7a6607a", "powerful telescope": "p_014f57ef", "wild animal": "p_4f0d3215", "animal habitat": "p_acc8ecdc", "mobile application": "p_6a6362d1", "develop an application": "p_09b3841a", "useful application": "p_24baa496", "autonomous vehicle": "p_6c1d7c29", "autonomous system": "p_1513a723", "fully autonomous": "p_8e3756d1", "be aware of": "p_321f95b2", "environmentally aware": "p_b5b535a5", "make people aware": "p_91e13408", "ecological balance": "p_036ca07a", "work-life balance": "p_cc6850cf", "maintain balance": "p_dc663756", "computer chip": "p_474d3300", "semiconductor chip": "p_e01b2f8c", "chip technology": "p_fc212b86", "write code": "p_02a3e002", "computer code": "p_0da072f7", "fix code": "p_e971fdf1", "wildlife conservation": "p_dd7ff546", "conservation effort": "p_010d347c", "conservation area": "p_0baa8be0", "conserve energy": "p_76c070d3", "conserve water": "p_ced29221", "conserve nature": "p_fbb57330", "environmental damage": "p_930278b6", "cause damage": "p_44773a01", "repair damage": "p_f7da981e", "collect data": "p_2ae15e82", "data privacy": "p_48c7671e", "destroy the environment": "p_260bf2c3", "destroy habitat": "p_c0cf0ccc", "destroy evidence": "p_a2e41656", "mobile device": "p_cb5b3ebd", "smart device": "p_31ec69d8", "electronic device": "p_b3bf1ba2", "digital technology": "p_93e4aa54", "digital age": "p_4a35b8a4", "digital skills": "p_04d603fd", "natural disaster": "p_8014cfca", "environmental disaster": "p_79300e53", "prevent disaster": "p_00e5a25d", "ecological system": "p_1ffdc6f6", "ecological crisis": "p_ca73d4b4", "energy efficient": "p_bfa594f2", "efficient system": "p_c2d0ce4e", "highly efficient": "p_06bc6346", "renewable energy": "p_f84672f3", "save energy": "p_f51e521b", "energy source": "p_1eb11843", "main function": "p_23f046b1", "perform a function": "p_0c142bb1", "function properly": "p_86ed29dd", "global warming": "p_625da929", "global problem": "p_bbed43a5", "global community": "p_bf446f16", "green energy": "p_f6c29c57", "go green": "p_b7dea63b", "green technology": "p_38cb8265", "computer hardware": "p_39c1280c", "hardware upgrade": "p_f13f0e02", "hardware problem": "p_5a681f38", "harmful effect": "p_ef5fad4c", "harmful substance": "p_6d86ad89", "potentially harmful": "p_971e9a15", "illegally hunt": "p_b90119d4", "hunt for food": "p_24573de6", "hunting ban": "p_092bbca4", "illegal trade": "p_569563b7", "illegal dumping": "p_b57cc78b", "declare illegal": "p_d88be52e", "innovative solution": "p_3720b383", "innovative technology": "p_e0f367e6", "innovative approach": "p_fdd9a4be", "learning machine": "p_00980381", "washing machine": "p_b3522a5e", "machine error": "p_47d4df89", "take measures": "p_062d2844", "environmental measure": "p_cb9f8ce1", "effective measure": "p_9cdb1ac7", "monitor pollution": "p_51ab7f0f", "monitor health": "p_b364c448", "monitor progress": "p_d88a0d77", "social network": "p_408b91ab", "5G network": "p_f1273fcc", "build a network": "p_480de7e7", "online learning": "p_55cb9d4a", "online shopping": "p_79c6ef41", "go online": "p_6b5d8ff6", "protect the planet": "p_64bea337", "distant planet": "p_28d6abf1", "save the planet": "p_fc351fed", "predict the weather": "p_a542c411", "predict climate change": "p_040dc065", "accurately predict": "p_65e0e99b", "preserve wildlife": "p_3211b9d0", "preserve the environment": "p_5fa3a941", "preserve culture": "p_37f45fca", "right to privacy": "p_13adb7d7", "protect privacy": "p_bd935e8b", "manufacturing process": "p_39dc8629", "process data": "p_abd25cd5", "complex process": "p_7616a2ce", "protect endangered species": "p_9ec3cbe0", "protect data": "p_68e94b2f", "solar radiation": "p_0c6ea69d", "radiation exposure": "p_892ae5af", "radiation levels": "p_02ec2ceb", "recycle waste": "p_f57a81e0", "recycle paper": "p_e713e38a", "recycle plastic": "p_64b181af", "reduce emissions": "p_6f4ce5d6", "reduce waste": "p_2a6aad40", "reduce carbon footprint": "p_0d343468", "replace fossil fuels": "p_d60c563e", "replace workers": "p_0ec94905", "replace old methods": "p_dafb5232", "scientific research": "p_f7c5efbd", "conduct research": "p_18b2ad7f", "research findings": "p_f23dd7af", "natural resource": "p_52617fbc", "renewable resource": "p_01de5075", "conserve resources": "p_88b3d79c", "rocket engine": "p_1c31ec59", "reusable rocket": "p_29cb21cf", "temperature sensor": "p_e8e7eee9", "motion sensor": "p_10e57a1d", "sensor technology": "p_dc390d7e", "software update": "p_98d953fb", "develop software": "p_dc0b22d8", "educational software": "p_390c461b", "outer space": "p_5a8f5683", "space exploration": "p_8d72db86", "space station": "p_ad0f5963", "crewed spacecraft": "p_ddd21502", "unmanned spacecraft": "p_97a65c64", "spacecraft design": "p_2db54c43", "new species": "p_09cda322", "protect species": "p_6a9cd36f", "survive in the wild": "p_ae4dbb11", "survive climate change": "p_8aea5ec6", "barely survive": "p_f632cb57", "solar system": "p_1e753e37", "transport system": "p_0b079e21", "warning system": "p_07e53eeb", "advanced technology": "p_2ad4f394", "clean technology": "p_879daef2", "cutting-edge technology": "p_b6729cb5", "pose a threat": "p_a977d8ef", "environmental threat": "p_cb76a013", "greatest threat": "p_40ff6aea", "explore the universe": "p_cf613b1d", "origin of the universe": "p_e931961b", "expand the universe": "p_0b23dba3", "regular update": "p_3f4f1745", "update information": "p_e7346492", "virtual reality": "p_c6fc1666", "virtual class": "p_9419bd22", "virtual world": "p_1725a5d1", "electronic waste": "p_adb7a691", "waste management": "p_2e8887b5", "Many students rely on internet access to complete their homework.": "s_ce8e0926", "Everyone should have equal access to information.": "s_28de0b71", "She gained access to the laboratory after passing the test.": "s_33a793ce", "China's aerospace industry has made remarkable progress.": "s_822b5f1f", "She dreams of becoming an aerospace engineer.": "s_0b9cad8e", "Aerospace technology benefits everyday life in many ways.": "s_83dbf328", "Search engines use complex algorithms to rank results.": "s_94e37af8", "Computer scientists design algorithms to solve problems efficiently.": "s_9639fbad", "The recommendation algorithm suggests videos based on your history.": "s_92ac1440", "Scientists analyze data to find patterns and trends.": "s_33d078e6", "We need to carefully analyze the results before drawing conclusions.": "s_324d6642", "A good engineer can analyze a problem and find the best solution.": "s_ae36110c", "It takes years of training to become an astronaut.": "s_367c8dbf", "Astronaut training includes physical fitness and technical skills.": "s_7f61d417", "The experienced astronaut guided the mission successfully.": "s_4ca23387", "Factory automation has replaced many manual jobs.": "s_022a36cb", "Office automation software saves time on repetitive tasks.": "s_16b9cb56", "Automation technology continues to reshape the workforce.": "s_56ec1039", "We must protect biodiversity to maintain healthy ecosystems.": "s_dd2e6f58", "The loss of biodiversity threatens the planet's future.": "s_71667b18", "Tropical rainforests are known for their rich biodiversity.": "s_d5654294", "Chemical spills can contaminate drinking water.": "s_23154ffc", "Pesticides can contaminate the soil and harm wildlife.": "s_51c14417", "Improper storage can contaminate food with bacteria.": "s_e45de971", "Companies are testing delivery drones for faster shipping.": "s_22a8fddc", "Military drones are used for surveillance and missions.": "s_22190fd9", "You need a licence to operate a drone in public areas.": "s_aa0396d0", "Reducing carbon emissions is key to fighting climate change.": "s_b81dc7e7", "Countries around the world are trying to cut emissions.": "s_12355d17", "Electric cars produce zero emissions while driving.": "s_19b4f0a7", "The giant panda was once one of the most endangered species.": "s_fc5134fa", "Conservation programs help protect endangered animals.": "s_e856374d", "The snow leopard is critically endangered due to habitat loss.": "s_77b14da3", "Dinosaurs became extinct millions of years ago.": "s_dd887ecf", "Scientists study extinct species through fossils.": "s_97bd2e55", "Some whale species are nearly extinct because of hunting.": "s_98877b48", "Tigers need large natural habitats to survive.": "s_8f89c796", "Habitat destruction is the leading cause of species loss.": "s_5b521bf7", "Nature reserves help protect the habitats of rare animals.": "s_904264c9", "Technological innovation is changing the way we live.": "s_f03fb33f", "Competition drives innovation in the tech industry.": "s_e271bbd1", "A spirit of innovation is valued in modern companies.": "s_2d21a310", "China launched a rocket to explore the moon.": "s_4e8ab517", "The company plans to launch 100 satellites this year.": "s_97eeee5f", "The successful launch was celebrated by the whole nation.": "s_271a520f", "Microplastic pollution has been found even in the deep ocean.": "s_a20cab98", "Many bottled waters contain tiny amounts of microplastics.": "s_32901ccd", "The microplastic problem requires global cooperation.": "s_f0f707f7", "The astronauts prepared for the six-month space mission.": "s_bb216779", "The team worked together to complete the mission.": "s_21710bf1", "She is on a mission to protect endangered wildlife.": "s_02115bdf", "Air pollution in big cities causes serious health problems.": "s_37adfecc", "Water pollution threatens both humans and marine life.": "s_5c91367f", "Using public transport helps reduce pollution.": "s_5d0a7d3e", "Industrial robots are used to assemble cars in factories.": "s_28674d0d", "Robot technology is advancing at an incredible speed.": "s_b94c2f45", "Students learned to program a robot in their science class.": "s_19debe51", "Communication satellites allow us to make calls across the globe.": "s_d5855f3e", "China has launched many satellites into orbit.": "s_8d47cec6", "Weather satellites help forecast storms and floods.": "s_eb330590", "Sustainable development meets today's needs without harming the future.": "s_7763de14", "Solar and wind power are examples of sustainable energy.": "s_78dbbf4f", "Living a sustainable lifestyle helps protect the planet.": "s_409c4d55", "A Chinese taikonaut walked in space for the first time.": "s_a0b5b793", "Becoming a taikonaut requires years of rigorous training.": "s_f842f5c6", "This taikonaut mission lasted over 180 days.": "s_1f083bc3", "The James Webb Space Telescope can see the earliest galaxies.": "s_f7df68dc", "We used a telescope to observe Jupiter at night.": "s_4d9c57f8", "A powerful telescope can reveal details invisible to the eye.": "s_d1898ff6", "Wild animals should never be kept as pets.": "s_ef90907d", "Many endangered animals are protected by law.": "s_cf1e6733", "Forests are the natural habitat of many animals.": "s_e27f22ab", "Mobile applications have changed the way we communicate.": "s_ad6f7de4", "She learned to develop applications in her coding class.": "s_23b03fd4", "There are many useful applications for language learning.": "s_d3dde797", "Autonomous vehicles can drive themselves without a human driver.": "s_746e27ea", "The factory uses an autonomous system to manage production.": "s_fa2f9498", "Fully autonomous robots can complete tasks without supervision.": "s_1dbddd00", "Students should be aware of the risks of social media.": "s_528fc93d", "Young people today are more environmentally aware than ever.": "s_4b54a96d", "The campaign aims to make people aware of climate change.": "s_d9b3dd93", "Removing predators upsets the ecological balance of a region.": "s_08ed77c8", "Good work-life balance is important for mental health.": "s_b74f649e", "We must maintain balance between development and conservation.": "s_22d58c2b", "Modern computer chips can process billions of operations per second.": "s_b633708d", "The global shortage of semiconductor chips affected many industries.": "s_79cf2417", "China is investing heavily in domestic chip technology.": "s_2fd29c8b", "Learning to write code is a valuable skill in the digital age.": "s_ee561530", "Computer code tells machines exactly what to do.": "s_a48d73c9", "The developer spent hours trying to fix the broken code.": "s_d77469f0", "Wildlife conservation protects animals from extinction.": "s_4ab4673b", "Conservation efforts have helped increase tiger populations.": "s_9962c409", "The valley was declared a conservation area to protect rare birds.": "s_631d4d81", "Turn off lights when leaving a room to conserve energy.": "s_ac4f6554", "We should conserve water during droughts.": "s_099c8e87", "It is our duty to conserve nature for future generations.": "s_dd7e363a", "Industrial pollution has caused serious environmental damage.": "s_173cd7c1", "Hurricanes can cause enormous damage to coastal areas.": "s_22eca80a", "It may take decades to repair the damage done to the reef.": "s_53af5716", "Scientists collect data over many years to study climate change.": "s_e8d9d8df", "AI systems can analyze huge amounts of data instantly.": "s_cfba21ae", "Data privacy is an important issue in the digital age.": "s_ab134d55", "Illegal mining destroys the environment and harms wildlife.": "s_2df9a193", "Urban expansion destroys the habitat of many wild animals.": "s_d734840c", "It is illegal to destroy evidence in a legal case.": "s_a4b7ce65", "Students often use mobile devices to study English.": "s_d88f88df", "Smart devices can be controlled using voice commands.": "s_e91c4235", "Electronic devices should be turned off during exams.": "s_07fe9284", "Digital technology has transformed every area of life.": "s_2393b98a", "Young people growing up in the digital age are very tech-savvy.": "s_1d3b68ce", "Good digital skills are essential for most modern jobs.": "s_b202b5f7", "Earthquakes and floods are examples of natural disasters.": "s_ddc87193", "The oil spill was one of the worst environmental disasters in history.": "s_136fe6a9", "Early warning systems help prevent disaster and save lives.": "s_c4195ff3", "Humans depend on ecological systems for clean air and water.": "s_940287fb", "Invasive species can destroy the ecological balance of an area.": "s_1bb57744", "We are facing a serious ecological crisis due to human activity.": "s_2880e1a7", "LED lights are much more energy efficient than old bulbs.": "s_188574d4", "An efficient transport system reduces pollution and saves time.": "s_1b395232", "Solar panels are becoming highly efficient and affordable.": "s_c3f28ef2", "Wind and solar are the most popular forms of renewable energy.": "s_05a7f1fd", "Turning off unused appliances helps save energy.": "s_e91be75a", "Scientists are searching for cleaner energy sources.": "s_f2fdf173", "The main function of the liver is to filter blood.": "s_0603b70e", "Each part of the machine performs a specific function.": "s_bd9b7971", "The app stopped functioning properly after the update.": "s_2df95654", "Global warming is causing ice caps to melt at alarming rates.": "s_678159bd", "Pollution is a global problem that requires international cooperation.": "s_4dab4bc9", "The global community must work together to tackle climate change.": "s_9e005ab1", "Investing in green energy reduces dependence on fossil fuels.": "s_83793843", "Many companies are trying to go green to reduce their footprint.": "s_d9dba365", "Green technology is essential for a sustainable future.": "s_a2291452", "Computer hardware includes the keyboard, screen, and processor.": "s_692f81fe", "A hardware upgrade can significantly improve your computer's speed.": "s_ce981195", "The technician identified a hardware problem with the device.": "s_2d60ce3e", "Smoking has harmful effects on the lungs and heart.": "s_d4b18b83", "Some cleaning products contain harmful substances.": "s_748deef4", "Spending too much time online can be potentially harmful.": "s_3b20b756", "Rangers work hard to stop people from illegally hunting elephants.": "s_dfd0c3ed", "Some indigenous peoples still hunt for food as part of their culture.": "s_19d9b5bf", "The government introduced a hunting ban to protect endangered species.": "s_255c168c", "The illegal trade in rare animals is a serious global problem.": "s_bc3347e2", "Illegal dumping of waste poisons soil and water.": "s_637eb489", "Many countries have declared certain pesticides illegal.": "s_c97c218a", "Engineers found an innovative solution to reduce plastic waste.": "s_637e218d", "Innovative technology is changing healthcare worldwide.": "s_be553dd5", "Teachers need to use innovative approaches to engage students.": "s_a01db577", "A learning machine can improve itself through experience.": "s_66ba794d", "Modern washing machines use much less water than old ones.": "s_13a2d605", "The accident was caused by a machine error, not human mistake.": "s_fb1657e1", "Governments must take measures to reduce carbon emissions.": "s_6649ee6a", "Environmental measures include recycling and using clean energy.": "s_59d473d4", "An effective measure against pollution is switching to electric cars.": "s_d9c76cef", "Sensors are used to monitor air pollution levels in cities.": "s_bd40bdff", "Wearable devices can monitor your health in real time.": "s_292aa3ae", "Teachers monitor students' progress through regular tests.": "s_5e74f484", "Social networks have changed how people communicate globally.": "s_04291d06", "5G networks enable faster data transfer and smarter cities.": "s_970e61b3", "Building a strong network helps in finding jobs and opportunities.": "s_03e10542", "Online learning became very popular during the pandemic.": "s_b770c409", "Online shopping is convenient but can increase packaging waste.": "s_8ea51107", "More and more services are going online to serve customers better.": "s_120d49e2", "Every small action we take can help protect the planet.": "s_d9a5fb53", "Astronomers discovered a distant planet outside our solar system.": "s_15893783", "Reducing plastic use is one way to save the planet.": "s_52faae90", "Modern computers can predict the weather up to two weeks ahead.": "s_1f5021ce", "Scientists predict that climate change will worsen without action.": "s_acbc5c50", "AI can accurately predict equipment failures before they happen.": "s_47fb658a", "Nature reserves help preserve wildlife in its natural habitat.": "s_e149ba2a", "We have a responsibility to preserve the environment for future generations.": "s_2dea24ed", "Museums help preserve culture and history.": "s_9b9772df", "Data privacy laws protect people's personal information online.": "s_84ed099a", "Everyone has the right to privacy in their personal life.": "s_1e7ed2a2", "Strong passwords help protect your online privacy.": "s_84d3742d", "Modern manufacturing processes use robots for precision and speed.": "s_f2ea1b6f", "Computers process data millions of times faster than humans.": "s_24343680", "Recycling is a complex process involving sorting and reprocessing.": "s_a4aa4be3", "We all have a duty to protect the environment from pollution.": "s_76b595ce", "Laws are needed to protect endangered species from poachers.": "s_d4022c34", "Companies must protect users' data from cyber attacks.": "s_49f6a945", "Solar radiation can cause sunburn and increase skin cancer risk.": "s_3ee554c4", "Astronauts face significant radiation exposure outside Earth's atmosphere.": "s_4db3937f", "Satellites measure radiation levels in the upper atmosphere.": "s_d378df13", "Recycling waste reduces the amount of rubbish sent to landfills.": "s_d6cc0641", "Every tonne of recycled paper saves 17 trees.": "s_f747ffd4", "Only a small percentage of plastic is actually recycled globally.": "s_22c88cff", "Switching to electric vehicles helps reduce emissions significantly.": "s_8c7278f2", "Buying only what you need is a simple way to reduce waste.": "s_a972a46c", "Eating less meat can help reduce your carbon footprint.": "s_4d2768e2", "Renewable energy could eventually replace fossil fuels completely.": "s_63074cd1", "Some worry that robots will replace human workers in factories.": "s_43a0eb00", "Digital tools are replacing old methods of teaching.": "s_a5bb69e1", "Scientific research takes years but leads to important discoveries.": "s_8674827f", "The team conducted research on ways to reduce plastic pollution.": "s_179b176f", "Research findings suggest that temperatures are rising faster than expected.": "s_9cf549ec", "China is rich in natural resources including coal and rare metals.": "s_b7620b31", "Solar energy is an example of a renewable resource.": "s_6a2d4304", "We should conserve resources by reducing unnecessary consumption.": "s_4c0dbd5b", "China successfully launched a rocket carrying a space station module.": "s_44df89c8", "Modern rocket engines are far more efficient than those of the 1960s.": "s_ecaa909b", "Reusable rockets have made space travel significantly cheaper.": "s_a75e4a9d", "Temperature sensors alert the system when machines overheat.": "s_8763076d", "Motion sensors turn on lights automatically when someone enters.": "s_21b65f5d", "Sensor technology is key to the development of autonomous vehicles.": "s_73f9ce32", "Always install software updates to keep your device secure.": "s_4088e62b", "She developed software that helps doctors diagnose diseases faster.": "s_577a0067", "Educational software makes learning more interactive and fun.": "s_200cd841", "Outer space has fascinated humans since ancient times.": "s_15110bf5", "Space exploration has led to many technological breakthroughs.": "s_190928f5", "Astronauts live and work on the space station for months.": "s_598fbccd", "China's crewed spacecraft has taken astronauts to the space station.": "s_2a2539d1", "An unmanned spacecraft was sent to study Mars.": "s_ebdd6096", "Spacecraft design must consider extreme temperatures and radiation.": "s_fe740c21", "Over 40,000 species are currently classified as endangered.": "s_5d2459d1", "Scientists discover dozens of new species each year.": "s_1437376c", "International agreements help protect species from illegal trade.": "s_89cc0eb9", "Many animals struggle to survive in the wild due to habitat loss.": "s_52200770", "Species must adapt quickly to survive climate change.": "s_7baef19d", "Some small islands can barely survive rising sea levels.": "s_5f0320f3", "Our solar system contains eight planets orbiting the sun.": "s_bb661e66", "An efficient transport system reduces pollution and congestion.": "s_2ec19151", "Early warning systems save thousands of lives during disasters.": "s_3e62a8e3", "Advanced technology has transformed how we live and work.": "s_c2c64759", "Clean technology helps reduce pollution and carbon emissions.": "s_55524021", "China invests heavily in cutting-edge technology research.": "s_235297da", "Climate change poses a serious threat to global biodiversity.": "s_88ebae08", "Plastic pollution is a major environmental threat to oceans.": "s_6d516a53", "Scientists say habitat loss is the greatest threat to wildlife.": "s_9e744234", "Humans have always wanted to explore the universe beyond Earth.": "s_b189bd05", "Scientists study the origin of the universe through light from distant stars.": "s_b2e6f35d", "Evidence shows the universe has been expanding since the Big Bang.": "s_45fc5df4", "Installing the latest software update fixes security problems.": "s_ba550b9a", "Regular updates keep your device working at its best.": "s_92de4905", "Always update your information when you move to a new address.": "s_ea92b7b1", "Virtual reality headsets let you experience places without leaving home.": "s_5ed070f5", "During the pandemic, students attended virtual classes from home.": "s_9dad6adf", "Many young people spend hours in virtual worlds playing games.": "s_b2e4b222", "Choosing products with less packaging helps reduce waste.": "s_0712a5dc", "Electronic waste contains toxic materials that harm the environment.": "s_de6e551e", "Good waste management is essential for clean cities.": "s_4157aa8c", "Students can access the library resources online.": "e_35d15426", "Aerospace research has led to many useful inventions.": "e_d2ac3b8e", "The algorithm can process millions of data points in seconds.": "e_0b2f14cb", "AI systems can analyze thousands of images in minutes.": "e_2c2eaaa7", "The astronaut spent six months on the space station.": "e_e5b7c683", "Automation has transformed the manufacturing industry.": "e_acedc808", "Biodiversity is essential for a stable and healthy planet.": "e_2f2c9d99", "Industrial waste contaminated the river for miles.": "e_6403a59e", "The farmer used a drone to inspect crops from above.": "e_87745084", "The factory was fined for excessive gas emissions.": "e_03f23e8e", "Many endangered plants grow only in tropical rainforests.": "e_61d01788", "The dodo bird has been extinct for over 300 years.": "e_7f24874a", "Deforestation destroys the habitat of thousands of species.": "e_90863862", "China's rapid innovation has impressed the world.": "e_6c6c713b", "The new app was launched last week to great success.": "e_abb6b35a", "Scientists discovered microplastics in human blood for the first time.": "e_52d68d22", "China's lunar mission brought back samples from the moon.": "e_ee29fea6", "Pollution from factories has damaged the local river.": "e_63b4f64c", "A robot can perform surgery with greater precision than a human.": "e_3b851611", "GPS uses signals from satellites to track locations.": "e_f964974f", "Sustainable farming protects soil and reduces waste.": "e_baf35f20", "China's taikonauts have completed multiple missions on the space station.": "e_cae79d9b", "Galileo improved the telescope and discovered Jupiter's moons.": "e_f3ad26eb", "We must protect animals from extinction.": "e_5c412dd9", "This application uses AI to translate languages instantly.": "e_a1d10b3c", "The drone is fully autonomous and needs no pilot.": "e_2dc0d663", "We need to make students aware of the importance of saving energy.": "e_ea111121", "Nature's balance is fragile and must be protected.": "e_58bd611d", "The tiny chip inside your phone controls all its functions.": "e_69038315", "She learned to code at age 10 and built her first app at 12.": "e_e1cc6237", "Conservation of rainforests is vital for global biodiversity.": "e_eec2d7c4", "Recycling helps conserve natural resources.": "e_ea4b32dd", "UV radiation can damage skin cells and cause health problems.": "e_a1ac11bd", "The app collects data about users' habits to improve its service.": "e_db438249", "A single oil spill can destroy an entire marine ecosystem.": "e_08dfd9aa", "Wearable devices can track your heart rate and sleep quality.": "e_cc53a48e", "We live in a digital world where everything is connected online.": "e_9c6b30c4", "Climate change increases the frequency of natural disasters.": "e_08ffcdf1", "We must make more ecological choices in our daily lives.": "e_7ac04457", "Electric cars are more efficient than petrol-powered vehicles.": "e_d5926c48", "The world needs to switch to clean energy to fight climate change.": "e_6d0635b3", "AI can now perform complex functions that once required human intelligence.": "e_1170ea9b", "The internet has created a truly global marketplace.": "e_f0d4fbb7", "The school launched a green initiative to reduce plastic waste.": "e_043d2fbd", "Without the right hardware, software cannot run properly.": "e_4b8a3783", "Pesticides can be harmful to bees and other pollinators.": "e_8cb8f75d", "Whales were once hunted to the point of near extinction.": "e_37e71e6e", "It is illegal to collect rare plants from national parks.": "e_d6dec6be", "China's innovative companies are leading the world in electric vehicles.": "e_1a63be05", "This machine can sort recycled materials automatically.": "e_be97a284", "We need to measure the level of pollution in the river.": "e_3f040bd2", "Scientists use satellites to monitor deforestation from space.": "e_ca9359b2", "The internet is the world's largest digital network.": "e_7d589011", "You can access millions of books online for free.": "e_86b50ee5", "Earth is the only known planet with life.": "e_6d85e2b3", "Machine learning helps predict natural disasters more accurately.": "e_3f5d2f75", "International laws help preserve endangered species from extinction.": "e_8da72998", "Some apps collect data without respecting users' privacy.": "e_91dcf8be", "AI can process natural language to understand human speech.": "e_cc402b6f", "Planting trees helps protect soil from erosion and flooding.": "e_1ebc4038", "Protective equipment shields workers from harmful radiation.": "e_ca441ceb", "Recycling aluminium uses 95% less energy than making it from scratch.": "e_a1595828", "Using public transport can reduce air pollution in cities.": "e_8edf9f3f", "AI may soon replace many routine jobs in offices.": "e_6651faee", "New research shows that AI can help detect cancer earlier.": "e_3f96d441", "Sharing educational resources online benefits millions of students.": "e_78d5a21c", "The Long March rocket has launched China's most important satellites.": "e_b4fb6029", "Modern smartphones contain dozens of sensors.": "e_d125f3f0", "AI software can now write code and compose music.": "e_dbc60412", "China's space programme has achieved remarkable milestones.": "e_09faf2c8", "The spacecraft travelled for seven months before reaching Mars.": "e_5da1b8c9", "Climate change threatens thousands of species with extinction.": "e_6c41a613", "Only the most adaptable species will survive rapid environmental changes.": "e_7a3a8bcb", "China's high-speed rail system is one of the world's largest.": "e_b00ae1cc", "Technology is advancing faster than ever before in history.": "e_fc531309", "Invasive species are a growing threat to native wildlife.": "e_5d097b87", "The universe is estimated to be about 13.8 billion years old.": "e_d8ebc7a2", "The app updates automatically every week with new features.": "e_94229c9f", "Virtual assistants like Siri can answer questions and set reminders.": "e_9963e581", "Food waste is a major problem in wealthy countries.": "e_c347c37c", "melting glacier": "p_8e45554d", "glacier retreat": "p_d13d06cc", "glacier formation": "p_41ff5dfb", "popular destination": "p_81da4952", "travel destination": "p_60a43530", "final destination": "p_457b485b", "disturbing news": "p_b1c5a97c", "deeply disturbing": "p_dbe87d31", "disturbing trend": "p_8b473057", "spiritual journey": "p_f0807acd", "spiritual leader": "p_f17aac37", "spiritual growth": "p_877cbf3a", "fragile ecosystem": "p_9d53bbb8", "marine ecosystem": "p_9eb14b2f", "ecosystem balance": "p_45e5b347", "stop abruptly": "p_3411d139", "end abruptly": "p_8b816296", "change abruptly": "p_da66a782", "good reputation": "p_22d44188", "damage one's reputation": "p_fa4f176c", "earn a reputation": "p_ad98b0d4", "remain skeptical": "p_7cae329b", "deeply skeptical": "p_c52638ce", "skeptical about": "p_f718c7cd", "safety equipment": "p_44d195ba", "medical equipment": "p_7581b346", "heavy equipment": "p_51ea3ece", "eventually succeed": "p_278413ce", "eventually arrive": "p_1711eb32", "will eventually": "p_430a0fee", "rescue mission": "p_711631b6", "come to the rescue": "p_71d4b658", "rescue team": "p_0c826ea0", "not permitted": "p_c662bd4c", "weather permitting": "p_32bc159e", "permit access": "p_854e5653", "permanent damage": "p_a6c4351c", "permanent resident": "p_74e0f5db", "permanent change": "p_7ec9160a", "deserve better": "p_9551c583", "deserve credit": "p_33608ef7", "richly deserve": "p_7a613664", "without hesitation": "p_5e36d215", "moment's hesitation": "p_55def0ef", "slight hesitation": "p_0a669a92", "cause anxiety": "p_dc000827", "reduce anxiety": "p_e02ccc9b", "anxiety about": "p_fd9f2f56", "respond immediately": "p_0664a9d5", "leave immediately": "p_010a0b41", "immediately after": "p_899ca66f", "pure coincidence": "p_1d609b2e", "by coincidence": "p_e9e256f9", "remarkable coincidence": "p_b33cf052", "look familiar": "p_45c5605e", "familiar with": "p_0a31d723", "familiar face": "p_3eb811b0", "gradually increase": "p_fef9861a", "gradually improve": "p_0d794730", "change gradually": "p_76dd02c3", "meet the criteria": "p_c23c37d8", "selection criteria": "p_ee6d3964", "strict criteria": "p_c5de65e3", "tough opponent": "p_d6bcdbd3", "face an opponent": "p_a8a87be7", "political opponent": "p_48c2955f", "professional qualification": "p_bd831ce8", "academic qualification": "p_7fc345f9", "gain a qualification": "p_186e5b17", "knocked unconscious": "p_eb99036a", "fall unconscious": "p_495738a8", "remain unconscious": "p_86c76cd8", "absolutely thrilled": "p_0be48013", "thrilled to meet": "p_c80696d0", "thrilled with": "p_5dbf07a9", "deeply ashamed": "p_34f70fd2", "feel ashamed": "p_ef7c6c9b", "ashamed to admit": "p_36d92336", "science class": "p_c603db37", "science project": "p_d43557ef", "science and technology": "p_5e64e299", "climate change": "p_9f71d6a8", "warm climate": "p_436d51fb", "climate research": "p_b6e0322b", "fail an exam": "p_82a7bfe3", "fail to do": "p_48d31d2c", "fail again": "p_b6c6ea17", "realize a mistake": "p_aa6c8f6f", "suddenly realize": "p_2ff1ba4c", "realize a dream": "p_092ac9dd", "explain clearly": "p_893dd027", "explain why": "p_7f20da03", "explain a problem": "p_48825e22", "useful information": "p_fc65add4", "share information": "p_33b1134e", "look for information": "p_b2ab56a7", "correct answer": "p_0d9b2f68", "correct a mistake": "p_2bc64b54", "correct way": "p_bac4be77", "expect a result": "p_a1d3b594", "as expected": "p_f942ccd3", "expect too much": "p_1346cb33", "believe in yourself": "p_b89048de", "hard to believe": "p_5eefbeba", "believe a story": "p_d0249f6c", "have doubt": "p_cd9e7b8e", "without doubt": "p_9056e83c", "express doubt": "p_e5496e25", "good habit": "p_aad11d4d", "bad habit": "p_51b9a8c6", "form a habit": "p_0a910405", "natural ability": "p_2dfcca3c", "reading ability": "p_2ed62809", "show ability": "p_c2fcc65f", "special day": "p_709d5243", "special offer": "p_e77d852b", "feel special": "p_12fae520", "emotional support": "p_3703f84f", "support a team": "p_b5aa11d3", "family support": "p_c810bb58", "class discussion": "p_ab9b3d87", "group discussion": "p_736fa121", "open discussion": "p_2ab3e4f4", "final exam": "p_de56f202", "final answer": "p_553c9177", "final decision": "p_d86c94b2", "high score": "p_7c1c8383", "exam score": "p_52d939dd", "score a goal": "p_0011ae86", "complete a task": "p_e2ecbaef", "complete information": "p_71dddacd", "complete a course": "p_90bd73f3", "normal life": "p_8176ed9a", "back to normal": "p_0648f1b9", "normal temperature": "p_09338d42", "serious problem": "p_7f584e6b", "serious student": "p_e557868e", "look serious": "p_45fdacff", "moment of silence": "p_3c1dce89", "in silence": "p_d3478ac0", "break the silence": "p_84c27ffa", "at the moment": "p_da217c26", "special moment": "p_c2b7f12e", "wait a moment": "p_d69ac8b2", "set a goal": "p_77364a56", "reach a goal": "p_1e71ead6", "long-term goal": "p_a9a68726", "compare prices": "p_09f3cebb", "compare with": "p_0e062bf7", "compare results": "p_c6eb87b2", "act bravely": "p_313f31b2", "speak bravely": "p_4144d6dd", "face bravely": "p_0b632d17", "refuse to help": "p_79d9217b", "refuse an offer": "p_e9ed5938", "politely refuse": "p_57f401bd", "receive praise": "p_28814b4a", "praise a student": "p_b4ab1852", "deserve praise": "p_39494c07", "exact time": "p_f91aabc4", "exact answer": "p_7207e916", "exact same": "p_397d356b", "modern technology": "p_bfb50910", "modern city": "p_434a783a", "modern style": "p_3de5f326", "be polite": "p_e4a69fb5", "polite reply": "p_5400ebfe", "polite behavior": "p_9138346e", "describe a person": "p_a4124dfa", "describe in detail": "p_206daee3", "difficult to describe": "p_28a90549", "collect information": "p_d35d2295", "collect stamps": "p_c68102c7", "collect data": "p_2ae15e82", "learning experience": "p_1e8a9f89", "personal experience": "p_41212222", "work experience": "p_3e94edcd", "make an introduction": "p_5cedfdfd", "letter of introduction": "p_048cb3d2", "self-introduction": "p_470c7dda", "make progress": "p_41724bcc", "slow progress": "p_8281a7dc", "track progress": "p_88e9a142", "active student": "p_fb365657", "stay active": "p_e3ccff64", "active role": "p_ef34e7cd", "remain silent": "p_c5c9bc9c", "silent reading": "p_2d463a8e", "fall silent": "p_ddb63547", "make a decision": "p_200927a0", "difficult decision": "p_8bdebd35", "take a risk": "p_b23febf0", "health risk": "p_5ef91465", "at risk": "p_9bbb515d", "keep a promise": "p_677e273d", "make a promise": "p_3bcb86ab", "break a promise": "p_c708883e", "write a report": "p_c4184470", "news report": "p_1708625a", "report a problem": "p_097eff17", "words of encouragement": "p_41ba74be", "give encouragement": "p_3e83ec24", "need encouragement": "p_c99ba14a", "follow instructions": "p_3e8f0c43", "clear instruction": "p_8d0c3b3c", "safety instructions": "p_316f2671", "time management": "p_ed4e96de", "school management": "p_e65c73b6", "stress management": "p_b02e8166", "enter a competition": "p_a0c4bb42", "win a competition": "p_7ef4afa2", "healthy competition": "p_50cc5275", "feel embarrassed": "p_457c15e8", "embarrassing moment": "p_f67c3242", "easily embarrassed": "p_d4bddc4f", "gain independence": "p_5db26ec3", "financial independence": "p_0b530f48", "show independence": "p_ea33d4d2", "win a victory": "p_a94513ca", "celebrate victory": "p_973b68a9", "hard-fought victory": "p_3772e635", "good relation": "p_fa312258", "in relation to": "p_1ccbb7ff", "family relation": "p_95d422fc", "make sense": "p_d2d7e3a6", "sense of humor": "p_a78a8661", "common sense": "p_4887c7fb", "celebrate a birthday": "p_7f76ec73", "celebrate success": "p_66f0c8fe", "celebrate together": "p_9852cb5b", "remind someone": "p_a57cff5d", "remind of": "p_3a85e83f", "gentle reminder": "p_3b4d403e", "take seriously": "p_c3a317b3", "hurt seriously": "p_c14902e9", "think seriously": "p_4b73c990", "widely used": "p_9bc51066", "widely known": "p_84cd3f00", "widely accepted": "p_78973db6", "speak privately": "p_945a1744", "meet privately": "p_5767ce31", "feel privately": "p_55ea39f9", "complain about": "p_a29c601b", "stop complaining": "p_7f6642d5", "right to complain": "p_0e6cf18b", "job interview": "p_a29a8988", "prepare for interview": "p_70467e3d", "interview questions": "p_06f264e1", "congratulate on": "p_1ac78ccd", "warmly congratulate": "p_d9ea1b30", "congratulate a friend": "p_ee46c917", "local government": "p_a7d5c3a5", "government policy": "p_f96805bd", "government school": "p_ba0c5a25", "business partner": "p_5ade58a8", "study partner": "p_160d245d", "become partners": "p_ade4e15e", "freely available": "p_3e4c6a72", "available time": "p_314bd922", "available resources": "p_40c8af53", "youth group": "p_f4b3b0f8", "youth program": "p_40a5070b", "in their youth": "p_0d83a6a6", "eligible student": "p_949ffdac", "eligible to vote": "p_c19f7920", "become eligible": "p_72428278", "find employment": "p_1e34da38", "employment rate": "p_68a24627", "full employment": "p_98d31b18", "local community": "p_8f81d5cd", "community service": "p_747621c3", "online community": "p_f81bb8fe", "great opportunity": "p_15a68929", "miss an opportunity": "p_622e3e89", "opportunity to learn": "p_774c281b", "wide variety": "p_90f1a31c", "variety of topics": "p_fac73618", "variety show": "p_0d65b649", "physical disability": "p_6842a463", "learning disability": "p_02037564", "live with disability": "p_bd550477", "protect the environment": "p_1ddb39e1", "learning environment": "p_dfc9c736", "natural environment": "p_94e0a6d1", "feel nervous": "p_5b779ce3", "nervous about": "p_61a09487", "nervous laugh": "p_9ddf11b2", "correct pronunciation": "p_66484281", "improve pronunciation": "p_357986d2", "practice pronunciation": "p_0624e03d", "stumble over words": "p_3ee848eb", "stumble upon": "p_8a993522", "stumble and fall": "p_58dd177c", "awareness campaign": "p_5a78983d", "election campaign": "p_60ba0b33", "health campaign": "p_01e275b5", "good manners": "p_2915c78d", "in a polite manner": "p_5d2018b8", "table manners": "p_f72978e6", "high quality": "p_f4597643", "quality time": "p_67c3cff8", "quality of life": "p_8804f317", "assess performance": "p_9bc90b7f", "assess the situation": "p_b147955c", "self-assess": "p_68b67ef5", "inspire others": "p_19595f24", "feel inspired": "p_f4643cf6", "inspire confidence": "p_7370bbcc", "humorous story": "p_9d24eeb7", "humorous style": "p_5b48afe5", "humorous comment": "p_5c0d64e5", "demanding job": "p_2c8d2db9", "demanding course": "p_d69c14d1", "demanding task": "p_07835863", "ambitious student": "p_acd6eb30", "ambitious goal": "p_1bf84784", "ambitious plan": "p_ebd77315", "personal identity": "p_93118d9c", "cultural identity": "p_9d7a2af1", "identity card": "p_b97148b1", "feel security": "p_f258d662", "online security": "p_274281d1", "security guard": "p_bae91993", "recognize a face": "p_6b017810", "recognize talent": "p_67ad9ca9", "widely recognized": "p_580671cb", "improve accuracy": "p_f8e0f619", "with accuracy": "p_4ac69343", "high accuracy": "p_51964d16", "gain popularity": "p_6de2084e", "rise in popularity": "p_99110fea", "social popularity": "p_bd3dd002", "adolescent student": "p_06d4eae9", "adolescent behavior": "p_8ca4b82a", "adolescent years": "p_62d67d38", "make adjustment": "p_6a8e4c1d", "adjustment period": "p_cf30e145", "emotional adjustment": "p_c2024203", "generous person": "p_f722c354", "generous donation": "p_75e32684", "generous with time": "p_e42dd224", "aggressive behavior": "p_2892ce79", "too aggressive": "p_8d190880", "aggressive approach": "p_bb34f591", "highly adaptable": "p_8318fb01", "adaptable student": "p_306ce50a", "adaptable skills": "p_99ec7630", "show appreciation": "p_84457deb", "deep appreciation": "p_2dc7a97c", "music appreciation": "p_78f2433a", "delightful experience": "p_363cc6d7", "delightful surprise": "p_229a8609", "delightful weather": "p_7e907db8", "brilliant student": "p_a1b35bbc", "brilliant idea": "p_cd7544d3", "brilliant performance": "p_83e4f726", "feel tension": "p_8f233e66", "reduce tension": "p_e6a7b630", "tension between": "p_4e4e2080", "feel frustration": "p_3fd14c03", "express frustration": "p_fab57a7d", "frustration with": "p_d5dee840", "fantasy world": "p_4d6b3676", "childhood fantasy": "p_2bb504c0", "science fantasy": "p_8dfb6858", "disease outbreak": "p_40f2395b", "outbreak of flu": "p_f6415a35", "prevent an outbreak": "p_bc880b08", "selfish behavior": "p_b3aabb05", "act selfishly": "p_161cb998", "selfish attitude": "p_709a7731", "lack motivation": "p_8f0dd298", "find motivation": "p_bdeef360", "inner motivation": "p_5254fd7b", "reflect on": "p_5a3727ed", "reflect feelings": "p_486fab70", "reflect light": "p_8e156c04", "awkward silence": "p_3563e0d8", "feel awkward": "p_d2be19cb", "awkward question": "p_3747c41b", "force of gravity": "p_1343d94f", "gravity of situation": "p_1c3426d2", "zero gravity": "p_2717c5ea", "education reform": "p_b60553c2", "health reform": "p_a1131d68", "reform system": "p_dae338ee", "find inspiration": "p_a505aa63", "source of inspiration": "p_a291ab89", "daily inspiration": "p_019a3c37", "art exhibition": "p_dae34042", "hold an exhibition": "p_b9457348", "science exhibition": "p_1418a3ca", "contemporary art": "p_96694a6d", "contemporary society": "p_78eb81fe", "contemporary issue": "p_0df2656b", "online purchase": "p_a969ac89", "make a purchase": "p_0ea6a30c", "purchase price": "p_6977c293", "systematic approach": "p_32ce979c", "systematic review": "p_5dfd7cbc", "systematic thinking": "p_22033ffc", "historical monument": "p_33fd3275", "build a monument": "p_5f510754", "visit a monument": "p_fc3ea164", "war memorial": "p_8ca46b28", "memorial service": "p_6e9c569f", "memorial park": "p_4b7f159f", "space exploration": "p_8d72db86", "exploration trip": "p_77b6899f", "scientific exploration": "p_fdae9374", "compulsory education": "p_a6343cc2", "compulsory subject": "p_1b166e5e", "compulsory exercise": "p_505bfb98", "dominant language": "p_350e70c5", "dominant culture": "p_34289b95", "dominant player": "p_568d80a2", "energy consumption": "p_02a4452b", "food consumption": "p_1b58997b", "reduce consumption": "p_07645f14", "artificial intelligence": "p_2dd0692c", "emotional intelligence": "p_91d6ec14", "high intelligence": "p_7814cba2", "study psychology": "p_af1db7b0", "child psychology": "p_44624a87", "psychology of learning": "p_faf61cb0", "inappropriate language": "p_e8512aa5", "inappropriate behavior": "p_9f895d7a", "feel inappropriate": "p_7d3d73ee", "school anniversary": "p_ce8dd874", "wedding anniversary": "p_c6a6789f", "mark an anniversary": "p_8e5a048e", "make a donation": "p_f18f34a6", "book donation": "p_4ea1a738", "accept donations": "p_f1342ffe", "absolute necessity": "p_7b89d77f", "basic necessity": "p_ed678828", "out of necessity": "p_72374786", "famous landmark": "p_b610bd4d", "historical landmark": "p_8c2b3062", "landmark decision": "p_23d635a0", "modern architecture": "p_45515368", "study architecture": "p_89618b17", "beautiful architecture": "p_4793e560", "live in harmony": "p_1f09c7e4", "class harmony": "p_96452722", "music harmony": "p_9803ee57", "passion for learning": "p_2b3d1115", "follow your passion": "p_16ed24a6", "with passion": "p_eec91deb", "great accomplishment": "p_74379286", "sense of accomplishment": "p_3cb6ce18", "academic accomplishment": "p_000d8eab", "raise awareness": "p_6f4c725f", "environmental awareness": "p_d2d49d37", "health awareness": "p_e5bcc525", "improve productivity": "p_a27c628e", "high productivity": "p_007b6056", "study productivity": "p_10002cff", "authentic food": "p_dfb166d7", "authentic experience": "p_0e83d2ff", "authentic style": "p_5a497423", "financial support": "p_17f23787", "financial plan": "p_023b3fa4", "financial pressure": "p_c7773048", "protect wildlife": "p_bee37f1b", "wildlife conservation": "p_dd7ff546", "wildlife park": "p_1b1dce44", "school authority": "p_ca0879b9", "respect authority": "p_2a207329", "authority figure": "p_7c3e9e30", "natural curiosity": "p_d60031ab", "satisfy curiosity": "p_a9ce5d03", "out of curiosity": "p_91ac7b8f", "team collaboration": "p_5061897d", "close collaboration": "p_dc48fee8", "creative collaboration": "p_e18ae1bc", "natural phenomenon": "p_3292cdc0", "social phenomenon": "p_78b5a8aa", "global phenomenon": "p_e284aa89", "feel satisfaction": "p_f823267b", "job satisfaction": "p_4b497272", "customer satisfaction": "p_8066d6db", "express admiration": "p_d5abc3de", "full of admiration": "p_45e6973a", "win admiration": "p_a94e45a4", "face uncertainty": "p_4356a30c", "deal with uncertainty": "p_e4f63d90", "economic uncertainty": "p_19661103", "school psychologist": "p_cba063da", "see a psychologist": "p_03f7659b", "child psychologist": "p_eb693659", "academic performance": "p_b4ba3b21", "academic pressure": "p_380c1130", "academic goal": "p_ddcc7f33", "strengthen skills": "p_f306aafe", "strengthen friendship": "p_563c33e2", "strengthen confidence": "p_b6e73e08", "weaken resolve": "p_8f36c451", "weaken position": "p_67442d72", "weaken over time": "p_465346a2", "deepen understanding": "p_0fd73a0c", "deepen friendship": "p_04323d02", "deepen knowledge": "p_9329c065", "shorten an essay": "p_9220367f", "shorten the distance": "p_2ebeb535", "shorten a journey": "p_1e8abb8c", "lengthen a speech": "p_6141518c", "lengthen study time": "p_7b934867", "lengthen life": "p_248bcd55", "heighten awareness": "p_1ae2ee7b", "heighten tension": "p_6c9bf29d", "heighten interest": "p_9187cdb5", "worsen health": "p_ca7df23f", "worsen situation": "p_b093ee9f", "worsen over time": "p_d458075f", "simplify instructions": "p_6f230936", "simplify a problem": "p_de4fc2b6", "simplify language": "p_49c44d07", "beautify the environment": "p_7d04ea32", "beautify the classroom": "p_2472f279", "beautify a city": "p_af772d6e", "fasten a seatbelt": "p_fd5ee44f", "fasten buttons": "p_1e7b675c", "fasten the door": "p_6d5c6d12", "feel comfortable": "p_74d36234", "comfortable home": "p_5237c76d", "comfortable with change": "p_7557a762", "responsible student": "p_57304e50", "feel responsible": "p_11779d74", "responsible for": "p_0ea4907f", "reasonable price": "p_7209118a", "reasonable request": "p_861ebb82", "reasonable decision": "p_6be668fc", "feel fortunate": "p_9cf5cf61", "fortunate enough": "p_287f9c8e", "fortunate opportunity": "p_07c9d738", "sincere apology": "p_afc427fd", "sincere effort": "p_ce78e396", "sincere friendship": "p_d039b375", "be patient": "p_f7adc866", "patient teacher": "p_0490172b", "patient with others": "p_90899bbb", "peaceful environment": "p_9fd823d1", "peaceful solution": "p_f91ec5f3", "feel peaceful": "p_d908d21d", "powerful speech": "p_dc3607ca", "powerful tool": "p_9af3590e", "powerful message": "p_9af1c9e8", "professional advice": "p_f9dd15f1", "professional manner": "p_98a9e411", "professional development": "p_e09b3132", "sympathetic listener": "p_22335f76", "sympathetic response": "p_cdffa219", "sympathetic teacher": "p_c3b2d63e", "respectful attitude": "p_036bcc11", "be respectful": "p_0abbfc95", "respectful tone": "p_5fef31d1", "meaningful conversation": "p_2252947b", "meaningful work": "p_4f3e623e", "meaningful experience": "p_27a4bfce", "unusual idea": "p_32151003", "unusual talent": "p_56d62e26", "unusual situation": "p_9ada06ed", "feel confident": "p_c9618ee1", "confident speaker": "p_6b22a754", "become confident": "p_f363f0a1", "attractive design": "p_8f1d8892", "attractive offer": "p_e02b3543", "attractive personality": "p_fc2cc245", "extreme weather": "p_286f44b1", "extreme pressure": "p_005fd058", "extreme sport": "p_1e13124a", "rapid progress": "p_874f8dcc", "rapid change": "p_9a218385", "rapid growth": "p_dd735465", "official announcement": "p_e8489468", "official language": "p_dd281509", "official result": "p_9d81f9d7", "successful student": "p_72b5a4f0", "successful career": "p_dc8675b8", "successful team": "p_249f7a1f", "unfortunate event": "p_2ed5df26", "unfortunate mistake": "p_7489d440", "unfortunate situation": "p_da2b167d", "instant response": "p_fbf689f4", "instant message": "p_3db36c9e", "in an instant": "p_12cadd83", "wasteful habit": "p_c7574fe0", "wasteful use": "p_4feda468", "wasteful spending": "p_5deb7521", "personal goal": "p_52b0749a", "personal development": "p_586e3b74", "economic problem": "p_c2e5682e", "economic growth": "p_4282c116", "economic pressure": "p_d01a1102", "attract attention": "p_674d6474", "attract tourists": "p_d5700173", "attract students": "p_95184d17", "invent a machine": "p_df571fe7", "invent a solution": "p_d0837be5", "invent a story": "p_2c2c0373", "express feelings": "p_991189a9", "express ideas": "p_b98b2785", "express gratitude": "p_5cb25d86", "graduate from school": "p_8e29eb08", "graduate with honours": "p_a4ae0c10", "recent graduate": "p_40dc5363", "operate a machine": "p_68c260a6", "operate a school": "p_38a7cf07", "operate on a patient": "p_47128de2", "create a project": "p_88c42892", "create opportunities": "p_ce493e72", "create a positive environment": "p_3c2c66d0", "translate a text": "p_cfa33053", "translate ideas": "p_1459ef96", "translate accurately": "p_e92b1448", "devote time to": "p_bef55aa1", "devote yourself to": "p_7ae8c072", "devote energy to": "p_bc107107", "pollute the air": "p_2007f9bb", "pollute rivers": "p_143a0428", "stop polluting": "p_bf6e15f4", "solve a problem": "p_2c81ad95", "solve an equation": "p_65583409", "solve a mystery": "p_675b4904", "perform on stage": "p_9b78e9b7", "perform well": "p_5771d565", "perform a task": "p_72443eb2", "differ from": "p_821d2d5b", "differ greatly": "p_08cc0edd", "differ in opinion": "p_6c93ccad", "prefer to study": "p_c06f3409", "prefer reading": "p_ae852b9b", "prefer a quiet place": "p_5bd241b9", "achieve a goal": "p_690fe400", "achieve success": "p_14420d62", "achieve high marks": "p_a04da8bc", "disappoint parents": "p_b56e2d21", "deeply disappoint": "p_ec9237ad", "disappoint yourself": "p_975eb2e7", "disagree politely": "p_5fff2d41", "disagree with": "p_63ae14e3", "agree to disagree": "p_95fbd563", "amaze everyone": "p_68d5cb5b", "be amazed by": "p_59ae16a3", "never ceases to amaze": "p_5a80e194", "excite students": "p_7e122f4f", "excite the crowd": "p_9fb9302e", "feel excited": "p_e8341078", "improve grades": "p_c16308aa", "improve skills": "p_7898085c", "improve health": "p_66e5d330", "argue about": "p_9fa12e07", "argue your point": "p_332448d0", "argue in favour": "p_35a9d08c", "treat others": "p_10394949", "treat a patient": "p_9c85a416", "treat as a friend": "p_ccf88da3", "be kind to": "p_ae847e70", "kind words": "p_4fff2670", "kind gesture": "p_010bb82b", "feel shy": "p_4aa27e64", "too shy to speak": "p_ffd07500", "overcome shyness": "p_f72a4c2d", "creative thinking": "p_1ae27e49", "creative student": "p_b8a798f0", "creative writing": "p_1a177a7c", "freedom of speech": "p_0a7209fc", "personal freedom": "p_2d2426a2", "freedom to choose": "p_0a09e53a", "true friendship": "p_a414dd05", "build friendship": "p_9d7eea99", "long-lasting friendship": "p_cdb102bc", "face hardship": "p_6d400de5", "overcome hardship": "p_43c5652c", "hardship builds character": "p_24d4f77f", "value honesty": "p_e94b8ddf", "honesty is important": "p_2f8e6f4a", "with honesty": "p_82554f3d", "warmth of family": "p_fba9ebd7", "show warmth": "p_afdb0861", "sense of warmth": "p_0ad12f85", "tell the truth": "p_05baa7b5", "discover the truth": "p_d108df5a", "truth hurts": "p_9aab4f3f", "news journalist": "p_2ae742b7", "become a journalist": "p_399adfd4", "journalist report": "p_cf823a22", "foreign tourist": "p_af84ea90", "tourist attraction": "p_8bd106fa", "tourist information": "p_f880d3e2", "famous inventor": "p_ebe6e08b", "young inventor": "p_0d2edab9", "inventor of": "p_a41594bd", "strong competitor": "p_a6914a01", "meet a competitor": "p_760a8df8", "ahead of competitors": "p_414aa563", "academic achievement": "p_540e05d2", "great achievement": "p_15bedc9e", "celebrate achievement": "p_32f1a6e2", "express disappointment": "p_86f05127", "hide disappointment": "p_f586bab6", "overcome disappointment": "p_d3433b39", "full of excitement": "p_af4b1b66", "excitement builds": "p_b74805cb", "hide excitement": "p_a0cb39ec", "show improvement": "p_04855675", "continuous improvement": "p_017581fe", "room for improvement": "p_2bb91769", "strong argument": "p_0597851d", "have an argument": "p_a5590cd2", "win an argument": "p_dd4d543e", "make a statement": "p_94a0ef29", "false statement": "p_9dcee610", "clear statement": "p_cc26ae7c", "wealthy family": "p_805c8c9d", "wealthy country": "p_bced5ba7", "become wealthy": "p_c139f52c", "feel thirsty": "p_b3a243ff", "thirsty for knowledge": "p_298f94c8", "hot and thirsty": "p_b9172a1e", "feel angry": "p_647c11d8", "angry at": "p_4b8809b1", "stay calm when angry": "p_85d7939b", "feel hungry": "p_6c33bac6", "hungry for success": "p_d15b81f6", "go hungry": "p_a1326e55", "be careful": "p_f64d1951", "careful reading": "p_3351ab29", "careful planning": "p_13b064ac", "careless mistake": "p_d42a5b4a", "careless attitude": "p_1332de04", "avoid being careless": "p_c62d37c4", "determined student": "p_295b8f8b", "remain determined": "p_1f594e87", "determined to succeed": "p_4f6c35fd", "talented student": "p_3273f990", "highly talented": "p_3afacd40", "talented performer": "p_e47548e3", "feel delighted": "p_5e64f993", "delighted with": "p_c08d60f2", "delighted to meet": "p_0485deb2", "crowded classroom": "p_cc2c2d60", "crowded city": "p_fdea6e4c", "crowded bus": "p_48b1e77f", "advanced student": "p_e8c684cc", "advanced technology": "p_2ad4f394", "advanced level": "p_d0f7c428", "balanced diet": "p_dc779f80", "balanced lifestyle": "p_d53d93e4", "balanced view": "p_bf0b48e1", "dangerous situation": "p_46b33b96", "dangerous habit": "p_b908b519", "dangerous road": "p_932f59e3", "valuable lesson": "p_95cf3a10", "valuable experience": "p_7653564b", "valuable time": "p_1b22f8f4", "suitable for students": "p_509cb7e1", "find suitable": "p_b8db568b", "not suitable": "p_e3221fba", "enjoyable lesson": "p_c3c8d1a3", "enjoyable experience": "p_42728bb8", "enjoyable activity": "p_f607873c", "impressive result": "p_d0ff285d", "impressive speech": "p_2e8a5289", "impressive performance": "p_3b5a2088", "too expensive": "p_c25bab35", "expensive school": "p_cc39c1d3", "expensive mistake": "p_2f903f66", "competitive student": "p_1cc891b8", "competitive exam": "p_3ca58a4a", "competitive spirit": "p_1c67fa67", "natural talent": "p_1a9223ee", "natural disaster": "p_8014cfca", "cultural exchange": "p_eb5e07c1", "cultural heritage": "p_caf18694", "cultural differences": "p_a974249f", "traditional festival": "p_89a1d298", "traditional values": "p_d82c522f", "traditional method": "p_3651d987", "educational trip": "p_5d2bac83", "educational system": "p_887619c2", "educational value": "p_1de3256d", "formal letter": "p_040e2314", "formal occasion": "p_a2f62e45", "formal language": "p_f53a9768", "typical student": "p_91f3eb2b", "typical example": "p_daeabd8b", "typical day": "p_8fe5102a", "medical treatment": "p_da0a1f90", "medical research": "p_5e15d552", "medical school": "p_4237c1f5", "physical exercise": "p_7cdbc956", "physical health": "p_217a4b75", "physical activity": "p_ed9736ea", "historical event": "p_7aec6dcc", "historical figure": "p_446ebb3c", "historical site": "p_76715fd0", "most important": "p_e0c9646b", "important decision": "p_2da3b1a3", "important skill": "p_d28c8f66", "convenient location": "p_36842697", "convenient time": "p_8da1d428", "not convenient": "p_0d5d8f5b", "intelligent student": "p_9cafdb69", "intelligent question": "p_4727731a", "intelligent solution": "p_3995b4a2", "excellent student": "p_430b9d34", "excellent work": "p_ee54e5ec", "excellent opportunity": "p_2f5442fc", "frequent practice": "p_3a869b92", "frequent mistakes": "p_5f4e6a32", "frequent traveller": "p_5fde4aba", "famous person": "p_cb49dbbc", "famous for": "p_64b80494", "world famous": "p_815e1ff3", "various topics": "p_74fbfb1c", "various reasons": "p_6bf9a06b", "various methods": "p_65282d89", "helpful teacher": "p_ef050e18", "helpful advice": "p_4f5ad633", "helpful classmate": "p_f15a3d75", "remain hopeful": "p_fb500528", "hopeful about": "p_41a92542", "hopeful future": "p_039f5915", "feel doubtful": "p_49256c22", "doubtful result": "p_07a9c26d", "remain doubtful": "p_5caa925b", "skillful writer": "p_252b8c74", "skillful player": "p_2cc330e4", "become skillful": "p_58473282", "wonderful experience": "p_d87d76fa", "wonderful teacher": "p_2f76f0a5", "wonderful news": "p_322ef43d", "completely harmless": "p_97f31683", "harmless joke": "p_9fc398c3", "harmless activity": "p_8a1551b8", "feel helpless": "p_3fc40f67", "helpless situation": "p_94abbe7e", "never feel helpless": "p_2e33a1d0", "friendly smile": "p_168642dd", "friendly classmate": "p_d33cac70", "friendly atmosphere": "p_7761ec78", "Scientists warned that the melting glacier could raise sea levels significantly.": "s_2058f911", "The glacier retreat has accelerated due to rising global temperatures.": "s_bf1367ae", "Glacier formation takes thousands of years of snow compression.": "s_22303ec6", "Thailand has become a popular destination for tourists worldwide.": "s_97f8b8bc", "Paris remains the top travel destination in Europe.": "s_cc44c7c8", "After three flights, we finally reached our final destination.": "s_4718e6d9", "The disturbing news about the earthquake shocked the entire nation.": "s_71ae23d8", "The video was deeply disturbing to watch.": "s_894e4b21", "There is a disturbing trend of rising pollution in coastal cities.": "s_3181cb9c", "Many people travel to India seeking a spiritual journey.": "s_917568e1", "The spiritual leader guided the community through difficult times.": "s_2945652e", "Reading and meditation can contribute to spiritual growth.": "s_4effa4f0", "The coral reef is a fragile ecosystem.": "s_7821214e", "Oil spills can devastate the marine ecosystem for decades.": "s_03b4af1d", "Removing one species can upset the entire ecosystem balance.": "s_c91d37eb", "The car had to stop abruptly to avoid hitting the deer.": "s_3caa3cfa", "The concert ended abruptly when the power went out.": "s_e5568e79", "The weather can change abruptly in mountain regions.": "s_7fb53746", "The restaurant has built a good reputation for authentic food.": "s_e8e940a6", "Cheating in exams can damage your reputation.": "s_d33ecb8e", "She earned a reputation for being honest.": "s_dc5c7f48", "Many scientists remain skeptical about the new treatment.": "s_deb56da0", "I am deeply skeptical about his excuse.": "s_d1fe3482", "I'm skeptical about whether this plan will actually work.": "s_ff606d6b", "All workers must wear safety equipment on the construction site.": "s_446413f2", "The hospital received a donation of modern medical equipment.": "s_8926f5bc", "Heavy equipment was brought in to clear the fallen trees.": "s_2e96c1d6", "If you keep trying, you will eventually succeed.": "s_2e39c652", "After many delays, the package eventually arrived.": "s_082937eb", "All good things will eventually come to an end.": "s_4f55fb5d", "The rescue mission saved twelve people from the collapsed building.": "s_73c540c2", "The firefighters came to the rescue just in time.": "s_c36ef966", "A rescue team was immediately sent to the disaster area.": "s_925673b0", "Photography is not permitted inside the museum.": "s_85ff59b1", "We'll have the picnic outdoors, weather permitting.": "s_9dc7cc1c", "Only students are permitted to enter this room.": "s_fa5c3584", "Loud music can cause permanent hearing loss.": "s_42b53412", "She applied to become a permanent resident of Canada.": "s_0941dcb5", "The new policy represents a permanent change in direction.": "s_2918f960", "After all her hard work, she certainly deserves better treatment.": "s_c838be33", "The whole team deserves credit for this achievement.": "s_a9e9ad4b", "He richly deserved the award for his lifetime of service.": "s_8638408c", "She answered without hesitation when asked to help.": "s_7e060e09", "After a moment's hesitation, he accepted the challenge.": "s_b222f831", "There was a slight hesitation before she answered.": "s_f4e86ff5", "The upcoming exam is causing anxiety among the students.": "s_d66670d5", "Regular exercise can help reduce anxiety and stress.": "s_b48f2dbb", "She couldn't hide her anxiety about the job interview.": "s_a2559aa1", "Please respond immediately if you receive this emergency alert.": "s_dafbd776", "The building was unsafe and everyone was told to leave immediately.": "s_5da8671f", "Immediately after the announcement, the crowd began to cheer.": "s_f63d6888", "Meeting her at the airport was pure coincidence.": "s_bc11953e", "By coincidence, they had booked the same hotel.": "s_299eae6c", "It was a coincidence that we wore the same shirt.": "s_438bd91d", "That face looks familiar — have we met before?": "s_f51cb019", "You should become familiar with the safety procedures.": "s_7f997bdc", "It was nice to see a familiar face at the new school.": "s_2ae90fdd", "Temperatures will gradually increase over the next decade.": "s_7a7c9144", "Her English has gradually improved since she started practicing daily.": "s_caf5a962", "The landscape changes gradually as you drive north.": "s_b4025b13", "Only applicants who meet the criteria will be considered.": "s_25c31812", "The selection criteria include both grades and interview performance.": "s_785a9a7c", "The competition has very strict criteria for entry.": "s_092a357c", "She knew her opponent would be tough to beat in the final.": "s_0f8c49c1", "In chess, you must study how to face an opponent's strategy.": "s_33273551", "The candidate criticized her political opponent's record.": "s_6cfc8ad1", "A teaching qualification helps you get a job.": "s_fe4ec6b1", "The job requires a qualification in science.": "s_cfd11ff3", "She worked hard to gain a qualification in nursing.": "s_a3050bfb", "The boxer was knocked unconscious in the third round.": "s_68008bb4", "She fell unconscious due to the extreme heat.": "s_da753acf", "The patient remained unconscious for several hours after surgery.": "s_e46bc9aa", "We were absolutely thrilled to hear about your promotion.": "s_3b166406", "I'm thrilled to meet you — I've read all your books.": "s_3f5f6233", "The students were thrilled with their exam results.": "s_a24675d8", "He was deeply ashamed of how he had treated his friend.": "s_d11ac3ca", "You should never feel ashamed of asking questions.": "s_f4bc2f7b", "She was ashamed to admit that she had made such a careless mistake.": "s_2a5a6864", "I love science class at school.": "s_2512c293", "Our science project won first prize.": "s_511bc65e", "Science and technology change our lives.": "s_fe304940", "Climate change is a serious global problem.": "s_01f7748e", "Plants grow well in a warm climate.": "s_137f0238", "Scientists do climate research every year.": "s_8cf5661d", "I studied hard so I would not fail the exam.": "s_10bf2050", "He failed to finish his homework on time.": "s_ad7ad145", "Don't give up even if you fail again.": "s_ffef0ba4", "I realized my mistake and said sorry.": "s_585861a6", "She suddenly realized she had the wrong book.": "s_933677e0", "He worked hard to realize his dream.": "s_f4f1f402", "Please explain the rules clearly to us.": "s_90a1ca8d", "Can you explain why you were late?": "s_5af2cbe3", "The teacher explained the problem step by step.": "s_2b21f243", "The book contains a lot of useful information.": "s_00b5c98c", "We can share information online easily.": "s_d57e63f3", "I looked for information in the library.": "s_071d5f6f", "She gave the correct answer every time.": "s_042372a0", "Please correct any mistakes in your work.": "s_668fcf30", "This is the correct way to hold a pen.": "s_3d166751", "We expected good results from the exam.": "s_5e4349c9", "As expected, she passed the test easily.": "s_7f2aef10", "Don't expect too much from others.": "s_b77d57ad", "Always believe in yourself and your dreams.": "s_a08fd93c", "It is hard to believe how fast she ran.": "s_84f2df95", "I did not believe his story at all.": "s_1103790c", "I have no doubt that she will succeed.": "s_3951cfaa", "Without doubt, this is the best meal I've had.": "s_c883ffc6", "He expressed doubt about the plan.": "s_ff7897fd", "Reading every day is a good habit.": "s_0db93959", "Staying up late is a bad habit.": "s_ffdd1153", "It takes time to form a new habit.": "s_6c08abe9", "She has a natural ability for music.": "s_1827edd1", "His reading ability improved a lot this year.": "s_9c6de95f", "Sports help children show their abilities.": "s_31b15e16", "My birthday is a very special day for me.": "s_82af9d0b", "The shop has a special offer this weekend.": "s_3de0ef91", "She made everyone feel special and valued.": "s_15c3ca54", "Friends give us emotional support when we are sad.": "s_ec13bbdf", "I support my school team at every game.": "s_39227101", "Family support is very important for students.": "s_682a506b", "We had an interesting class discussion today.": "s_7c78c2dd", "Group discussion helps us share ideas.": "s_2310afbd", "The teacher encouraged open discussion on the topic.": "s_2db7c870", "The final exam is in two weeks.": "s_da3d22f0", "Think carefully before giving your final answer.": "s_885b538c", "The teacher made the final decision.": "s_f1813761", "She got the highest score in the class.": "s_4b93b2d8", "My exam score improved after extra study.": "s_8e9ec4fd", "He scored a goal in the last minute.": "s_fb9d23c0", "We need to complete the task by tomorrow.": "s_1f0990d3", "Please give complete information in your answer.": "s_c98333df", "She completed the English course in one month.": "s_2afc41db", "He wants to live a normal life after school.": "s_35840e62", "Things went back to normal after the holiday.": "s_625d0402", "A normal body temperature is 37 degrees.": "s_ddbaaf01", "Pollution is a serious problem in many cities.": "s_a943a01d", "She is a serious student who works very hard.": "s_ec5ee58f", "His face looked very serious during the speech.": "s_4b65cc5e", "There was a moment of silence in the room.": "s_30a0ee78", "The students worked in silence during the test.": "s_2148935d", "He broke the silence with a quiet cough.": "s_9ee729e8", "I am busy at the moment, can you wait?": "s_c8bc9373", "Graduation is a special moment in life.": "s_69691c05", "Please wait a moment while I find the answer.": "s_4218af2a", "Set a goal and work hard to reach it.": "s_33924bc8", "She reached her goal of learning 1000 words.": "s_500f761c", "My long-term goal is to become a doctor.": "s_d6d2132a", "Always compare prices before you buy something.": "s_335398c9", "Compare your answer with your partner's answer.": "s_2344bcfe", "We compared our test results with last year.": "s_4f55af10", "The firefighter acted bravely to save the child.": "s_e98c5a62", "She spoke bravely in front of the whole school.": "s_276d0f14", "He faced his fears bravely every day.": "s_0931d86f", "He refused to help because he was busy.": "s_f45453e8", "She refused the offer politely.": "s_45bbe0c7", "You can politely refuse things you don't want.": "s_d6cde26b", "She received praise for her excellent work.": "s_0bd965cd", "The teacher praised the student in front of the class.": "s_d72f1af9", "They worked so hard and deserve praise.": "s_01af247b", "Tell me the exact time the train leaves.": "s_b1d1b756", "I need the exact answer, not an estimate.": "s_23743d42", "We made the exact same mistake.": "s_5f14854e", "Modern technology makes life much easier.": "s_0a7807fa", "Shanghai is a very modern and busy city.": "s_1b62be05", "She likes modern style clothes.": "s_dba56aed", "Always be polite when talking to adults.": "s_edaef93f", "She gave a polite reply to the rude question.": "s_2d60a59d", "Good manners and polite behavior are important.": "s_b64a0510", "Can you describe the person you saw?": "s_9803ec1c", "Please describe the event in detail.": "s_40f401e8", "The feeling was difficult to describe.": "s_e838ecae", "We collected information for our science project.": "s_6326e3fd", "My grandfather likes to collect stamps.": "s_eba8f6f7", "Scientists collect data to study climate change.": "s_e484c70f", "Every mistake is a learning experience.": "s_dc34cd2c", "She spoke from personal experience.": "s_2b4b88f0", "Work experience helps you find a good job.": "s_ee1cd782", "She made a brief introduction before her speech.": "s_235d67d2", "He wrote a letter of introduction for the new student.": "s_777d53ab", "We did a self-introduction on the first day.": "s_9d3b2677", "You are making great progress in English.": "s_dfa6787f", "The project is making slow progress.": "s_913ecfe9", "We track our progress with weekly tests.": "s_fd9f90d3", "She is an active student in every class.": "s_57dc620c", "Exercise helps you stay active and healthy.": "s_9973f59b", "He played an active role in the school play.": "s_199bc8f2", "He remained silent during the whole meeting.": "s_f213ae63", "We do silent reading for 20 minutes every day.": "s_318d8394", "The class fell silent when the teacher arrived.": "s_a7d49c3d", "I need time to make an important decision.": "s_2a3dc694", "Choosing a career is a difficult decision.": "s_e3bf77e6", "The final decision belongs to you.": "s_1070bcab", "Sometimes you have to take a risk to succeed.": "s_392af362", "Smoking is a serious health risk.": "s_d9c95878", "Wild animals are at risk because of pollution.": "s_9b3d43db", "Always keep your promises to others.": "s_ebb73c88", "She made a promise to study harder.": "s_f327c382", "Breaking a promise hurts people's feelings.": "s_2c656c29", "We had to write a report about the book.": "s_eccbae91", "The news report said it would rain tomorrow.": "s_edf8df00", "Please report any problems to the teacher.": "s_9ac44243", "Her words of encouragement helped me a lot.": "s_59b87dbb", "Good teachers give encouragement to all students.": "s_d7674621", "Everyone needs encouragement sometimes.": "s_8f7630ff", "Read and follow the instructions carefully.": "s_74c3e6a3", "The teacher gave clear instructions for the test.": "s_dd23088f", "Always follow safety instructions in the lab.": "s_ddba36ba", "Good time management helps you study better.": "s_0f83e893", "The school management made new rules.": "s_a92dbb64", "Exercise is good for stress management.": "s_54291e4b", "I entered a writing competition last month.": "s_da929f5d", "Our school won the science competition.": "s_a0244feb", "Healthy competition helps us improve.": "s_cba55a5b", "I felt embarrassed when I forgot my lines.": "s_6f81728c", "That was the most embarrassing moment of my life.": "s_4e742f97", "He gets easily embarrassed in public.": "s_8d524167", "Going to university helps you gain independence.": "s_6d8ab1bc", "She worked hard to reach financial independence.": "s_0f60d176", "Good students show independence in their thinking.": "s_05b82d24", "Our team won a great victory in the final.": "s_3efcfb2a", "We celebrated our victory with a big party.": "s_4783ff93", "It was a hard-fought victory for our school.": "s_8c6fe4a0", "We have a good relation with our neighbours.": "s_ebea4e94", "In relation to last year, my grades improved.": "s_1acfddf3", "She is a family relation on my mother's side.": "s_15b6740d", "Your explanation makes a lot of sense.": "s_c5a47fa0", "A good sense of humor makes life better.": "s_f8578a0a", "Use your common sense when making decisions.": "s_5d3d74b9", "We celebrate her birthday every year.": "s_c1730d0f", "It is good to celebrate your success with friends.": "s_0970f7e9", "The whole class celebrated together after winning.": "s_1f59353d", "Please remind me to call my mum tonight.": "s_7325fb2d", "This song reminds me of my childhood.": "s_a5f0b56f", "A gentle reminder helps people not forget.": "s_26346d81", "You should take your studies seriously.": "s_e88439f0", "He was seriously hurt in the accident.": "s_f04641a6", "Think seriously before making a big decision.": "s_f747214b", "English is a widely used language in the world.": "s_263aef0b", "The problem is widely known but hard to fix.": "s_e36b04bb", "This idea is widely accepted by scientists.": "s_8ace5c07", "She asked to speak privately with the teacher.": "s_055c9eb7", "They met privately to discuss the problem.": "s_0fafd210", "He privately felt nervous before the speech.": "s_d750b788", "He always complains about too much homework.": "s_429c950a", "Stop complaining and start working.": "s_9ea6d902", "You have the right to complain if the food is bad.": "s_ff990d84", "She was nervous before her first job interview.": "s_4289ed3e", "Prepare well for your interview questions.": "s_5f22318b", "The interview questions were very difficult.": "s_a7f92ca5", "We congratulate you on passing your exams.": "s_ad135bd7", "The principal warmly congratulated the winners.": "s_635757ef", "I called to congratulate my friend on her success.": "s_423f2b7f", "The local government built a new park.": "s_29f2257d", "The government policy helps poor families.": "s_85f6ed57", "I study at a government school.": "s_7448a50c", "He started a company with his business partner.": "s_7b2eda31", "We work better with a good study partner.": "s_a0a990a5", "The two schools became partners last year.": "s_e124c79b", "The information is freely available online.": "s_60e8ee37", "Tell me when you have available time.": "s_23348e92", "We use all available resources to help students.": "s_101194d7", "She joined a youth group in her community.": "s_ab7c8dfb", "The youth program teaches students new skills.": "s_68391441", "In their youth, they loved playing outdoors.": "s_96819ff5", "Only eligible students can apply for the scholarship.": "s_b074f50e", "Students over 18 are eligible to vote.": "s_a9f75c2d", "You become eligible after passing the test.": "s_be994ab2", "She found employment at a local company.": "s_15109508", "The employment rate rose this year.": "s_fc673324", "Full employment means everyone has a job.": "s_0f9f6545", "Our local community helped build the playground.": "s_20b4d390", "We do community service on weekends.": "s_9a2c5d50", "She joined an online community for readers.": "s_58297a91", "Studying abroad is a great opportunity.": "s_ec378ebc", "Don't miss the opportunity to improve.": "s_e5fa76b1", "Every mistake is an opportunity to learn.": "s_e710bd42", "The library has a wide variety of books.": "s_a6080ad8", "We discuss a variety of topics in class.": "s_297efce5", "The school held a variety show last week.": "s_acb2973e", "A physical disability does not stop success.": "s_432c049d", "Students with learning disabilities need extra help.": "s_52bb1431", "Many people live well with a disability.": "s_9c4891b7", "We should all protect the environment.": "s_8fd7e5f7", "A quiet room is a good learning environment.": "s_9725d916", "Animals need a clean natural environment.": "s_23ce2a28", "I always feel nervous before an exam.": "s_ca2fa72e", "She was nervous about speaking in public.": "s_a29bdb36", "He gave a nervous laugh when asked.": "s_4eca2d23", "Good pronunciation helps others understand you.": "s_87538b5d", "Listening to English songs improves pronunciation.": "s_baf45474", "We practice pronunciation in every English class.": "s_5f59ec20", "He stumbled over his words when nervous.": "s_66b7a169", "She stumbled upon a great book by accident.": "s_c2a1d344", "He stumbled and fell on the wet floor.": "s_d22352c3", "The school ran an anti-bullying awareness campaign.": "s_4d653795", "She worked hard on her class president campaign.": "s_a1f082ce", "The health campaign encouraged students to exercise.": "s_6f329be6", "Good manners make a good impression on others.": "s_a359d19f", "Always speak in a polite manner to teachers.": "s_6a669fa1", "We learn table manners from our parents.": "s_45115e2e", "This school is known for high quality teaching.": "s_9ea38768", "Spend quality time with your family every day.": "s_8002263c", "Exercise improves your quality of life.": "s_41b07a5d", "Teachers assess student performance with tests.": "s_4809358f", "We need to assess the situation carefully.": "s_8f528c21", "Good students can self-assess their own work.": "s_73e51903", "Great teachers inspire others to do their best.": "s_f691688a", "I felt inspired after the speech.": "s_f0dc9022", "Her kind words inspired my confidence.": "s_ed62024b", "He told a humorous story that made us all laugh.": "s_466875e2", "Her humorous style makes lessons enjoyable.": "s_a128a817", "He made a humorous comment about the homework.": "s_bd47072d", "Being a teacher is a demanding but rewarding job.": "s_9573cb7f", "Maths is the most demanding course this year.": "s_8187b020", "Writing a good essay is a demanding task.": "s_ea415446", "She is an ambitious student with big dreams.": "s_b789213b", "His ambitious goal is to study medicine.": "s_7cf7b68c", "The school has an ambitious plan to build a new lab.": "s_a5733a7f", "Your values are part of your personal identity.": "s_bf64f860", "Language is an important part of cultural identity.": "s_a47c5fbf", "Always carry your identity card with you.": "s_665dc0e3", "Children need to feel security at home.": "s_b3ec67a2", "Always protect your online security with passwords.": "s_6a18b642", "The security guard checked our bags.": "s_2fb5551e", "I recognized her face from the photo.": "s_e1184bdd", "Good teachers recognize talent in their students.": "s_1f7a4c59", "She is widely recognized as a great writer.": "s_a5c840e7", "Careful checking improves the accuracy of your work.": "s_b2f917c6", "She solved every maths problem with accuracy.": "s_39761aa6", "Medical tests need high accuracy.": "s_b05b576c", "The app gained popularity among teenagers.": "s_0ce18311", "Online learning has risen in popularity.": "s_5767dc26", "Some students care a lot about social popularity.": "s_c64dc895", "Adolescent students need support and understanding.": "s_af45badf", "Some adolescent behavior can be hard to understand.": "s_fa407de9", "The adolescent years are full of changes.": "s_e359c146", "She made small adjustments to improve her essay.": "s_bbe7f89e", "There is always an adjustment period at a new school.": "s_2f7ca623", "Moving to a new city requires emotional adjustment.": "s_f1c6f374", "She is a generous person who always helps others.": "s_d76a9988", "They made a generous donation to the school.": "s_55f9af25", "Good teachers are generous with their time.": "s_b12e8b93", "Aggressive behavior is not allowed in school.": "s_f7730119", "His response was too aggressive and rude.": "s_c9de90cb", "He took an aggressive approach to win the debate.": "s_40b8b2b9", "Successful people are usually highly adaptable.": "s_1f88b80a", "An adaptable student does well in any school.": "s_980f452e", "Adaptable skills help you in many different jobs.": "s_238e632a", "She showed appreciation by writing a thank-you note.": "s_77ec6402", "I have a deep appreciation for my teachers.": "s_d1ab14cd", "Music appreciation class taught me to love art.": "s_1a2c9640", "The school trip was a truly delightful experience.": "s_d18d21e3", "The birthday party was a delightful surprise.": "s_785b3be8", "We had delightful weather for our sports day.": "s_8337c927", "She is a brilliant student who always gets top marks.": "s_bc686a4d", "That is a brilliant idea for the project.": "s_ce810247", "His brilliant performance won first prize.": "s_e024eb3b", "I could feel the tension in the room before the exam.": "s_a8b9722b", "Deep breathing can help reduce tension.": "s_af69f05e", "There was tension between the two teams.": "s_1c6f3154", "I felt frustration when I kept making the same mistake.": "s_b8eb72d1", "It is okay to express frustration in a healthy way.": "s_72928b63", "She felt frustration with the difficult homework.": "s_adba5c1e", "She loves reading books about a fantasy world.": "s_b84b2e76", "Flying was a childhood fantasy for him.": "s_b6ea9301", "Science fantasy mixes real science with imagination.": "s_133fb01c", "The school closed during the disease outbreak.": "s_7db63276", "There was an outbreak of flu in our class.": "s_e2a71a7d", "Washing hands helps prevent an outbreak.": "s_7659984f", "Selfish behavior hurts friendships.": "s_36f75125", "It is wrong to act selfishly in a team.": "s_913ab0e2", "A selfish attitude makes it hard to work with others.": "s_27799a62", "When I am tired, I lack motivation to study.": "s_e4c34718", "I find motivation in my goal to help others.": "s_c20ce881", "Inner motivation is stronger than pressure from others.": "s_239fd45d", "Take time to reflect on what you have learned.": "s_c9020f80", "Her artwork reflects her feelings well.": "s_b4543ad6", "Mirrors reflect light into the room.": "s_089b4d66", "There was an awkward silence after his comment.": "s_1910d7c5", "I always feel awkward when meeting new people.": "s_74e843d6", "The teacher asked an awkward question about my homework.": "s_52489c6f", "The force of gravity keeps us on the ground.": "s_9fe9ad57", "He understood the gravity of the situation.": "s_2059e092", "Astronauts experience zero gravity in space.": "s_793ba99a", "Education reform helps more students succeed.": "s_22fd0a83", "The government introduced a new health reform.": "s_ddfe810d", "We need to reform the exam system.": "s_f1dac2f4", "She finds inspiration in nature and music.": "s_4ed57806", "My mother is my greatest source of inspiration.": "s_7349f39a", "Reading gives me daily inspiration.": "s_e1f9bdeb", "We visited an art exhibition at the museum.": "s_07747f43", "The school held an exhibition of student work.": "s_b6e2d985", "He won first prize at the science exhibition.": "s_669c5db9", "I enjoy contemporary art more than classical art.": "s_1ee073c2", "Smartphones are a big part of contemporary society.": "s_688171d2", "Climate change is a major contemporary issue.": "s_52e662d5", "Online purchases are very common now.": "s_98108393", "Think carefully before you make a big purchase.": "s_164c1275", "The purchase price was lower than expected.": "s_3c0f8112", "Use a systematic approach when studying for exams.": "s_e6fb7570", "A systematic review of your notes helps you remember.": "s_d4ef14f7", "Systematic thinking helps solve complex problems.": "s_e5497e23", "The Great Wall is a famous historical monument.": "s_549ae101", "The city built a monument to remember the soldiers.": "s_4d188fca", "We visited a monument on our school trip.": "s_c431f8a2", "We held a ceremony at the war memorial.": "s_da4de7a5", "A memorial service was held for the teacher.": "s_1f23f383", "We visited a beautiful memorial park.": "s_1da0819c", "Space exploration is one of humanity's greatest achievements.": "s_59dbf594", "Our class went on a nature exploration trip.": "s_96682574", "Scientific exploration leads to new discoveries.": "s_b686eea0", "Compulsory education ensures every child goes to school.": "s_082147f7", "Maths and English are compulsory subjects.": "s_225bb962", "Daily exercise is compulsory for all students.": "s_e2c8e798", "English is the dominant language in global business.": "s_016f8dfc", "Pop music is a dominant culture among teens.": "s_cffe1c10", "She was the dominant player in the debate.": "s_740dbbbb", "Turning off lights reduces energy consumption.": "s_ddf73b83", "Healthy food consumption leads to a better life.": "s_272e7828", "We should reduce our plastic consumption.": "s_83969625", "Artificial intelligence is changing the world.": "s_b4f91fc7", "Emotional intelligence helps you understand others.": "s_4821daff", "High intelligence alone does not guarantee success.": "s_6be61ae6", "She wants to study psychology at university.": "s_f97c810e", "Child psychology helps parents understand children.": "s_0f38303f", "The psychology of learning explains how we remember.": "s_2e031ee0", "Inappropriate language is not allowed in school.": "s_1f10ee33", "The teacher warned against inappropriate behavior.": "s_4f2e5a53", "It felt inappropriate to laugh during the speech.": "s_7bfa3ad9", "The school is celebrating its 50th anniversary.": "s_aef42978", "They celebrated their wedding anniversary at dinner.": "s_4d840c9b", "We marked the anniversary with a special event.": "s_05866006", "She made a donation to help the flood victims.": "s_b567668a", "We organised a book donation for the library.": "s_3c9f9c93", "The charity accepts donations of clothes and food.": "s_2db85f81", "Water is an absolute necessity for all life.": "s_668de90b", "Food, water and shelter are basic necessities.": "s_85a0bdfc", "He studied hard out of necessity to pass.": "s_b1e54e14", "The Eiffel Tower is a famous landmark in Paris.": "s_157ab6c9", "The old temple is a historical landmark.": "s_945b86f9", "It was a landmark decision for education in China.": "s_a4984a5e", "Shanghai is known for its modern architecture.": "s_608bbc15", "He wants to study architecture and design buildings.": "s_60196557", "The beautiful architecture of the old town attracts tourists.": "s_00433037", "People and nature should live in harmony.": "s_b1e0df56", "Good teachers create a sense of class harmony.": "s_6d59ca64", "The choir sang in perfect music harmony.": "s_a687d813", "Her passion for learning inspired the whole class.": "s_e0efc3d2", "Work hard and follow your passion in life.": "s_0cd8a0c1", "He played the piano with great passion.": "s_62d0c13e", "Finishing the marathon was a great accomplishment.": "s_4ed3edd0", "I feel a strong sense of accomplishment after studying.": "s_6d3f7043", "Her academic accomplishments are impressive.": "s_115beeaa", "The poster aims to raise awareness of pollution.": "s_e31b84cd", "Environmental awareness starts at a young age.": "s_3bc3f6f8", "Health awareness helps people make better choices.": "s_b5c26097", "Taking breaks improves your productivity.": "s_e5588e9d", "Good sleep leads to high productivity the next day.": "s_5e2fd5ba", "A quiet place increases study productivity.": "s_bbc6dfe6", "This restaurant serves authentic Chinese food.": "s_b3e3b8b3", "Travelling gives you an authentic cultural experience.": "s_b63e2c04", "Her writing has a very authentic style.": "s_1da01591", "The family needed financial support for school.": "s_5148c947", "Make a financial plan before spending money.": "s_434932c7", "Financial pressure affects many families.": "s_fa54fe74", "We should protect wildlife from disappearing.": "s_2f7b49cb", "Wildlife conservation is important for the planet.": "s_e5d3a669", "We visited a wildlife park on our school trip.": "s_8339909e", "The school authority made new exam rules.": "s_79b59806", "It is important to respect authority in school.": "s_b929a7ed", "Parents and teachers are authority figures for children.": "s_ea9f3056", "Children have a natural curiosity about the world.": "s_ad42ce30", "Reading books helps satisfy your curiosity.": "s_e2eec755", "Out of curiosity, she looked inside the box.": "s_abb1acc2", "Team collaboration leads to better results.": "s_b91f6af6", "The two schools work in close collaboration.": "s_3b8675e8", "Art projects benefit from creative collaboration.": "s_bbf56f0f", "A rainbow is a beautiful natural phenomenon.": "s_3997ab6d", "Social media is an important social phenomenon.": "s_ce5907dc", "Online learning has become a global phenomenon.": "s_6a2d9a2d", "I feel great satisfaction after finishing my homework.": "s_83ad2c83", "Job satisfaction is as important as salary.": "s_ed9f37b7", "The shop aims for customer satisfaction.": "s_f57111f8", "She expressed admiration for the teacher's patience.": "s_1775326c", "I was full of admiration for her hard work.": "s_f7448df6", "His honesty won the admiration of his classmates.": "s_f1cce860", "We all face uncertainty about the future.": "s_b27a180a", "Learning to deal with uncertainty is a life skill.": "s_d0c55537", "Economic uncertainty makes planning harder.": "s_04967dee", "The school psychologist helps students with stress.": "s_2e58ee83", "It is brave to see a psychologist when you need help.": "s_af8aee32", "A child psychologist studies how children develop.": "s_b47849fb", "Her academic performance improved this year.": "s_b4a847ef", "High academic pressure can cause stress.": "s_b98f999f", "Set a clear academic goal for each term.": "s_a509068a", "Reading every day strengthens your language skills.": "s_17300307", "Working together strengthens friendship.": "s_ac2bb74d", "Success helps strengthen your confidence.": "s_ae9512d3", "Negative thoughts can weaken your resolve.": "s_cf6d5659", "Making excuses weakens your position.": "s_de6213fb", "Friendships can weaken over time without care.": "s_dbd4173f", "Discussion helps deepen understanding of a topic.": "s_d6e630f3", "Sharing experiences deepens friendship.": "s_5242f08c", "Reading widely deepens your knowledge.": "s_27fc9b0f", "The teacher asked me to shorten my essay.": "s_701e8ad5", "Technology has shortened the distance between people.": "s_ece2f2b2", "The new train line shortens the journey by one hour.": "s_66b71dee", "He decided to lengthen his speech with examples.": "s_eecb0821", "I need to lengthen my study time before exams.": "s_2012ea23", "Exercise and good food can lengthen your life.": "s_797eff52", "This campaign heightens awareness of recycling.": "s_df98d313", "The loud noise heightened the tension in the room.": "s_e92ffcc0", "Good stories heighten students' interest in reading.": "s_78212bf3", "Not sleeping enough will worsen your health.": "s_16b85011", "Arguing only worsens the situation.": "s_15b281aa", "The problem worsened over time without attention.": "s_e90ca7ec", "Good teachers simplify difficult instructions.": "s_78204fbc", "Break it into steps to simplify the problem.": "s_f5c950da", "Simplify your language when writing for beginners.": "s_7e190d27", "Planting trees helps beautify the environment.": "s_791eb025", "We worked together to beautify our classroom.": "s_82e747de", "Art and parks beautify a city.": "s_ae1e4dcd", "Always fasten your seatbelt in a car.": "s_579564eb", "Fasten all buttons before the interview.": "s_84b28a53", "Please fasten the door so it does not swing open.": "s_e0caefa2", "I feel comfortable talking to my teacher.": "s_e3a0c587", "They made a comfortable home for the family.": "s_879c5092", "Being comfortable with change helps you grow.": "s_e603f6af", "A responsible student always completes homework.": "s_353225bc", "I feel responsible for helping my classmates.": "s_ec295d2e", "Each student is responsible for their own learning.": "s_dc02fb40", "The book has a very reasonable price.": "s_b1c18813", "That is a reasonable request from the teacher.": "s_8db908de", "She made a reasonable decision after thinking carefully.": "s_3b5d4717", "I feel fortunate to have such great teachers.": "s_923b4ee4", "She was fortunate enough to get a scholarship.": "s_1cb5d835", "This is a fortunate opportunity for all of us.": "s_a0b0643d", "He gave a sincere apology to his friend.": "s_7a0fcf4e", "Teachers appreciate a sincere effort from students.": "s_b5567abc", "A sincere friendship is built on trust.": "s_83b46ccc", "Be patient — learning takes time.": "s_de9a9ad6", "A patient teacher explains things again and again.": "s_1d4c0731", "Try to be patient with others when they make mistakes.": "s_9b8d6de3", "A peaceful environment helps you concentrate.": "s_115b9003", "We found a peaceful solution to the argument.": "s_2e6575eb", "I feel peaceful when I walk in the park.": "s_bf635393", "Her powerful speech moved everyone in the room.": "s_e759831f", "Education is a powerful tool for change.": "s_893003fc", "The poem carries a powerful message about nature.": "s_31c9b0f9", "Ask for professional advice before making big choices.": "s_29103bf3", "Always behave in a professional manner at work.": "s_42e3e113", "Teachers need professional development to improve.": "s_388be04b", "A good friend is a sympathetic listener.": "s_33e7f654", "Her sympathetic response helped me feel better.": "s_0d29146e", "A sympathetic teacher understands students' problems.": "s_80b3b04e", "A respectful attitude towards teachers is important.": "s_b5bdedf2", "Be respectful even when you disagree with someone.": "s_1faa76bb", "Always use a respectful tone in class discussions.": "s_82c0ca4d", "We had a meaningful conversation about our future.": "s_8955d483", "Helping others is meaningful work.": "s_aba9e73e", "This trip was a truly meaningful experience.": "s_528bed39", "She came up with an unusual idea for the project.": "s_03b9649c", "He has an unusual talent for drawing.": "s_34a8a7be", "We found ourselves in an unusual situation.": "s_9f5fb025", "Practising makes you feel more confident.": "s_10426fa6", "She is a confident speaker who never gets nervous.": "s_c6a0a95a", "You become more confident as you gain experience.": "s_48441c1c", "The website has a very attractive design.": "s_b33788cd", "The school made an attractive offer for the scholarship.": "s_6dba5d5f", "An attractive personality helps you make friends.": "s_1d1dfef9", "Extreme weather can be dangerous for everyone.": "s_dcd97d0c", "Students face extreme pressure before exams.": "s_32e9db42", "Rock climbing is an exciting extreme sport.": "s_ede91b42", "She made rapid progress in her English studies.": "s_86b8e1a5", "Technology has brought rapid change to our lives.": "s_41d205bf", "The school has seen rapid growth in student numbers.": "s_20621db9", "The official announcement was made by the principal.": "s_053a53dc", "English is the official language in many countries.": "s_94a27709", "We waited for the official exam results.": "s_adb21f92", "A successful student works hard and stays focused.": "s_a96f678c", "A good education leads to a successful career.": "s_a8e72a97", "A successful team shares the same goal.": "s_76a2f0f0", "An unfortunate event stopped the school trip.": "s_8434ea88", "He made an unfortunate mistake on the last question.": "s_1d210571", "It is an unfortunate situation for everyone.": "s_7810900a", "She gave an instant response to my question.": "s_c539b9d1", "I sent her an instant message after class.": "s_805696b2", "In an instant, the class fell silent.": "s_9728a6fe", "Leaving food on your plate is a wasteful habit.": "s_6bfe0099", "Wasteful use of water is a serious problem.": "s_41199292", "Avoid wasteful spending on things you don't need.": "s_6d80b285", "She shared a personal experience in her essay.": "s_3c398a86", "Set a personal goal at the start of each term.": "s_82620032", "Reading helps your personal development.": "s_625438ea", "High prices are a major economic problem.": "s_14388c03", "Education supports long-term economic growth.": "s_dbe22fc2", "Many families face economic pressure today.": "s_f2da2861", "Bright colours attract attention easily.": "s_c2bf99b5", "The old city attracts many tourists every year.": "s_c189810d", "Good teachers attract students to their subject.": "s_3d1d8269", "He wanted to invent a machine to help farmers.": "s_ecf95edb", "Students were asked to invent a solution to pollution.": "s_a8657a70", "She likes to invent funny stories for her little brother.": "s_ca13b8cc", "It is healthy to express your feelings openly.": "s_90a8ae1b", "Writing helps you express ideas more clearly.": "s_7acb096e", "She expressed gratitude to everyone who helped her.": "s_356278c0", "She will graduate from high school next June.": "s_e57eab54", "He graduated with honours from university.": "s_d2256386", "Many recent graduates struggle to find jobs.": "s_8e6bb04f", "You need training to operate this machine safely.": "s_fd48dc10", "The foundation operates ten schools in the city.": "s_826188d7", "The doctor operated on the patient for three hours.": "s_e1ee55e9", "Students were asked to create a project on climate.": "s_d5e50b5a", "Good education creates more opportunities in life.": "s_711b3594", "Teachers create a positive environment for learning.": "s_7850ea24", "I had to translate the article from English to Chinese.": "s_0d55460f", "A good teacher translates complex ideas into simple ones.": "s_b161b4d6", "Translating accurately requires deep knowledge.": "s_a8f62bf8", "She devotes two hours each day to studying.": "s_282d1def", "He devoted himself to helping others.": "s_4197ef4e", "Devote your energy to things that matter most.": "s_48770f19", "Factory smoke pollutes the air in cities.": "s_2343d0e4", "Rubbish in rivers pollutes the water supply.": "s_9a5a024a", "We must stop polluting the ocean with plastic.": "s_433041d2", "Working together helps us solve problems faster.": "s_6cda56a6", "She solved the maths equation in two minutes.": "s_1b51720a", "The class tried to solve the mystery in the story.": "s_3757d672", "She was nervous to perform on stage for the first time.": "s_67f45777", "Students who sleep well perform better in exams.": "s_ac5aa4cc", "The robot was programmed to perform simple tasks.": "s_22511b7f", "My opinion differs from yours on this topic.": "s_49223387", "People's learning styles can differ greatly.": "s_1069b095", "It is normal to differ in opinion sometimes.": "s_2079c827", "I prefer to study in the morning when I am fresh.": "s_7d9a6907", "She prefers reading to watching TV.": "s_de74f838", "Most students prefer a quiet place to do homework.": "s_62680b9a", "Hard work helps you achieve any goal.": "s_b2578295", "She achieved success through years of practice.": "s_f7d29040", "Regular revision helps you achieve high marks.": "s_9b057de0", "He didn't want to disappoint his parents with bad grades.": "s_166c1857", "Losing the final deeply disappointed the whole team.": "s_892d77ae", "Don't disappoint yourself by giving up too early.": "s_7f5ee26f", "You can disagree with others politely.": "s_793e3c56", "I respectfully disagree with your conclusion.": "s_a85ee76e", "Sometimes it is fine to agree to disagree.": "s_a9c3c58d", "Her performance amazed everyone in the hall.": "s_e537cf21", "I was amazed by the beauty of the mountains.": "s_ce6efde7", "Her creativity never ceases to amaze her teachers.": "s_1cdb0630", "A good teacher excites students about learning.": "s_88157bee", "The final goal excited the crowd.": "s_8906dd46", "I feel excited before every new challenge.": "s_e1e4f996", "Studying harder helps you improve your grades.": "s_9a0e53d6", "Practice every day to improve your skills.": "s_cf7eb02b", "Exercise and rest improve your health.": "s_25cd85d9", "They argued about who should clean the classroom.": "s_111b3274", "You can argue your point calmly and clearly.": "s_d3aa79ff", "She argued in favour of more school sports.": "s_5adb89eb", "Treat others the way you want to be treated.": "s_c4122cb5", "The doctor treated the patient with care.": "s_12ffcac2", "She always treats newcomers as friends.": "s_0f564f8f", "Always be kind to people who need help.": "s_5da8c418", "A few kind words can make someone's day better.": "s_4a2c2e8c", "Small kind gestures mean a lot to others.": "s_9fe590ba", "She felt shy on her first day at the new school.": "s_1d14e0c3", "He was too shy to speak in front of the class.": "s_01bebce0", "Joining a club helped her overcome shyness.": "s_92204155", "Creative thinking helps solve difficult problems.": "s_deac67d1", "She is a creative student who makes beautiful art.": "s_70b8c05d", "I enjoy creative writing classes most.": "s_ce121c8a", "Freedom of speech means you can share your opinion.": "s_60dabcc7", "Living alone gives you more personal freedom.": "s_6d813e35", "Students have the freedom to choose their own topics.": "s_4c1fd757", "True friendship means being there in hard times.": "s_841772d3", "Sharing activities helps build friendship.": "s_c64bf1a2", "We have had a long-lasting friendship since primary school.": "s_21935a56", "Many students face hardship but still work hard.": "s_ad0be3ed", "Overcoming hardship makes you stronger.": "s_dd44926f", "Hardship often builds character and resilience.": "s_000d6b34", "I value honesty above all other qualities.": "s_cacb1d75", "Honesty is important in all relationships.": "s_0db374be", "She spoke with honesty about her mistakes.": "s_468a5547", "The warmth of family support helped her through exams.": "s_2a3bf82d", "Good teachers show warmth towards all students.": "s_3bdca404", "A smile gives others a sense of warmth.": "s_28a925a5", "Always tell the truth even when it is hard.": "s_f6686bb7", "Scientists work to discover the truth about nature.": "s_da9a49b2", "Sometimes the truth hurts but helps us grow.": "s_bbde08ad", "The journalist interviewed the school principal.": "s_5ccd5c5e", "She wants to become a journalist after university.": "s_ad872930", "The journalist's report was published in the paper.": "s_6e88fdbc", "Many foreign tourists visit the Great Wall every year.": "s_05075355", "The old temple is a popular tourist attraction.": "s_a62b65db", "The tourist information centre helps visitors plan their trip.": "s_d327ee6b", "Thomas Edison was a famous inventor.": "s_9353812f", "The young inventor won a national science award.": "s_470205b8", "Who was the inventor of the telephone?": "s_e522a18f", "She is a strong competitor who always gives her best.": "s_3571d280", "I respect every competitor I face in a tournament.": "s_668bc679", "Study hard to stay ahead of your competitors.": "s_97cd856a", "Her academic achievements are truly impressive.": "s_e3d240ca", "Finishing the marathon was a great achievement.": "s_604b67a1", "We should celebrate every achievement, big or small.": "s_7a751c26", "She expressed her disappointment calmly.": "s_28dc171e", "He tried to hide his disappointment after losing.": "s_c7e45842", "Learning to overcome disappointment is a life skill.": "s_45daa55a", "The children were full of excitement on sports day.": "s_9cd1936b", "The excitement builds as exam results get closer.": "s_779ff991", "She tried to hide her excitement before opening the gift.": "s_358db515", "Her test scores show great improvement this term.": "s_027e629f", "Continuous improvement is the key to mastery.": "s_48fa4a30", "There is always room for improvement in any skill.": "s_41a26725", "She made a strong argument for more school sports.": "s_6d5e3ea3", "Try not to have an argument when you are angry.": "s_04808ed0", "Winning an argument does not always mean you are right.": "s_bc00e845", "The school made a statement about the new rules.": "s_4fcb8eba", "Making a false statement can cause serious problems.": "s_46938cb9", "She gave a clear statement about her plans.": "s_a6cd434d", "She comes from a wealthy family but is still humble.": "s_59705d0f", "A wealthy country can provide better education.": "s_59f9e46e", "Hard work and good planning can help you become wealthy.": "s_28152dd5", "I always feel thirsty after exercise.": "s_d9e48621", "Good students are thirsty for knowledge.": "s_a4795a6e", "After the game, everyone was hot and thirsty.": "s_128fe41c", "I felt angry when someone took my book without asking.": "s_8e106edf", "She was angry at herself for making the mistake.": "s_e7f7e992", "It is important to stay calm when you feel angry.": "s_4b5b6457", "I always feel hungry after a long class.": "s_fabb5278", "Ambitious students are hungry for success.": "s_822c62ef", "No child should have to go hungry.": "s_2a063586", "Be careful when crossing the road.": "s_17032ad2", "Careful reading helps you understand the question.": "s_c05a7845", "Careful planning leads to better results.": "s_db7d532f", "A careless mistake cost him five marks.": "s_abeee700", "A careless attitude in exams leads to poor grades.": "s_1ebbc7fc", "Check your work twice to avoid being careless.": "s_3bdbe901", "A determined student never gives up on their goals.": "s_73f4a6fa", "Remain determined even when things are difficult.": "s_70f308aa", "She was determined to succeed no matter what.": "s_b6de1dcd", "She is a talented student who excels in music.": "s_e8aee259", "He is highly talented but still works very hard.": "s_deb0926c", "The talented performer won the school competition.": "s_73a1e320", "I was delighted to hear I had passed the exam.": "s_4b61d4b9", "She was delighted with her new school bag.": "s_3068bf38", "I am delighted to meet you at last.": "s_12a3bac1", "A crowded classroom makes it harder to focus.": "s_f56152a9", "Shanghai is a busy, crowded city.": "s_6d2c7415", "The bus was so crowded I couldn't find a seat.": "s_6fd9abd2", "Advanced students can take extra classes.": "s_17ba3ee6", "Advanced technology is changing modern life.": "s_1c38c151", "She is ready for the advanced level course.": "s_673e6554", "A balanced diet keeps your body healthy.": "s_834fc192", "A balanced lifestyle includes study, rest and exercise.": "s_35ea58c3", "A good essay should present a balanced view.": "s_246ddddb", "Walking alone at night can be a dangerous situation.": "s_dc3116a8", "Staying up all night is a dangerous habit.": "s_59f6ce29", "The icy road is very dangerous for drivers.": "s_6a81553c", "Every failure teaches a valuable lesson.": "s_9a7a27a0", "Working part-time gives you valuable experience.": "s_09e62a82", "Don't waste valuable time on unimportant things.": "s_22031ce0", "This book is suitable for high school students.": "s_9a7fcfbc", "I need to find a suitable time to study.": "s_55babefa", "That film is not suitable for young children.": "s_1464f0fb", "She makes every lesson enjoyable and interesting.": "s_d3d38560", "The school trip was a very enjoyable experience.": "s_fd9d60eb", "Reading is an enjoyable activity for many students.": "s_656fc1a7", "She got an impressive result in the final exam.": "s_bbc8c2c8", "His impressive speech moved the whole audience.": "s_d59030a1", "The choir gave an impressive performance.": "s_b9bbde42", "The phone was too expensive for me to buy.": "s_367599fe", "A good education does not have to be expensive.": "s_7d157f69", "Dropping out of school is an expensive mistake.": "s_0b204233", "She is a competitive student who always aims for first.": "s_3374fed9", "The university entrance exam is very competitive.": "s_e77484a4", "A competitive spirit pushes you to improve.": "s_dad1084c", "Animals should live in their natural environment.": "s_16d6d520", "She has a natural talent for drawing.": "s_0733da82", "A flood is a frightening natural disaster.": "s_5519a0b7", "Cultural exchange helps people understand each other.": "s_be0100fe", "The Great Wall is an important cultural heritage.": "s_feb3aaa9", "Learning about cultural differences broadens your mind.": "s_d9d0a644", "Spring Festival is China's most important traditional festival.": "s_cf002ede", "Traditional values like respect are still important today.": "s_073da0de", "Some teachers still use traditional teaching methods.": "s_f361f4f9", "We went on an educational trip to the science museum.": "s_2666b9c4", "A good educational system helps all students succeed.": "s_89a64742", "Reading has great educational value.": "s_5a9df79b", "Write a formal letter when applying for a job.": "s_190ae4c8", "School graduation is a formal occasion.": "s_6bd5b5ed", "Use formal language when writing essays.": "s_9e457ff1", "A typical student spends about two hours on homework.": "s_0b3cde33", "This is a typical example of a well-structured essay.": "s_54fd3d10", "Describe a typical day in your life in your essay.": "s_1c6e8410", "Everyone deserves proper medical treatment.": "s_a8a5ab1c", "Medical research helps us find cures for diseases.": "s_d49c7335", "She dreams of getting into medical school.": "s_ea8b38fe", "Regular physical exercise improves focus and mood.": "s_7920a804", "Good physical health supports good mental health.": "s_310bee1d", "Schools should encourage more physical activity.": "s_0476b6c5", "The moon landing was an important historical event.": "s_20e541c9", "Napoleon is a famous historical figure.": "s_f86ce516", "We visited a famous historical site during the trip.": "s_13740f7b", "Sleep is the most important thing before an exam.": "s_1aef7385", "Choosing a career is one of the most important decisions.": "s_9583b899", "Reading is an important skill for all students.": "s_49faa33a", "The school has a convenient location near the subway.": "s_27d66639", "Choose a convenient time for the meeting.": "s_d9bf8cb2", "Is it convenient for you to call me tonight?": "s_d7a701e3", "She is an intelligent student who learns very fast.": "s_de21ef70", "Asking intelligent questions shows deep thinking.": "s_7ecb3796", "He found an intelligent solution to the problem.": "s_b997ab54", "She is an excellent student admired by all teachers.": "s_ccb53ce3", "The teacher praised her for excellent work.": "s_136a3d5b", "This is an excellent opportunity to improve your English.": "s_6700ef8b", "Frequent practice is the key to improving any skill.": "s_f6aff0bd", "He makes frequent mistakes because he rushes.": "s_96293a3f", "She is a frequent traveller who visits many countries.": "s_71b7b4b1", "She wants to be a famous scientist one day.": "s_f4ecd505", "China is famous for its long history and culture.": "s_14008986", "The Great Wall is a world famous landmark.": "s_59c6bb9f", "We discussed various topics during the debate.": "s_39b5f7b1", "Students fail for various reasons, not just laziness.": "s_fe899a29", "Try various methods to find what works best for you.": "s_8445d00c", "A helpful teacher always answers students' questions.": "s_56ab7115", "She gave me very helpful advice about the exam.": "s_188ff8b8", "Being a helpful classmate makes school more enjoyable.": "s_7faeeb8c", "Stay hopeful even when things seem difficult.": "s_d9ca0a83", "I am hopeful about my exam results.": "s_c5d18dbd", "Young people deserve a hopeful future.": "s_d7cb50f1", "I felt doubtful about my ability to pass.": "s_8d264fb0", "The teacher said the result was doubtful without more proof.": "s_c5366a89", "He remained doubtful until he saw the evidence.": "s_ace5d575", "She is a skillful writer who tells great stories.": "s_e31804d2", "A skillful player knows when to pass and when to shoot.": "s_fb1bd9c3", "You become skillful by practising every day.": "s_fb8392a6", "Studying abroad was a truly wonderful experience.": "s_e54944ff", "She is a wonderful teacher who makes learning fun.": "s_02185ae9", "The wonderful news made everyone smile.": "s_9ac8c226", "The spider looks scary but is completely harmless.": "s_51484496", "It was just a harmless joke between friends.": "s_72e1603e", "Drawing is a harmless activity that helps creativity.": "s_196e64d1", "I felt helpless when I couldn't understand the lesson.": "s_cf5149d4", "She was in a helpless situation without her phone.": "s_5be6bfe1", "Never feel helpless — always ask for help.": "s_1fb9822c", "A friendly smile can brighten someone's day.": "s_8d74faf5", "She is a friendly classmate who welcomes newcomers.": "s_203216c5", "Our school has a friendly and welcoming atmosphere.": "s_b512db9e", "The glacier melts slowly every summer.": "e_6e6f9995", "Our destination is the library on Green Street.": "e_98d3ae41", "The news was disturbing, so I turned off the TV.": "e_8bda441b", "He finds spiritual peace when he reads quietly.": "e_28e52bcd", "Forests are an important ecosystem for many animals.": "e_747cf244", "She stopped abruptly when she heard her name.": "e_8632ed63", "Our school has a good reputation for sports.": "e_03933b5d", "I was skeptical when he said he finished so fast.": "e_c2fc8076", "We need the right equipment for the science experiment.": "e_4497736b", "If you keep practising, you will eventually improve.": "e_a0a41fa7", "The rescue team arrived at the scene quickly.": "e_86dc041d", "The teacher permits us to use a dictionary in the test.": "e_497f2f2b", "The scar on his hand is permanent.": "e_f1e67e0f", "You studied so hard — you deserve a good grade.": "e_7e58b711", "He answered the question without hesitation.": "e_ed68a667", "I felt anxiety before the big exam.": "e_17df8439", "Call me immediately if you need help.": "e_56c19656", "What a coincidence — we chose the same book!": "e_20dc771f", "Her voice sounded very familiar to me.": "e_78570ddd", "My English is gradually getting better.": "e_9941ba32", "Good grades are one criteria for joining the club.": "e_41df31ce", "My opponent in the chess match was very skilled.": "e_5ea7ed19", "A university degree is a useful qualification.": "e_86ea9df0", "The player fell unconscious after hitting his head.": "e_e00fa433", "I was thrilled when I got the top score.": "e_0465f40c", "She felt ashamed after lying to her friend.": "e_679ed15a", "Science helps us understand the world.": "e_11eb4116", "The climate here is warm and sunny.": "e_44dfa9a0", "If you try your best, you will not fail.": "e_6c0e03e9", "I realized I had forgotten my bag at home.": "e_a5b89f8f", "She explained the answer in a simple way.": "e_f2bd9daf", "He gave me useful information about the exam.": "e_f50da4e2", "Check your work to make sure it is correct.": "e_b8dd40ba", "I expect you to finish the work by Friday.": "e_9e59784e", "I believe you can do it if you try.": "e_c945e358", "I had some doubt about the right answer.": "e_7855758e", "I have a habit of drinking tea in the morning.": "e_4eceece4", "He has the ability to learn languages quickly.": "e_62d24787", "Today is a special day for our family.": "e_30ed5e81", "My parents always support me in everything I do.": "e_066a2e2c", "After the discussion, we all agreed on the answer.": "e_6da5f0bb", "This is our final chance to win the match.": "e_661af049", "I was happy with my score on the test.": "e_5b7da211", "I need to complete my homework before dinner.": "e_b42932d8", "It is normal to feel nervous before a big test.": "e_31330092", "Please take this warning seriously — it is serious.": "e_5d16b8c3", "The library was full of silence.": "e_11e68fc0", "That was the best moment of my life.": "e_20a04f46", "My goal is to get a good grade this semester.": "e_15aea54b", "Compare the two pictures and find the differences.": "e_3fd9cbc9", "She bravely stood up and gave her speech.": "e_16815875", "I refused to cheat even though it was hard.": "e_494b148e", "My teacher praised me for my good essay.": "e_7592931e", "I cannot remember the exact date of the test.": "e_d5a6d743", "We use modern tools to communicate every day.": "e_bda9ec8c", "It is polite to say thank you when someone helps you.": "e_bb68a9a1", "Describe your school to someone who has never seen it.": "e_e2860f62", "I collect books about history and science.": "e_15262e28", "Travelling abroad was an amazing experience for me.": "e_43c51310", "The teacher gave a short introduction at the start of class.": "e_f8519a9e", "My English is improving and I can see good progress.": "e_6a541fed", "Being active in class helps you learn faster.": "e_f33f12ed", "The room was silent — everyone was thinking.": "e_e30ccad4", "Studying hard was the best decision I ever made.": "e_9e56c64b", "Crossing the road without looking is a big risk.": "e_c564780a", "I promise I will return the book tomorrow.": "e_2260676e", "The teacher asked for a report on our project.": "e_73bdc03b", "My parents' encouragement helped me pass the exam.": "e_031b9584", "Follow the instructions on page one to start.": "e_69d6f2d5", "Good time management is the key to success.": "e_b8109e03", "She worked hard to prepare for the English competition.": "e_10c8b3d6", "I was embarrassed when I called the teacher 'mom'.": "e_f6494fc0", "Living alone taught me the value of independence.": "e_43ba7a5b", "The team celebrated their victory together.": "e_4174caa5", "There is a strong relation between exercise and health.": "e_f3bed105", "It makes sense to study a little every day.": "e_5bd05a30", "We celebrated the end of exams with a big dinner.": "e_ce4abf5c", "My teacher reminded us to bring our books tomorrow.": "e_12dbf5bf", "I seriously believe that practice makes perfect.": "e_798651cc", "Smartphones are now widely used by students.": "e_4913c72c", "She privately hoped she would win the prize.": "e_2cee76aa", "She complains when the weather is too cold.": "e_98912b1c", "I had an interview for a part-time job last week.": "e_1d5b78ce", "Everyone congratulated her on her first place finish.": "e_3c43a91f", "The government made new rules about the environment.": "e_ba15adc7", "She found a partner for the science project.": "e_66e988bf", "The library books are available to all students.": "e_f0d405c5", "Youth is the best time to learn new things.": "e_e87292d9", "She is eligible for the school leadership award.": "e_cead911a", "Good grades help you find better employment.": "e_c2d2b5d7", "Working together makes our community stronger.": "e_fb4ebeb4", "I had the opportunity to speak in front of the school.": "e_ca9a00a4", "Eating a variety of foods keeps you healthy.": "e_3413b8fe", "The school has ramps for students with disabilities.": "e_33dcad30", "Pollution damages the environment every day.": "e_ca9e5562", "It is normal to feel nervous on your first day.": "e_251f34e9", "Her pronunciation improved a lot after one month.": "e_8e86a51f", "Don't be afraid to stumble — mistakes help you learn.": "e_814af47d", "The campaign to save energy was very successful.": "e_800321d0", "She handled the problem in a very calm manner.": "e_da7ff1f4", "We always aim for quality in our work.": "e_73f9543d", "The teacher will assess your essay next week.": "e_340e1fae", "Her story inspired me to never give up.": "e_fa18baee", "The teacher uses humorous examples to explain things.": "e_032afc62", "This exam is demanding but I will prepare well.": "e_d70ebb70", "Ambitious students are not afraid to work hard.": "e_b91ab0d2", "Your identity is shaped by your family and experiences.": "e_8b7203df", "The school has cameras for the security of students.": "e_ce2ab1c5", "I recognized the song as soon as it started.": "e_27893cc3", "Good accuracy in maths comes from lots of practice.": "e_201a61a0", "The new café gained popularity very quickly.": "e_0a6c1eac", "Adolescents often face pressure from school and friends.": "e_2934db2a", "A small adjustment to your study plan can help a lot.": "e_39b21572", "It is generous of you to share your notes.": "e_460dfc74", "Being too aggressive can damage your friendships.": "e_4fcc1f3b", "Being adaptable helps you handle change with confidence.": "e_c2ab8307", "He felt appreciation for the kind words of his teacher.": "e_5322bd24", "It was a delightful afternoon in the park.": "e_80e30e8f", "She had a brilliant idea to solve the problem.": "e_cc7ff416", "Exercise helps me release tension after a long day.": "e_802d685a", "Don't let frustration stop you from trying again.": "e_979667ce", "The story was pure fantasy, but I loved it.": "e_2bcc2459", "The flu outbreak affected many students this winter.": "e_5d9212d1", "It is selfish to take all the food and leave none.": "e_3f8b33eb", "Music gives me motivation when I study.": "e_cea07015", "I always reflect on my mistakes to improve.": "e_4e4fb0d4", "It was awkward when I forgot her name.": "e_789537f4", "We learned about gravity in our science class.": "e_bd226d73", "The school introduced a big reform to improve results.": "e_b26b0e00", "Her story was an inspiration to everyone in school.": "e_b56a5c71", "The photography exhibition was visited by many people.": "e_5829832b", "She studies contemporary Chinese literature.": "e_bb3ede05", "She saved money for three months before the purchase.": "e_7162e050", "A systematic study plan leads to better results.": "e_b992e065", "We studied the famous monument in history class.": "e_788d2eb5", "The memorial garden was beautiful and peaceful.": "e_ac5f8f77", "Ocean exploration helps us learn about sea life.": "e_39778f61", "Physical education is compulsory in our school.": "e_855b60d8", "The dominant theme in the book is friendship.": "e_5d833f36", "The consumption of water in the city is very high.": "e_239fad39", "Hard work matters more than intelligence alone.": "e_8aa749b9", "Psychology teaches us why people behave the way they do.": "e_d75d180e", "It is inappropriate to use your phone during class.": "e_8f309c06", "Our school held a concert for its 100th anniversary.": "e_d633e7c0", "The school received a generous donation for new computers.": "e_fb95a09d", "Sleep is not a luxury — it is a necessity.": "e_7cdf474e", "The new library has become a landmark in our city.": "e_69983ef6", "The old church has amazing architecture.": "e_1a391c86", "The students worked together in harmony on the project.": "e_3048aff4", "Her passion for science led her to become a researcher.": "e_276c41f2", "Winning the award was her greatest accomplishment.": "e_fd93f0dd", "The school campaign raised awareness about bullying.": "e_883063e5", "Good organisation leads to higher productivity.": "e_444f3506", "An authentic friendship is honest and caring.": "e_6cdd9c37", "Getting a good job can help you achieve financial independence.": "e_288ec6a6", "The documentary showed the beauty of African wildlife.": "e_29a4484f", "The teacher spoke with authority on the subject.": "e_e3241af8", "Curiosity is one of the best qualities in a student.": "e_fd50d949", "The project was a great example of collaboration.": "e_63aceba1", "The Northern Lights are an amazing natural phenomenon.": "e_de2dbb2b", "Helping others gives me deep satisfaction.": "e_90028734", "I have great admiration for people who work hard.": "e_2cd47e0e", "There was uncertainty about the exam date.": "e_bda2d2dc", "The psychologist helped her manage her exam anxiety.": "e_c6c169ab", "Academic success requires hard work and good habits.": "e_d3db0643", "Exercise strengthens both your body and your mind.": "e_a34141ef", "Lack of sleep weakens your ability to concentrate.": "e_8c9bd900", "Travel deepens your understanding of other cultures.": "e_57d9f98e", "We can shorten the meeting if we focus.": "e_1f335ea4", "Days lengthen in spring as summer gets closer.": "e_da5b3ca5", "Loud music heightened the excitement at the event.": "e_c980c689", "His cold worsened because he did not rest.": "e_7722d6df", "The teacher simplified the explanation for the class.": "e_b3968e60", "Flowers beautify the school garden every spring.": "e_d90703b9", "Fasten your bag before leaving the classroom.": "e_83ec170e", "A good chair makes studying more comfortable.": "e_43f28268", "Being responsible means keeping your promises.": "e_8c8a39ed", "It is reasonable to ask for help when you are stuck.": "e_63790ecb", "I am fortunate to study at such a good school.": "e_72f30de2", "She gave a sincere thank-you to everyone who helped.": "e_2cff651c", "You need to be patient when learning a new skill.": "e_2e1a2639", "The library is a peaceful place to study.": "e_1a36dd3b", "A powerful team works together with one goal.": "e_d1aa6ff6", "He gave a very professional presentation to the class.": "e_4d0be838", "She was sympathetic when I failed the test.": "e_d6b640df", "Students should be respectful of different opinions.": "e_e1028e4d", "Reading good books leads to meaningful learning.": "e_fc2e85b4", "It is unusual for snow to fall in this city.": "e_c8c6b615", "After practising daily, I felt confident on exam day.": "e_52685fe3", "The colourful poster made the event look attractive.": "e_4696b488", "The team worked under extreme pressure to finish in time.": "e_bbc209d0", "The rapid development of the internet changed everything.": "e_155b6ad8", "The official rules of the competition were explained clearly.": "e_250423cf", "Hard work makes you more successful in the long run.": "e_330d1a11", "It was unfortunate that she missed the exam.": "e_022f7ca7", "I knew the answer in an instant.": "e_c192c0a6", "Printing too many pages is wasteful and bad for the environment.": "e_5ad0f351", "Your personal opinion matters in this discussion.": "e_3decb370", "Getting a good education helps your economic future.": "e_ee83d354", "The poster attracted a lot of interest from students.": "e_2363f67a", "The team worked hard to invent a better battery.": "e_9f75eb50", "Art is a great way to express your emotions.": "e_5948d165", "I hope to graduate with top marks this year.": "e_29cc3e58", "The new system will operate from Monday.": "e_cdef410c", "She loves to create art in her free time.": "e_5eb6e4e5", "Can you translate this sentence into English for me?": "e_15744da9", "She devoted her life to teaching children.": "e_e501e3b0", "Cars pollute the air and harm people's health.": "e_6547a450", "Think carefully before you try to solve the problem.": "e_89d34280", "The choir performed beautifully at the school concert.": "e_6a038d25", "The two essays differ in style but not in ideas.": "e_49b6e177", "I prefer learning by doing rather than just listening.": "e_ab4cfe54", "You can achieve great things if you believe in yourself.": "e_0cb4d180", "I didn't want to disappoint my teacher after all her help.": "e_d9d31ba3", "It is healthy to disagree and share different views.": "e_e940b640", "The magician's tricks amazed the whole audience.": "e_63ca856b", "The news of the trip excited everyone in the class.": "e_93cc84b6", "I want to improve my English speaking this year.": "e_f5e5d996", "Try to argue your ideas with evidence not emotions.": "e_ca527ea2", "Good teachers treat every student fairly.": "e_3b09b856", "She is so kind that she always helps her classmates.": "e_9bc59f19", "Being shy is normal, but practice helps you grow.": "e_4fa714b8", "A creative mind finds solutions others cannot see.": "e_9c2d4deb", "Reading gives me a sense of freedom and escape.": "e_1e714880", "Friendship is one of the most important things in life.": "e_dcf01919", "Despite hardship, she never stopped learning.": "e_1e006e4b", "Honesty and hard work are the keys to success.": "e_95a5edf1", "The warmth of her welcome made me feel at home.": "e_d2150877", "The truth is more important than a comfortable lie.": "e_af2215fb", "A good journalist always checks facts carefully.": "e_2045b6a1", "The city is very popular with tourists in summer.": "e_54444a8d", "A great inventor solves problems that others ignore.": "e_bc40ab67", "Every competitor gave their best in the final.": "e_a0af42ef", "Getting into a top school was her greatest achievement.": "e_ac359f27", "Missing the finals was a great disappointment for the team.": "e_ed393f3d", "There was great excitement before the school trip.": "e_df0b35bf", "With hard work comes steady improvement.": "e_b79d8fef", "They had an argument about which book was better.": "e_cec3e89d", "Please write a clear opening statement in your essay.": "e_a19934b4", "Being wealthy does not always mean being happy.": "e_c7dec355", "Drink water when you feel thirsty during study.": "e_81b4ad13", "Take a deep breath when you feel angry.": "e_113b7c3c", "Study well and you will never go hungry in life.": "e_68bb2fde", "Be careful to check your answers before handing in.": "e_7b8ccb65", "Don't be careless — small mistakes add up quickly.": "e_330db925", "Being determined helps you overcome any obstacle.": "e_825e9e81", "Even talented students need practice to improve.": "e_41bf90eb", "He was delighted when his team won the final.": "e_86e0f026", "The school canteen is always crowded at lunchtime.": "e_548b7a51", "This is an advanced topic — not easy for beginners.": "e_f559bf80", "A balanced study plan prevents burnout.": "e_f0e149a5", "Playing with electricity is extremely dangerous.": "e_f344e2c2", "Good friendships are among the most valuable things in life.": "e_bdcd3dcf", "Choose a study method that is suitable for you.": "e_1ef41920", "Make studying enjoyable by using different methods.": "e_18ea2542", "The school's science exhibition was truly impressive.": "e_cd380adc", "Books are never too expensive if they teach you something.": "e_8f72fd57", "The job market is very competitive these days.": "e_d63ea2ee", "It is natural to feel nervous before a big exam.": "e_66858d39", "This festival is a wonderful cultural tradition.": "e_c9dd2773", "Traditional music connects us to our history.": "e_e4412141", "The documentary was both entertaining and educational.": "e_d8d1d9e8", "This is a formal event, so please dress smartly.": "e_6e5553e2", "A typical Chinese New Year includes fireworks and dumplings.": "e_0fe42848", "Regular medical check-ups are important for your health.": "e_cc5102b3", "Physical fitness is just as important as academic study.": "e_4185c268", "Reading historical novels helps you understand the past.": "e_2b32ccac", "It is important to review your notes after every class.": "e_6c970212", "Having a library nearby is very convenient for students.": "e_22696e47", "Being intelligent helps, but hard work matters more.": "e_0a291e74", "She received excellent marks in every subject.": "e_aec85dc4", "Frequent revision helps you remember more.": "e_6db59b51", "Many famous people started with very little.": "e_59fcbd63", "The library has books on various topics.": "e_64e1afaa", "It is helpful to review each chapter after class.": "e_2be1a395", "She remained hopeful that things would improve.": "e_ff0c02c3", "I was doubtful at first, but the plan worked well.": "e_9ae54b5d", "A skillful teacher makes every student feel included.": "e_91e0a2a2", "It was a wonderful day that I will never forget.": "e_3f95ecc5", "Most garden insects are harmless to humans.": "e_11c2a3c6", "Even when you feel helpless, asking for help is strength.": "e_cac5c076", "Being friendly makes it easy to make new friends.": "e_ff5387c9"};
+
+// 浏览器备用语音
+let _voice = null;
+const _initVoice = () => {
+  const all = window.speechSynthesis?.getVoices() || [];
+  const en = all.filter(v => v.lang.startsWith("en") &&
+    !v.name.toLowerCase().includes("zh") &&
+    !v.name.toLowerCase().includes("chinese"));
+  _voice = en.find(v => v.name === "Google US English") ||
+    en.find(v => /Samantha|Karen/.test(v.name)) ||
+    en.find(v => !v.localService && v.lang === "en-US") ||
+    en.find(v => v.lang === "en-US") || en[0] || null;
+};
+if (typeof window !== "undefined") {
+  window.speechSynthesis?.addEventListener?.("voiceschanged", _initVoice);
+  setTimeout(_initVoice, 500);
+}
+
+const _playMp3 = (url, rate) => new Promise((resolve, reject) => {
+  const audio = new Audio(url);
+  audio.playbackRate = rate < 0.75 ? 0.85 : 1.0;
+  audio.onended = () => resolve();
+  audio.onerror = (e) => { console.log("MP3 error:", url, e); reject(e); };
+  audio.play().catch((e) => { console.log("MP3 play failed:", url, e); reject(e); });
+});
+
+const _browserSpeak = (text, rate) => new Promise((resolve) => {
+  if (!window.speechSynthesis) { resolve(); return; }
+  window.speechSynthesis.cancel();
+  if (!_voice) _initVoice();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US"; u.rate = rate; u.pitch = 1.0; u.volume = 1.0;
+  if (_voice) u.voice = _voice;
+  u.onend = () => resolve();
+  u.onerror = () => resolve();
+  window.speechSynthesis.speak(u);
+  setTimeout(resolve, Math.max(4000, text.length * 90));
+});
+
+// MD5 hash (simplified - matches Python hashlib.md5)
+const _md5 = (str) => {
+  // Use djb2 hash as a stable key generator
+  // NOTE: must match generate_audio_full.py logic
+  // We use a lookup table approach instead
+  return null;
+};
+
+// Detect text type and get audio filename
+const _getAudioFilename = (text) => {
+  const t = text.trim();
+  if (!t) return null;
+  // Single word
+  if (/^[a-z]+$/i.test(t)) return t.toLowerCase();
+  // For phrases/sentences, we need the precomputed map
+  return _AUDIO_MAP[t] || null;
+};
+
+const speak = (text, rate = 0.82) => {
+  if (!text) return Promise.resolve();
+  const filename = _getAudioFilename(text.trim());
+  if (filename) {
+    const url = `${_AUDIO_BASE}${filename}.mp3`;
+    return _playMp3(url, rate).catch(() => _browserSpeak(text, rate));
+  }
+  return _browserSpeak(text, rate);
+};
+
+const loadVoices = () => _initVoice();
+
+// Fire-and-forget version for buttons
+const speakNow = (text, rate = 0.88) => { speak(text, rate); };
+
+/* ═══ SOUND EFFECTS ═══ */
+const playCorrectSound = () => {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Happy two-note chime
+    [523.25, 659.25].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = "sine";
+      gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.15 + 0.4);
+      osc.start(ctx.currentTime + i * 0.15);
+      osc.stop(ctx.currentTime + i * 0.15 + 0.4);
+    });
+  } catch(e) {}
+};
+
+const playWrongSound = () => {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 200;
+    osc.type = "square";
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+    osc.start(); osc.stop(ctx.currentTime + 0.3);
+  } catch(e) {}
+};
+
+const playCelebrationSound = () => {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Ascending fanfare: C E G C (major chord arpeggio)
+    const notes = [523.25, 659.25, 783.99, 1046.50];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = "sine";
+      const t = ctx.currentTime + i * 0.12;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.35, t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
+      osc.start(t); osc.stop(t + 0.5);
+    });
+    // Extra sparkle notes on top
+    [1318.5, 1567.98].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = "triangle";
+      const t = ctx.currentTime + 0.48 + i * 0.1;
+      gain.gain.setValueAtTime(0.2, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.35);
+      osc.start(t); osc.stop(t + 0.35);
+    });
+  } catch(e) {}
+};
+
+/* ═══ COLORS ═══ */
+const C = {
+  bg:"#F7F9FF",          // 冰雾白背景
+  card:"#FFFFFF",         // 卡片白
+  primary:"#4DB6FF",      // 极光蓝 - 主色
+  secondary:"#9B6FFF",    // 星云紫 - 副色
+  accent:"#3CC87A",       // 薄荷绿 - 成功/按钮
+  success:"#3CC87A",      // 薄荷绿
+  error:"#FF6B6B",        // 珊瑚红
+  gold:"#F8C740",         // 活力黄 - 积分/连击
+  text:"#1A1A2E",         // 深夜蓝 - 正文
+  tl:"#8A9BBF",           // 蓝灰 - 辅助文字
+  tm:"#3D4A6B",           // 中深蓝 - 次级文字
+  mint:"#C8F5E0",         // 淡绿
+  lav:"#EAE4FF",          // 淡紫
+  peach:"#FFF4D4",        // 淡黄
+  sky:"#D8EEFF",          // 淡蓝
+  nav:"#1A1A2E",          // 导航栏深色
+  // 渐变色（用于按钮/标题）
+  grad1:"linear-gradient(135deg,#4DB6FF,#9B6FFF)",   // 蓝→紫
+  grad2:"linear-gradient(135deg,#F8C740,#FF8C5A)",   // 黄→橙（挑战赛）
+  grad3:"linear-gradient(135deg,#3CC87A,#4DB6FF)",   // 绿→蓝（成功）
+  grad4:"linear-gradient(135deg,#9B6FFF,#FF6B6B)",   // 紫→红（高级词）
+};
+AUDIO_HASH_MAP = _AUDIO_MAP; // alias for listen_fill
+
+/* ═══ VOCAB DB — with phrase sentences, word families, synonyms ═══ */
+const VOCAB = [
+  { word:"glacier", ph:"/ˈɡlæs.i.ər/", en:"A large body of ice moving slowly down a slope", cn:"冰川",
+    phrases:[
+      {phrase:"melting glacier", sent:"Scientists warned that the melting glacier could raise sea levels significantly.", sentCn:"科学家警告，融化的冰川可能导致海平面显著上升。"},
+      {phrase:"glacier retreat", sent:"The glacier retreat has accelerated due to rising global temperatures.", sentCn:"由于全球气温上升，冰川退缩速度加快。"},
+      {phrase:"glacier formation", sent:"Glacier formation takes thousands of years of snow compression.", sentCn:"冰川的形成需要数千年的积雪压缩。"},
+    ],
+    ex:"The glacier melts slowly every summer.",
+    family:{noun:"glacier",adj:"glacial",adv:"glacially"}, syn:["ice sheet","ice cap"], ant:["desert"],
+    lv:"advanced", tags:["nature"] , pos:"n"},
+  { word:"destination", ph:"/ˌdes.tɪˈneɪ.ʃən/", en:"The place to which someone is going", cn:"目的地",
+    phrases:[
+      {phrase:"popular destination", sent:"Thailand has become a popular destination for tourists worldwide.", sentCn:"泰国已成为全球游客热门的旅游目的地。"},
+      {phrase:"travel destination", sent:"Paris remains the top travel destination in Europe.", sentCn:"巴黎仍是欧洲最受欢迎的旅游目的地。"},
+      {phrase:"final destination", sent:"After three flights, we finally reached our final destination.", sentCn:"经过三段飞行，我们终于到达了最终目的地。"},
+    ],
+    ex:"Our destination is the library on Green Street.",
+    family:{noun:"destination",verb:"destine",adj:"destined"}, syn:["goal","endpoint"], ant:["origin","starting point"],
+    lv:"intermediate", tags:["travel"] , pos:"n"},
+  { word:"disturbing", ph:"/dɪˈstɜːr.bɪŋ/", en:"Causing anxiety or worry; upsetting", cn:"令人不安的",
+    phrases:[
+      {phrase:"disturbing news", sent:"The disturbing news about the earthquake shocked the entire nation.", sentCn:"有关地震的令人不安的消息震惊了整个国家。"},
+      {phrase:"deeply disturbing", sent:"The video was deeply disturbing to watch.", sentCn:"这段视频让人看了深感不安。"},
+      {phrase:"disturbing trend", sent:"There is a disturbing trend of rising pollution in coastal cities.", sentCn:"沿海城市污染加剧的趋势令人担忧。"},
+    ],
+    ex:"The news was disturbing, so I turned off the TV.",
+    family:{noun:"disturbance",verb:"disturb",adj:"disturbing",adv:"disturbingly"}, syn:["upsetting","alarming"], ant:["comforting","reassuring"],
+    lv:"intermediate", tags:["emotion"] , pos:"adj"},
+  { word:"spiritual", ph:"/ˈspɪr.ɪ.tʃu.əl/", en:"Relating to the human spirit or soul", cn:"精神的；心灵的",
+    phrases:[
+      {phrase:"spiritual journey", sent:"Many people travel to India seeking a spiritual journey.", sentCn:"许多人前往印度寻求心灵的旅程。"},
+      {phrase:"spiritual leader", sent:"The spiritual leader guided the community through difficult times.", sentCn:"精神领袖引导社区度过了艰难时期。"},
+      {phrase:"spiritual growth", sent:"Reading and meditation can contribute to spiritual growth.", sentCn:"阅读和冥想有助于精神成长。"},
+    ],
+    ex:"He finds spiritual peace when he reads quietly.",
+    family:{noun:"spirit/spirituality",adj:"spiritual",adv:"spiritually"}, syn:["sacred","divine"], ant:["material","physical"],
+    lv:"advanced", tags:["culture"] , pos:"adj"},
+  { word:"ecosystem", ph:"/ˈiː.koʊˌsɪs.təm/", en:"A community of organisms and their environment", cn:"生态系统",
+    phrases:[
+      {phrase:"fragile ecosystem", sent:"The coral reef is a fragile ecosystem.", sentCn:"珊瑚礁是一个脆弱的生态系统。"},
+      {phrase:"marine ecosystem", sent:"Oil spills can devastate the marine ecosystem for decades.", sentCn:"石油泄漏可能在数十年内破坏海洋生态系统。"},
+      {phrase:"ecosystem balance", sent:"Removing one species can upset the entire ecosystem balance.", sentCn:"移除一个物种可能会破坏整个生态系统的平衡。"},
+    ],
+    ex:"Forests are an important ecosystem for many animals.",
+    family:{noun:"ecosystem",adj:"ecological"}, syn:["habitat","environment"], ant:[],
+    lv:"advanced", tags:["science"] , pos:"n"},
+  { word:"abruptly", ph:"/əˈbrʌpt.li/", en:"Suddenly and unexpectedly", cn:"突然地",
+    phrases:[
+      {phrase:"stop abruptly", sent:"The car had to stop abruptly to avoid hitting the deer.", sentCn:"汽车不得不突然停下来，以免撞上那只鹿。"},
+      {phrase:"end abruptly", sent:"The concert ended abruptly when the power went out.", sentCn:"停电后，音乐会突然中断了。"},
+      {phrase:"change abruptly", sent:"The weather can change abruptly in mountain regions.", sentCn:"山区天气可能会突然变化。"},
+    ],
+    ex:"She stopped abruptly when she heard her name.",
+    family:{noun:"abruptness",adj:"abrupt",adv:"abruptly"}, syn:["suddenly","unexpectedly"], ant:["gradually","slowly"],
+    lv:"intermediate", tags:["manner"] , pos:"adv"},
+  { word:"reputation", ph:"/ˌrep.jəˈteɪ.ʃən/", en:"The opinions generally held about someone", cn:"名声；声誉",
+    phrases:[
+      {phrase:"good reputation", sent:"The restaurant has built a good reputation for authentic food.", sentCn:"这家餐厅凭借正宗的食物赢得了良好声誉。"},
+      {phrase:"damage one's reputation", sent:"Cheating in exams can damage your reputation.", sentCn:"考试作弊会损害你的声誉。"},
+      {phrase:"earn a reputation", sent:"She earned a reputation for being honest.", sentCn:"她赢得了诚实的好名声。"},
+    ],
+    ex:"Our school has a good reputation for sports.",
+    family:{noun:"reputation",adj:"reputable/disreputable"}, syn:["fame","standing"], ant:["obscurity"],
+    lv:"intermediate", tags:["abstract"] , pos:"n"},
+  { word:"skeptical", ph:"/ˈskep.tɪ.kəl/", en:"Not easily convinced; having doubts", cn:"怀疑的",
+    phrases:[
+      {phrase:"remain skeptical", sent:"Many scientists remain skeptical about the new treatment.", sentCn:"许多科学家对这种新疗法仍持怀疑态度。"},
+      {phrase:"deeply skeptical", sent:"I am deeply skeptical about his excuse.", sentCn:"我对他的借口深表怀疑。"},
+      {phrase:"skeptical about", sent:"I'm skeptical about whether this plan will actually work.", sentCn:"我对这个计划是否真的可行持怀疑态度。"},
+    ],
+    ex:"I was skeptical when he said he finished so fast.",
+    family:{noun:"skepticism/skeptic",adj:"skeptical",adv:"skeptically"}, syn:["doubtful","unconvinced"], ant:["trusting","gullible"],
+    lv:"advanced", tags:["attitude"] , pos:"adj"},
+  { word:"equipment", ph:"/ɪˈkwɪp.mənt/", en:"Items needed for a particular purpose", cn:"设备；装备",
+    phrases:[
+      {phrase:"safety equipment", sent:"All workers must wear safety equipment on the construction site.", sentCn:"所有工人在建筑工地必须佩戴安全设备。"},
+      {phrase:"medical equipment", sent:"The hospital received a donation of modern medical equipment.", sentCn:"医院收到了一批现代医疗设备的捐赠。"},
+      {phrase:"heavy equipment", sent:"Heavy equipment was brought in to clear the fallen trees.", sentCn:"重型设备被调来清理倒下的树木。"},
+    ],
+    ex:"We need the right equipment for the science experiment.",
+    family:{noun:"equipment",verb:"equip",adj:"equipped"}, syn:["gear","apparatus"], ant:[],
+    lv:"intermediate", tags:["object"] , pos:"n"},
+  { word:"eventually", ph:"/ɪˈven.tʃu.ə.li/", en:"In the end; after a period of time", cn:"最终；终于",
+    phrases:[
+      {phrase:"eventually succeed", sent:"If you keep trying, you will eventually succeed.", sentCn:"只要坚持努力，你最终一定会成功。"},
+      {phrase:"eventually arrive", sent:"After many delays, the package eventually arrived.", sentCn:"经过多次延误，包裹终于到达了。"},
+      {phrase:"will eventually", sent:"All good things will eventually come to an end.", sentCn:"所有美好的事物最终都会结束。"},
+    ],
+    ex:"If you keep practising, you will eventually improve.",
+    family:{noun:"eventuality",adj:"eventual",adv:"eventually"}, syn:["finally","ultimately"], ant:["immediately","never"],
+    lv:"intermediate", tags:["time"] , pos:"adv"},
+  { word:"rescue", ph:"/ˈres.kjuː/", en:"To save someone from danger", cn:"救援；营救",
+    phrases:[
+      {phrase:"rescue mission", sent:"The rescue mission saved twelve people from the collapsed building.", sentCn:"救援行动从倒塌的建筑中救出了十二人。"},
+      {phrase:"come to the rescue", sent:"The firefighters came to the rescue just in time.", sentCn:"消防员及时赶到实施救援。"},
+      {phrase:"rescue team", sent:"A rescue team was immediately sent to the disaster area.", sentCn:"一支救援队立即被派往灾区。"},
+    ],
+    ex:"The rescue team arrived at the scene quickly.",
+    family:{noun:"rescue/rescuer",verb:"rescue",adj:"rescued"}, syn:["save","recover"], ant:["endanger","abandon"],
+    lv:"intermediate", tags:["action"] , verbForms:{past:"rescued",pp:"rescued",ing:"rescuing",s:"rescues"}, pos:"v"},
+  { word:"permit", ph:"/pərˈmɪt/", en:"To allow; to give permission", cn:"允许；许可",
+    phrases:[
+      {phrase:"not permitted", sent:"Photography is not permitted inside the museum.", sentCn:"博物馆内不允许拍照。"},
+      {phrase:"weather permitting", sent:"We'll have the picnic outdoors, weather permitting.", sentCn:"如果天气允许，我们将在户外野餐。"},
+      {phrase:"permit access", sent:"Only students are permitted to enter this room.", sentCn:"只有学生才被允许进入这个房间。"},
+    ],
+    ex:"The teacher permits us to use a dictionary in the test.",
+    family:{noun:"permission/permit",verb:"permit",adj:"permissible"}, syn:["allow","authorize"], ant:["forbid","prohibit"],
+    lv:"intermediate", tags:["authority"] , verbForms:{past:"permitted",pp:"permitted",ing:"permitting",s:"permits"}, pos:"v"},
+  { word:"permanent", ph:"/ˈpɜːr.mə.nənt/", en:"Lasting indefinitely; not temporary", cn:"永久的",
+    phrases:[
+      {phrase:"permanent damage", sent:"Loud music can cause permanent hearing loss.", sentCn:"大声音乐可能导致永久性听力损失。"},
+      {phrase:"permanent resident", sent:"She applied to become a permanent resident of Canada.", sentCn:"她申请成为加拿大永久居民。"},
+      {phrase:"permanent change", sent:"The new policy represents a permanent change in direction.", sentCn:"新政策代表着方向上的永久性改变。"},
+    ],
+    ex:"The scar on his hand is permanent.",
+    family:{noun:"permanence",adj:"permanent",adv:"permanently"}, syn:["lasting","enduring"], ant:["temporary","brief"],
+    lv:"intermediate", tags:["time"] , pos:"n"},
+  { word:"deserve", ph:"/dɪˈzɜːrv/", en:"To be worthy of reward or punishment", cn:"值得；应得",
+    phrases:[
+      {phrase:"deserve better", sent:"After all her hard work, she certainly deserves better treatment.", sentCn:"经过她的辛勤努力，她理应得到更好的对待。"},
+      {phrase:"deserve credit", sent:"The whole team deserves credit for this achievement.", sentCn:"整个团队都应该为这一成就而获得认可。"},
+      {phrase:"richly deserve", sent:"He richly deserved the award for his lifetime of service.", sentCn:"他毕生的服务使他完全应得这个奖项。"},
+    ],
+    ex:"You studied so hard — you deserve a good grade.",
+    family:{noun:"desert (what is deserved)",verb:"deserve",adj:"deserving/deserved"}, syn:["merit","earn"], ant:[],
+    lv:"intermediate", tags:["abstract"] , verbForms:{past:"deserved",pp:"deserved",ing:"deserving",s:"deserves"}, pos:"v"},
+  { word:"hesitation", ph:"/ˌhez.ɪˈteɪ.ʃən/", en:"Pausing before saying or doing something", cn:"犹豫；迟疑",
+    phrases:[
+      {phrase:"without hesitation", sent:"She answered without hesitation when asked to help.", sentCn:"当被要求帮忙时，她毫不犹豫地答应了。"},
+      {phrase:"moment's hesitation", sent:"After a moment's hesitation, he accepted the challenge.", sentCn:"片刻犹豫后，他接受了这个挑战。"},
+      {phrase:"slight hesitation", sent:"There was a slight hesitation before she answered.", sentCn:"她回答之前有一丝犹豫。"},
+    ],
+    ex:"He answered the question without hesitation.",
+    family:{noun:"hesitation",verb:"hesitate",adj:"hesitant",adv:"hesitantly"}, syn:["pause","reluctance"], ant:["decisiveness","confidence"],
+    lv:"intermediate", tags:["emotion"] , pos:"n"},
+  { word:"anxiety", ph:"/æŋˈzaɪ.ə.ti/", en:"A feeling of worry or unease", cn:"焦虑；不安",
+    phrases:[
+      {phrase:"cause anxiety", sent:"The upcoming exam is causing anxiety among the students.", sentCn:"即将到来的考试让学生们感到焦虑。"},
+      {phrase:"reduce anxiety", sent:"Regular exercise can help reduce anxiety and stress.", sentCn:"定期锻炼有助于减轻焦虑和压力。"},
+      {phrase:"anxiety about", sent:"She couldn't hide her anxiety about the job interview.", sentCn:"她无法掩饰对工作面试的焦虑。"},
+    ],
+    ex:"I felt anxiety before the big exam.",
+    family:{noun:"anxiety",adj:"anxious",adv:"anxiously"}, syn:["worry","nervousness"], ant:["calmness","peace"],
+    lv:"advanced", tags:["psychology"] , pos:"n"},
+  { word:"immediately", ph:"/ɪˈmiː.di.ət.li/", en:"At once; without any delay", cn:"立刻；马上",
+    phrases:[
+      {phrase:"respond immediately", sent:"Please respond immediately if you receive this emergency alert.", sentCn:"如果收到此紧急警报，请立即回复。"},
+      {phrase:"leave immediately", sent:"The building was unsafe and everyone was told to leave immediately.", sentCn:"大楼不安全，所有人被要求立即离开。"},
+      {phrase:"immediately after", sent:"Immediately after the announcement, the crowd began to cheer.", sentCn:"宣布之后，人群立刻欢呼起来。"},
+    ],
+    ex:"Call me immediately if you need help.",
+    family:{noun:"immediacy",adj:"immediate",adv:"immediately"}, syn:["instantly","at once"], ant:["eventually","later"],
+    lv:"intermediate", tags:["time"] , pos:"adv"},
+  { word:"coincidence", ph:"/koʊˈɪn.sɪ.dəns/", en:"Events happening at the same time by chance", cn:"巧合",
+    phrases:[
+      {phrase:"pure coincidence", sent:"Meeting her at the airport was pure coincidence.", sentCn:"在机场遇见她纯属巧合。"},
+      {phrase:"by coincidence", sent:"By coincidence, they had booked the same hotel.", sentCn:"碰巧，他们预订了同一家酒店。"},
+      {phrase:"remarkable coincidence", sent:"It was a coincidence that we wore the same shirt.", sentCn:"我们穿了同一件衬衫，真是巧合。"},
+    ],
+    ex:"What a coincidence — we chose the same book!",
+    family:{noun:"coincidence",verb:"coincide",adj:"coincidental",adv:"coincidentally"}, syn:["chance","accident"], ant:["plan","design"],
+    lv:"advanced", tags:["abstract"] , pos:"n"},
+  { word:"familiar", ph:"/fəˈmɪl.jɚ/", en:"Well known from long association", cn:"熟悉的",
+    phrases:[
+      {phrase:"look familiar", sent:"That face looks familiar — have we met before?", sentCn:"那张脸看起来很熟悉——我们以前见过吗？"},
+      {phrase:"familiar with", sent:"You should become familiar with the safety procedures.", sentCn:"你应该熟悉安全规程。"},
+      {phrase:"familiar face", sent:"It was nice to see a familiar face at the new school.", sentCn:"在新学校看到熟悉的面孔真好。"},
+    ],
+    ex:"Her voice sounded very familiar to me.",
+    family:{noun:"familiarity",verb:"familiarize",adj:"familiar",adv:"familiarly"}, syn:["well-known","recognizable"], ant:["unfamiliar","strange"],
+    lv:"intermediate", tags:["quality"] , pos:"adj"},
+  { word:"gradually", ph:"/ˈɡrædʒ.u.ə.li/", en:"Slowly over time", cn:"逐渐地",
+    phrases:[
+      {phrase:"gradually increase", sent:"Temperatures will gradually increase over the next decade.", sentCn:"在未来十年里，气温将逐渐升高。"},
+      {phrase:"gradually improve", sent:"Her English has gradually improved since she started practicing daily.", sentCn:"自从她开始每天练习，她的英语逐渐提高了。"},
+      {phrase:"change gradually", sent:"The landscape changes gradually as you drive north.", sentCn:"向北行驶时，风景会逐渐发生变化。"},
+    ],
+    ex:"My English is gradually getting better.",
+    family:{noun:"gradualness",adj:"gradual",adv:"gradually"}, syn:["slowly","progressively"], ant:["suddenly","abruptly"],
+    lv:"intermediate", tags:["time"] , pos:"adv"},
+  { word:"criteria", ph:"/kraɪˈtɪr.i.ə/", en:"Standards by which something is judged", cn:"标准（复数）",
+    phrases:[
+      {phrase:"meet the criteria", sent:"Only applicants who meet the criteria will be considered.", sentCn:"只有符合标准的申请人才会被考虑。"},
+      {phrase:"selection criteria", sent:"The selection criteria include both grades and interview performance.", sentCn:"选拔标准既包括成绩，也包括面试表现。"},
+      {phrase:"strict criteria", sent:"The competition has very strict criteria for entry.", sentCn:"这项比赛的入选标准非常严格。"},
+    ],
+    ex:"Good grades are one criteria for joining the club.",
+    family:{noun:"criterion (singular) / criteria (plural)"}, syn:["standards","requirements"], ant:[],
+    lv:"advanced", tags:["academic"] , pos:"n"},
+  { word:"opponent", ph:"/əˈpoʊ.nənt/", en:"A person who competes against another", cn:"对手",
+    phrases:[
+      {phrase:"tough opponent", sent:"She knew her opponent would be tough to beat in the final.", sentCn:"她知道在决赛中击败对手将非常困难。"},
+      {phrase:"face an opponent", sent:"In chess, you must study how to face an opponent's strategy.", sentCn:"在国际象棋中，你必须学会如何应对对手的策略。"},
+      {phrase:"political opponent", sent:"The candidate criticized her political opponent's record.", sentCn:"这位候选人批评了她政治对手的履历。"},
+    ],
+    ex:"My opponent in the chess match was very skilled.",
+    family:{noun:"opponent/opposition",verb:"oppose",adj:"opposing/opposite"}, syn:["rival","adversary"], ant:["ally","partner"],
+    lv:"intermediate", tags:["competition"] , pos:"n"},
+  { word:"qualification", ph:"/ˌkwɑː.lɪ.fɪˈkeɪ.ʃən/", en:"An official record of achievement", cn:"资格；资质",
+    phrases:[
+      {phrase:"professional qualification", sent:"A teaching qualification helps you get a job.", sentCn:"教师资格证有助于你找到工作。"},
+      {phrase:"academic qualification", sent:"The job requires a qualification in science.", sentCn:"这份工作需要理科资格证书。"},
+      {phrase:"gain a qualification", sent:"She worked hard to gain a qualification in nursing.", sentCn:"她努力学习，取得了护理资格证书。"},
+    ],
+    ex:"A university degree is a useful qualification.",
+    family:{noun:"qualification",verb:"qualify",adj:"qualified/qualifying"}, syn:["credential","certification"], ant:["disqualification"],
+    lv:"advanced", tags:["academic"] , pos:"n"},
+  { word:"unconscious", ph:"/ʌnˈkɑːn.ʃəs/", en:"Not awake; not aware of surroundings", cn:"失去知觉的",
+    phrases:[
+      {phrase:"knocked unconscious", sent:"The boxer was knocked unconscious in the third round.", sentCn:"拳击手在第三回合被击晕。"},
+      {phrase:"fall unconscious", sent:"She fell unconscious due to the extreme heat.", sentCn:"她因极度炎热而昏倒。"},
+      {phrase:"remain unconscious", sent:"The patient remained unconscious for several hours after surgery.", sentCn:"手术后，患者昏迷了好几个小时。"},
+    ],
+    ex:"The player fell unconscious after hitting his head.",
+    family:{noun:"unconsciousness",adj:"unconscious/conscious",adv:"unconsciously"}, syn:["unaware","senseless"], ant:["conscious","awake"],
+    lv:"advanced", tags:["health"] , pos:"n"},
+  { word:"thrilled", ph:"/θrɪld/", en:"Extremely pleased and excited", cn:"非常兴奋的",
+    phrases:[
+      {phrase:"absolutely thrilled", sent:"We were absolutely thrilled to hear about your promotion.", sentCn:"听到你升职的消息，我们非常激动。"},
+      {phrase:"thrilled to meet", sent:"I'm thrilled to meet you — I've read all your books.", sentCn:"很高兴认识你——我读过你所有的书。"},
+      {phrase:"thrilled with", sent:"The students were thrilled with their exam results.", sentCn:"学生们对考试成绩感到非常兴奋。"},
+    ],
+    ex:"I was thrilled when I got the top score.",
+    family:{noun:"thrill",verb:"thrill",adj:"thrilled/thrilling"}, syn:["delighted","overjoyed"], ant:["disappointed","dismayed"],
+    lv:"intermediate", tags:["emotion"] , pos:"n"},
+  { word:"ashamed", ph:"/əˈʃeɪmd/", en:"Feeling embarrassed or guilty", cn:"羞愧的",
+    phrases:[
+      {phrase:"deeply ashamed", sent:"He was deeply ashamed of how he had treated his friend.", sentCn:"他对自己对待朋友的方式感到深深羞愧。"},
+      {phrase:"feel ashamed", sent:"You should never feel ashamed of asking questions.", sentCn:"你不应该因为提问而感到羞耻。"},
+      {phrase:"ashamed to admit", sent:"She was ashamed to admit that she had made such a careless mistake.", sentCn:"她羞于承认自己犯了这样一个粗心的错误。"},
+    ],
+    ex:"She felt ashamed after lying to her friend.",
+    family:{noun:"shame",verb:"shame",adj:"ashamed/shameful",adv:"shamefully"}, syn:["embarrassed","guilty"], ant:["proud","unashamed"],
+    lv:"intermediate", tags:["emotion"] , pos:"adj"},
+
+  // ══ 高考完型填空词汇 (58 words) ══
+  { word:"science", ph:"/ˈsaɪ.əns/", en:"The study of the natural world", cn:"科学",
+    phrases:[
+      {phrase:"science class", sent:"I love science class at school.", sentCn:"我喜欢学校的科学课。"},
+      {phrase:"science project", sent:"Our science project won first prize.", sentCn:"我们的科学项目获得了一等奖。"},
+      {phrase:"science and technology", sent:"Science and technology change our lives.", sentCn:"科学技术改变了我们的生活。"}
+    ],
+    ex:"Science helps us understand the world.", family:{noun:"science/scientist",adj:"scientific",adv:"scientifically"}, syn:["study","research"], ant:[], lv:"basic", tags:["education"], pos:"n"},
+
+  { word:"climate", ph:"/ˈklaɪ.mɪt/", en:"The typical weather in an area", cn:"气候",
+    phrases:[
+      {phrase:"climate change", sent:"Climate change is a serious global problem.", sentCn:"气候变化是一个严重的全球性问题。"},
+      {phrase:"warm climate", sent:"Plants grow well in a warm climate.", sentCn:"植物在温暖的气候中生长良好。"},
+      {phrase:"climate research", sent:"Scientists do climate research every year.", sentCn:"科学家每年都进行气候研究。"}
+    ],
+    ex:"The climate here is warm and sunny.", family:{noun:"climate",adj:"climatic"}, syn:["weather","environment"], ant:[], lv:"intermediate", tags:["environment","science"], pos:"n"},
+
+  { word:"fail", ph:"/feɪl/", en:"To not succeed at something", cn:"失败；不及格",
+    phrases:[
+      {phrase:"fail an exam", sent:"I studied hard so I would not fail the exam.", sentCn:"我努力学习，这样就不会考试不及格了。"},
+      {phrase:"fail to do", sent:"He failed to finish his homework on time.", sentCn:"他没能按时完成作业。"},
+      {phrase:"fail again", sent:"Don't give up even if you fail again.", sentCn:"即使再次失败也不要放弃。"}
+    ],
+    ex:"If you try your best, you will not fail.", family:{noun:"failure",verb:"fail",adj:"failed"}, syn:["lose","miss"], ant:["succeed","pass"], lv:"basic", tags:["education"], verbForms:{past:"failed",pp:"failed",ing:"failing",s:"fails"}, pos:"v"},
+
+  { word:"realize", ph:"/ˈriː.ə.laɪz/", en:"To become aware of something", cn:"意识到；认识到",
+    phrases:[
+      {phrase:"realize a mistake", sent:"I realized my mistake and said sorry.", sentCn:"我意识到自己的错误，然后道歉了。"},
+      {phrase:"suddenly realize", sent:"She suddenly realized she had the wrong book.", sentCn:"她突然意识到自己拿错了书。"},
+      {phrase:"realize a dream", sent:"He worked hard to realize his dream.", sentCn:"他努力工作以实现自己的梦想。"}
+    ],
+    ex:"I realized I had forgotten my bag at home.", family:{noun:"realization",verb:"realize"}, syn:["understand","discover"], ant:[], lv:"intermediate", tags:["thinking"], verbForms:{past:"realized",pp:"realized",ing:"realizing",s:"realizes"}, pos:"v"},
+
+  { word:"explain", ph:"/ɪkˈspleɪn/", en:"To make something clear to someone", cn:"解释；说明",
+    phrases:[
+      {phrase:"explain clearly", sent:"Please explain the rules clearly to us.", sentCn:"请向我们清楚地解释规则。"},
+      {phrase:"explain why", sent:"Can you explain why you were late?", sentCn:"你能解释一下为什么迟到吗？"},
+      {phrase:"explain a problem", sent:"The teacher explained the problem step by step.", sentCn:"老师一步一步地讲解了这道题。"}
+    ],
+    ex:"She explained the answer in a simple way.", family:{noun:"explanation",verb:"explain",adj:"explanatory"}, syn:["describe","clarify"], ant:[], lv:"basic", tags:["communication"], verbForms:{past:"explained",pp:"explained",ing:"explaining",s:"explains"}, pos:"v"},
+
+  { word:"information", ph:"/ˌɪn.fəˈmeɪ.ʃən/", en:"Facts or knowledge about something", cn:"信息；资料",
+    phrases:[
+      {phrase:"useful information", sent:"The book contains a lot of useful information.", sentCn:"这本书包含了大量有用的信息。"},
+      {phrase:"share information", sent:"We can share information online easily.", sentCn:"我们可以轻松地在网上分享信息。"},
+      {phrase:"look for information", sent:"I looked for information in the library.", sentCn:"我在图书馆查找了资料。"}
+    ],
+    ex:"He gave me useful information about the exam.", family:{noun:"information",verb:"inform",adj:"informative"}, syn:["data","knowledge"], ant:[], lv:"basic", tags:["communication"], pos:"n"},
+
+  { word:"correct", ph:"/kəˈrekt/", en:"Right; without mistakes", cn:"正确的；纠正",
+    phrases:[
+      {phrase:"correct answer", sent:"She gave the correct answer every time.", sentCn:"她每次都给出了正确答案。"},
+      {phrase:"correct a mistake", sent:"Please correct any mistakes in your work.", sentCn:"请纠正作业中的任何错误。"},
+      {phrase:"correct way", sent:"This is the correct way to hold a pen.", sentCn:"这是握笔的正确方式。"}
+    ],
+    ex:"Check your work to make sure it is correct.", family:{noun:"correction",verb:"correct",adj:"correct",adv:"correctly"}, syn:["right","accurate"], ant:["wrong","incorrect"], lv:"basic", tags:["education"], verbForms:{past:"corrected",pp:"corrected",ing:"correcting",s:"corrects"}, pos:"adj"},
+
+  { word:"expect", ph:"/ɪkˈspekt/", en:"To think something will happen", cn:"期待；预期",
+    phrases:[
+      {phrase:"expect a result", sent:"We expected good results from the exam.", sentCn:"我们期待考试取得好成绩。"},
+      {phrase:"as expected", sent:"As expected, she passed the test easily.", sentCn:"不出所料，她轻松通过了考试。"},
+      {phrase:"expect too much", sent:"Don't expect too much from others.", sentCn:"不要对别人期望太多。"}
+    ],
+    ex:"I expect you to finish the work by Friday.", family:{noun:"expectation",verb:"expect",adj:"expected"}, syn:["anticipate","hope"], ant:["doubt"], lv:"intermediate", tags:["thinking"], verbForms:{past:"expected",pp:"expected",ing:"expecting",s:"expects"}, pos:"v"},
+
+  { word:"believe", ph:"/bɪˈliːv/", en:"To think something is true", cn:"相信；认为",
+    phrases:[
+      {phrase:"believe in yourself", sent:"Always believe in yourself and your dreams.", sentCn:"永远相信自己和自己的梦想。"},
+      {phrase:"hard to believe", sent:"It is hard to believe how fast she ran.", sentCn:"很难相信她跑得那么快。"},
+      {phrase:"believe a story", sent:"I did not believe his story at all.", sentCn:"我一点都不相信他的说法。"}
+    ],
+    ex:"I believe you can do it if you try.", family:{noun:"belief",verb:"believe",adj:"believable"}, syn:["trust","think"], ant:["doubt","disbelieve"], lv:"basic", tags:["thinking"], verbForms:{past:"believed",pp:"believed",ing:"believing",s:"believes"}, pos:"v"},
+
+  { word:"doubt", ph:"/daʊt/", en:"A feeling of uncertainty", cn:"怀疑；不确定",
+    phrases:[
+      {phrase:"have doubt", sent:"I have no doubt that she will succeed.", sentCn:"我毫不怀疑她会成功。"},
+      {phrase:"without doubt", sent:"Without doubt, this is the best meal I've had.", sentCn:"毫无疑问，这是我吃过的最好的一餐。"},
+      {phrase:"express doubt", sent:"He expressed doubt about the plan.", sentCn:"他对这个计划表示怀疑。"}
+    ],
+    ex:"I had some doubt about the right answer.", family:{noun:"doubt",verb:"doubt",adj:"doubtful",adv:"doubtfully"}, syn:["uncertainty","suspicion"], ant:["certainty","trust"], lv:"intermediate", tags:["thinking"], verbForms:{past:"doubted",pp:"doubted",ing:"doubting",s:"doubts"}, pos:"n"},
+
+  { word:"habit", ph:"/ˈhæb.ɪt/", en:"Something you do regularly", cn:"习惯",
+    phrases:[
+      {phrase:"good habit", sent:"Reading every day is a good habit.", sentCn:"每天阅读是一个好习惯。"},
+      {phrase:"bad habit", sent:"Staying up late is a bad habit.", sentCn:"熬夜是一个坏习惯。"},
+      {phrase:"form a habit", sent:"It takes time to form a new habit.", sentCn:"养成新习惯需要时间。"}
+    ],
+    ex:"I have a habit of drinking tea in the morning.", family:{noun:"habit",adj:"habitual",adv:"habitually"}, syn:["routine","custom"], ant:[], lv:"basic", tags:["lifestyle"], pos:"n"},
+
+  { word:"ability", ph:"/əˈbɪl.ɪ.ti/", en:"The power or skill to do something", cn:"能力；才能",
+    phrases:[
+      {phrase:"natural ability", sent:"She has a natural ability for music.", sentCn:"她有天生的音乐才能。"},
+      {phrase:"reading ability", sent:"His reading ability improved a lot this year.", sentCn:"他今年的阅读能力提高了很多。"},
+      {phrase:"show ability", sent:"Sports help children show their abilities.", sentCn:"运动帮助孩子们展示自己的能力。"}
+    ],
+    ex:"He has the ability to learn languages quickly.", family:{noun:"ability",adj:"able",adv:"ably"}, syn:["skill","talent"], ant:["inability"], lv:"intermediate", tags:["education"], pos:"n"},
+
+  { word:"special", ph:"/ˈspeʃ.əl/", en:"Different from the usual; unique", cn:"特别的；特殊的",
+    phrases:[
+      {phrase:"special day", sent:"My birthday is a very special day for me.", sentCn:"我的生日对我来说是非常特别的一天。"},
+      {phrase:"special offer", sent:"The shop has a special offer this weekend.", sentCn:"这家商店本周末有特价优惠。"},
+      {phrase:"feel special", sent:"She made everyone feel special and valued.", sentCn:"她让每个人都感到特别和受重视。"}
+    ],
+    ex:"Today is a special day for our family.", family:{noun:"specialty",adj:"special",adv:"specially"}, syn:["unique","particular"], ant:["ordinary","common"], lv:"basic", tags:["description"], pos:"adj"},
+
+  { word:"support", ph:"/səˈpɔːrt/", en:"To help or encourage someone", cn:"支持；帮助",
+    phrases:[
+      {phrase:"emotional support", sent:"Friends give us emotional support when we are sad.", sentCn:"朋友在我们难过时给予情感上的支持。"},
+      {phrase:"support a team", sent:"I support my school team at every game.", sentCn:"我在每场比赛中都支持我们的学校队。"},
+      {phrase:"family support", sent:"Family support is very important for students.", sentCn:"家庭支持对学生来说非常重要。"}
+    ],
+    ex:"My parents always support me in everything I do.", family:{noun:"support",verb:"support",adj:"supportive"}, syn:["help","encourage"], ant:["oppose"], lv:"basic", tags:["relationships"], verbForms:{past:"supported",pp:"supported",ing:"supporting",s:"supports"}, pos:"v"},
+
+  { word:"discussion", ph:"/dɪˈskʌʃ.ən/", en:"A talk about a topic with others", cn:"讨论；谈论",
+    phrases:[
+      {phrase:"class discussion", sent:"We had an interesting class discussion today.", sentCn:"我们今天进行了一次有趣的课堂讨论。"},
+      {phrase:"group discussion", sent:"Group discussion helps us share ideas.", sentCn:"小组讨论帮助我们分享想法。"},
+      {phrase:"open discussion", sent:"The teacher encouraged open discussion on the topic.", sentCn:"老师鼓励对这个话题进行开放式讨论。"}
+    ],
+    ex:"After the discussion, we all agreed on the answer.", family:{noun:"discussion",verb:"discuss"}, syn:["conversation","debate"], ant:[], lv:"intermediate", tags:["communication","education"], pos:"n"},
+
+  { word:"final", ph:"/ˈfaɪ.nəl/", en:"Last; coming at the end", cn:"最终的；最后的",
+    phrases:[
+      {phrase:"final exam", sent:"The final exam is in two weeks.", sentCn:"期末考试在两周后。"},
+      {phrase:"final answer", sent:"Think carefully before giving your final answer.", sentCn:"给出最终答案前要仔细思考。"},
+      {phrase:"final decision", sent:"The teacher made the final decision.", sentCn:"老师做出了最终决定。"}
+    ],
+    ex:"This is our final chance to win the match.", family:{noun:"final/finale",adj:"final",adv:"finally"}, syn:["last","ultimate"], ant:["first","initial"], lv:"basic", tags:["time"], pos:"adj"},
+
+  { word:"score", ph:"/skɔːr/", en:"The number of points in a game or test", cn:"分数；得分",
+    phrases:[
+      {phrase:"high score", sent:"She got the highest score in the class.", sentCn:"她得到了全班最高分。"},
+      {phrase:"exam score", sent:"My exam score improved after extra study.", sentCn:"经过额外学习后，我的考试成绩提高了。"},
+      {phrase:"score a goal", sent:"He scored a goal in the last minute.", sentCn:"他在最后一分钟打进了一球。"}
+    ],
+    ex:"I was happy with my score on the test.", family:{noun:"score",verb:"score"}, syn:["mark","grade"], ant:[], lv:"basic", tags:["education","sports"], pos:"n"},
+
+  { word:"complete", ph:"/kəmˈpliːt/", en:"To finish something fully", cn:"完成；完整的",
+    phrases:[
+      {phrase:"complete a task", sent:"We need to complete the task by tomorrow.", sentCn:"我们需要在明天之前完成这项任务。"},
+      {phrase:"complete information", sent:"Please give complete information in your answer.", sentCn:"请在答案中提供完整的信息。"},
+      {phrase:"complete a course", sent:"She completed the English course in one month.", sentCn:"她在一个月内完成了英语课程。"}
+    ],
+    ex:"I need to complete my homework before dinner.", family:{noun:"completion",verb:"complete",adj:"complete",adv:"completely"}, syn:["finish","accomplish"], ant:["incomplete","start"], lv:"basic", tags:["education"], verbForms:{past:"completed",pp:"completed",ing:"completing",s:"completes"}, pos:"v"},
+
+  { word:"normal", ph:"/ˈnɔːr.məl/", en:"Usual; what is expected", cn:"正常的；普通的",
+    phrases:[
+      {phrase:"normal life", sent:"He wants to live a normal life after school.", sentCn:"他希望毕业后过正常的生活。"},
+      {phrase:"back to normal", sent:"Things went back to normal after the holiday.", sentCn:"假期结束后一切恢复正常了。"},
+      {phrase:"normal temperature", sent:"A normal body temperature is 37 degrees.", sentCn:"正常的体温是37摄氏度。"}
+    ],
+    ex:"It is normal to feel nervous before a big test.", family:{noun:"norm",adj:"normal",adv:"normally"}, syn:["usual","ordinary"], ant:["abnormal","unusual"], lv:"basic", tags:["description"], pos:"adj"},
+
+  { word:"serious", ph:"/ˈsɪər.i.əs/", en:"Important and needing attention", cn:"严重的；认真的",
+    phrases:[
+      {phrase:"serious problem", sent:"Pollution is a serious problem in many cities.", sentCn:"污染是许多城市的严重问题。"},
+      {phrase:"serious student", sent:"She is a serious student who works very hard.", sentCn:"她是一个非常努力的认真学生。"},
+      {phrase:"look serious", sent:"His face looked very serious during the speech.", sentCn:"他在演讲时脸色非常严肃。"}
+    ],
+    ex:"Please take this warning seriously — it is serious.", family:{noun:"seriousness",adj:"serious",adv:"seriously"}, syn:["important","severe"], ant:["trivial","unimportant"], lv:"intermediate", tags:["description"], pos:"adj"},
+
+  { word:"silence", ph:"/ˈsaɪ.ləns/", en:"When there is no sound", cn:"沉默；寂静",
+    phrases:[
+      {phrase:"moment of silence", sent:"There was a moment of silence in the room.", sentCn:"房间里出现了片刻的沉默。"},
+      {phrase:"in silence", sent:"The students worked in silence during the test.", sentCn:"学生们在考试期间默默地答题。"},
+      {phrase:"break the silence", sent:"He broke the silence with a quiet cough.", sentCn:"他用轻轻的咳嗽打破了沉默。"}
+    ],
+    ex:"The library was full of silence.", family:{noun:"silence",verb:"silence",adj:"silent",adv:"silently"}, syn:["quiet","stillness"], ant:["noise","sound"], lv:"intermediate", tags:["description"], pos:"n"},
+
+  { word:"moment", ph:"/ˈmoʊ.mənt/", en:"A very short period of time", cn:"片刻；瞬间",
+    phrases:[
+      {phrase:"at the moment", sent:"I am busy at the moment, can you wait?", sentCn:"我现在很忙，你能等一下吗？"},
+      {phrase:"special moment", sent:"Graduation is a special moment in life.", sentCn:"毕业是人生中一个特别的时刻。"},
+      {phrase:"wait a moment", sent:"Please wait a moment while I find the answer.", sentCn:"请稍等一下，我来找答案。"}
+    ],
+    ex:"That was the best moment of my life.", family:{noun:"moment",adj:"momentary",adv:"momentarily"}, syn:["instant","second"], ant:[], lv:"basic", tags:["time"], pos:"n"},
+
+  { word:"goal", ph:"/ɡoʊl/", en:"Something you want to achieve", cn:"目标；目的",
+    phrases:[
+      {phrase:"set a goal", sent:"Set a goal and work hard to reach it.", sentCn:"设定一个目标，然后努力去实现它。"},
+      {phrase:"reach a goal", sent:"She reached her goal of learning 1000 words.", sentCn:"她实现了学会1000个单词的目标。"},
+      {phrase:"long-term goal", sent:"My long-term goal is to become a doctor.", sentCn:"我的长期目标是成为一名医生。"}
+    ],
+    ex:"My goal is to get a good grade this semester.", family:{noun:"goal"}, syn:["aim","target"], ant:[], lv:"basic", tags:["motivation"], pos:"n"},
+
+  { word:"compare", ph:"/kəmˈper/", en:"To look at differences and similarities", cn:"比较；对比",
+    phrases:[
+      {phrase:"compare prices", sent:"Always compare prices before you buy something.", sentCn:"买东西之前一定要比较价格。"},
+      {phrase:"compare with", sent:"Compare your answer with your partner's answer.", sentCn:"把你的答案和你伙伴的答案比较一下。"},
+      {phrase:"compare results", sent:"We compared our test results with last year.", sentCn:"我们把今年的考试成绩与去年进行了比较。"}
+    ],
+    ex:"Compare the two pictures and find the differences.", family:{noun:"comparison",verb:"compare",adj:"comparable"}, syn:["contrast","measure"], ant:[], lv:"intermediate", tags:["thinking"], verbForms:{past:"compared",pp:"compared",ing:"comparing",s:"compares"}, pos:"v"},
+
+  { word:"bravely", ph:"/ˈbreɪv.li/", en:"In a way that shows courage", cn:"勇敢地",
+    phrases:[
+      {phrase:"act bravely", sent:"The firefighter acted bravely to save the child.", sentCn:"消防员勇敢地救出了那个孩子。"},
+      {phrase:"speak bravely", sent:"She spoke bravely in front of the whole school.", sentCn:"她在全校面前勇敢地发言。"},
+      {phrase:"face bravely", sent:"He faced his fears bravely every day.", sentCn:"他每天都勇敢地面对自己的恐惧。"}
+    ],
+    ex:"She bravely stood up and gave her speech.", family:{noun:"bravery",adj:"brave",adv:"bravely"}, syn:["courageously","boldly"], ant:["fearfully","cowardly"], lv:"intermediate", tags:["character"], pos:"adv"},
+
+  { word:"refuse", ph:"/rɪˈfjuːz/", en:"To say no to something", cn:"拒绝",
+    phrases:[
+      {phrase:"refuse to help", sent:"He refused to help because he was busy.", sentCn:"他因为太忙而拒绝帮忙。"},
+      {phrase:"refuse an offer", sent:"She refused the offer politely.", sentCn:"她礼貌地拒绝了那个提议。"},
+      {phrase:"politely refuse", sent:"You can politely refuse things you don't want.", sentCn:"你可以礼貌地拒绝你不想要的事情。"}
+    ],
+    ex:"I refused to cheat even though it was hard.", family:{noun:"refusal",verb:"refuse"}, syn:["decline","reject"], ant:["accept","agree"], lv:"intermediate", tags:["behavior"], verbForms:{past:"refused",pp:"refused",ing:"refusing",s:"refuses"}, pos:"v"},
+
+  { word:"praise", ph:"/preɪz/", en:"To say good things about someone", cn:"表扬；赞美",
+    phrases:[
+      {phrase:"receive praise", sent:"She received praise for her excellent work.", sentCn:"她因出色的工作而受到表扬。"},
+      {phrase:"praise a student", sent:"The teacher praised the student in front of the class.", sentCn:"老师在全班同学面前表扬了那名学生。"},
+      {phrase:"deserve praise", sent:"They worked so hard and deserve praise.", sentCn:"他们工作非常努力，值得表扬。"}
+    ],
+    ex:"My teacher praised me for my good essay.", family:{noun:"praise",verb:"praise",adj:"praiseworthy"}, syn:["compliment","admire"], ant:["criticize","blame"], lv:"intermediate", tags:["communication"], verbForms:{past:"praised",pp:"praised",ing:"praising",s:"praises"}, pos:"v"},
+
+  { word:"exact", ph:"/ɪɡˈzækt/", en:"Completely correct; precise", cn:"确切的；精确的",
+    phrases:[
+      {phrase:"exact time", sent:"Tell me the exact time the train leaves.", sentCn:"告诉我火车离开的确切时间。"},
+      {phrase:"exact answer", sent:"I need the exact answer, not an estimate.", sentCn:"我需要确切答案，而不是估计值。"},
+      {phrase:"exact same", sent:"We made the exact same mistake.", sentCn:"我们犯了完全一样的错误。"}
+    ],
+    ex:"I cannot remember the exact date of the test.", family:{noun:"exactness",adj:"exact",adv:"exactly"}, syn:["precise","accurate"], ant:["approximate","rough"], lv:"intermediate", tags:["description"], pos:"adj"},
+
+  { word:"modern", ph:"/ˈmɑː.dɚn/", en:"Relating to the present time", cn:"现代的；现代化的",
+    phrases:[
+      {phrase:"modern technology", sent:"Modern technology makes life much easier.", sentCn:"现代技术使生活更加便利。"},
+      {phrase:"modern city", sent:"Shanghai is a very modern and busy city.", sentCn:"上海是一个非常现代化的繁华城市。"},
+      {phrase:"modern style", sent:"She likes modern style clothes.", sentCn:"她喜欢现代风格的衣服。"}
+    ],
+    ex:"We use modern tools to communicate every day.", family:{noun:"modernity",adj:"modern",adv:"modernly"}, syn:["contemporary","current"], ant:["ancient","old-fashioned"], lv:"basic", tags:["society"], pos:"adj"},
+
+  { word:"polite", ph:"/pəˈlaɪt/", en:"Having good manners; respectful", cn:"礼貌的；有礼貌的",
+    phrases:[
+      {phrase:"be polite", sent:"Always be polite when talking to adults.", sentCn:"和大人说话时要始终保持礼貌。"},
+      {phrase:"polite reply", sent:"She gave a polite reply to the rude question.", sentCn:"她对那个无礼的问题给出了礼貌的回答。"},
+      {phrase:"polite behavior", sent:"Good manners and polite behavior are important.", sentCn:"良好的举止和礼貌的行为非常重要。"}
+    ],
+    ex:"It is polite to say thank you when someone helps you.", family:{noun:"politeness",adj:"polite",adv:"politely"}, syn:["courteous","respectful"], ant:["rude","impolite"], lv:"basic", tags:["character","behavior"], pos:"adj"},
+
+  { word:"describe", ph:"/dɪˈskraɪb/", en:"To say what something is like", cn:"描述；描写",
+    phrases:[
+      {phrase:"describe a person", sent:"Can you describe the person you saw?", sentCn:"你能描述一下你看到的那个人吗？"},
+      {phrase:"describe in detail", sent:"Please describe the event in detail.", sentCn:"请详细描述那件事。"},
+      {phrase:"difficult to describe", sent:"The feeling was difficult to describe.", sentCn:"那种感觉很难描述。"}
+    ],
+    ex:"Describe your school to someone who has never seen it.", family:{noun:"description",verb:"describe",adj:"descriptive"}, syn:["explain","portray"], ant:[], lv:"basic", tags:["communication"], verbForms:{past:"described",pp:"described",ing:"describing",s:"describes"}, pos:"v"},
+
+  { word:"collect", ph:"/kəˈlekt/", en:"To gather things together", cn:"收集；采集",
+    phrases:[
+      {phrase:"collect information", sent:"We collected information for our science project.", sentCn:"我们为科学项目收集了信息。"},
+      {phrase:"collect stamps", sent:"My grandfather likes to collect stamps.", sentCn:"我爷爷喜欢收集邮票。"},
+      {phrase:"collect data", sent:"Scientists collect data to study climate change.", sentCn:"科学家收集数据来研究气候变化。"}
+    ],
+    ex:"I collect books about history and science.", family:{noun:"collection/collector",verb:"collect",adj:"collective"}, syn:["gather","accumulate"], ant:["scatter","distribute"], lv:"basic", tags:["behavior"], verbForms:{past:"collected",pp:"collected",ing:"collecting",s:"collects"}, pos:"v"},
+
+  { word:"experience", ph:"/ɪkˈspɪr.i.əns/", en:"Something that happens to you", cn:"经历；经验",
+    phrases:[
+      {phrase:"learning experience", sent:"Every mistake is a learning experience.", sentCn:"每一个错误都是一次学习的经历。"},
+      {phrase:"personal experience", sent:"She spoke from personal experience.", sentCn:"她根据个人经历发言。"},
+      {phrase:"work experience", sent:"Work experience helps you find a good job.", sentCn:"工作经验有助于找到好工作。"}
+    ],
+    ex:"Travelling abroad was an amazing experience for me.", family:{noun:"experience",verb:"experience",adj:"experienced"}, syn:["event","encounter"], ant:[], lv:"intermediate", tags:["life"], pos:"n"},
+
+  { word:"introduction", ph:"/ˌɪn.trəˈdʌk.ʃən/", en:"A first meeting or explanation", cn:"介绍；引言",
+    phrases:[
+      {phrase:"make an introduction", sent:"She made a brief introduction before her speech.", sentCn:"她在演讲前做了简短的介绍。"},
+      {phrase:"letter of introduction", sent:"He wrote a letter of introduction for the new student.", sentCn:"他为新生写了一封介绍信。"},
+      {phrase:"self-introduction", sent:"We did a self-introduction on the first day.", sentCn:"我们在第一天做了自我介绍。"}
+    ],
+    ex:"The teacher gave a short introduction at the start of class.", family:{noun:"introduction",verb:"introduce",adj:"introductory"}, syn:["opening","presentation"], ant:["conclusion"], lv:"intermediate", tags:["communication","education"], pos:"n"},
+
+  { word:"progress", ph:"/ˈprɑː.ɡres/", en:"Moving forward or improving", cn:"进步；进展",
+    phrases:[
+      {phrase:"make progress", sent:"You are making great progress in English.", sentCn:"你在英语方面取得了很大进步。"},
+      {phrase:"slow progress", sent:"The project is making slow progress.", sentCn:"这个项目进展缓慢。"},
+      {phrase:"track progress", sent:"We track our progress with weekly tests.", sentCn:"我们通过每周测验追踪学习进度。"}
+    ],
+    ex:"My English is improving and I can see good progress.", family:{noun:"progress",verb:"progress",adj:"progressive"}, syn:["improvement","advance"], ant:["decline","setback"], lv:"intermediate", tags:["education","motivation"], pos:"n"},
+
+  { word:"active", ph:"/ˈæk.tɪv/", en:"Busy; doing lots of things", cn:"积极的；活跃的",
+    phrases:[
+      {phrase:"active student", sent:"She is an active student in every class.", sentCn:"她在每节课上都是积极的学生。"},
+      {phrase:"stay active", sent:"Exercise helps you stay active and healthy.", sentCn:"锻炼帮助你保持活跃和健康。"},
+      {phrase:"active role", sent:"He played an active role in the school play.", sentCn:"他在学校话剧中扮演了重要角色。"}
+    ],
+    ex:"Being active in class helps you learn faster.", family:{noun:"activity",adj:"active",adv:"actively"}, syn:["energetic","lively"], ant:["inactive","lazy"], lv:"basic", tags:["character","lifestyle"], pos:"adj"},
+
+  { word:"silent", ph:"/ˈsaɪ.lənt/", en:"Making no sound; quiet", cn:"沉默的；无声的",
+    phrases:[
+      {phrase:"remain silent", sent:"He remained silent during the whole meeting.", sentCn:"他在整个会议期间保持沉默。"},
+      {phrase:"silent reading", sent:"We do silent reading for 20 minutes every day.", sentCn:"我们每天默读20分钟。"},
+      {phrase:"fall silent", sent:"The class fell silent when the teacher arrived.", sentCn:"老师到来时，班级安静下来。"}
+    ],
+    ex:"The room was silent — everyone was thinking.", family:{noun:"silence",adj:"silent",adv:"silently"}, syn:["quiet","still"], ant:["loud","noisy"], lv:"basic", tags:["description"], pos:"adj"},
+
+  { word:"decision", ph:"/dɪˈsɪʒ.ən/", en:"A choice you make after thinking", cn:"决定；决策",
+    phrases:[
+      {phrase:"make a decision", sent:"I need time to make an important decision.", sentCn:"我需要时间来做一个重要的决定。"},
+      {phrase:"difficult decision", sent:"Choosing a career is a difficult decision.", sentCn:"选择职业是一个艰难的决定。"},
+      {phrase:"final decision", sent:"The final decision belongs to you.", sentCn:"最终决定权在你自己。"}
+    ],
+    ex:"Studying hard was the best decision I ever made.", family:{noun:"decision",verb:"decide",adj:"decisive"}, syn:["choice","conclusion"], ant:[], lv:"intermediate", tags:["thinking","life"], pos:"n"},
+
+  { word:"risk", ph:"/rɪsk/", en:"The chance of something bad happening", cn:"风险；危险",
+    phrases:[
+      {phrase:"take a risk", sent:"Sometimes you have to take a risk to succeed.", sentCn:"有时候你必须冒险才能成功。"},
+      {phrase:"health risk", sent:"Smoking is a serious health risk.", sentCn:"吸烟是严重的健康风险。"},
+      {phrase:"at risk", sent:"Wild animals are at risk because of pollution.", sentCn:"野生动物因污染而面临风险。"}
+    ],
+    ex:"Crossing the road without looking is a big risk.", family:{noun:"risk",verb:"risk",adj:"risky"}, syn:["danger","chance"], ant:["safety","security"], lv:"intermediate", tags:["life"], pos:"n"},
+
+  { word:"promise", ph:"/ˈprɑː.mɪs/", en:"To say you will definitely do something", cn:"承诺；保证",
+    phrases:[
+      {phrase:"keep a promise", sent:"Always keep your promises to others.", sentCn:"要始终信守对他人的承诺。"},
+      {phrase:"make a promise", sent:"She made a promise to study harder.", sentCn:"她承诺会更加努力学习。"},
+      {phrase:"break a promise", sent:"Breaking a promise hurts people's feelings.", sentCn:"违背承诺会伤害别人的感情。"}
+    ],
+    ex:"I promise I will return the book tomorrow.", family:{noun:"promise",verb:"promise",adj:"promising"}, syn:["pledge","guarantee"], ant:["break","lie"], lv:"basic", tags:["character","relationships"], pos:"v"},
+
+  { word:"report", ph:"/rɪˈpɔːrt/", en:"To give information about something", cn:"报告；汇报",
+    phrases:[
+      {phrase:"write a report", sent:"We had to write a report about the book.", sentCn:"我们必须写一份关于这本书的报告。"},
+      {phrase:"news report", sent:"The news report said it would rain tomorrow.", sentCn:"新闻报道说明天会下雨。"},
+      {phrase:"report a problem", sent:"Please report any problems to the teacher.", sentCn:"请向老师报告任何问题。"}
+    ],
+    ex:"The teacher asked for a report on our project.", family:{noun:"report",verb:"report",adj:"reported"}, syn:["account","describe"], ant:[], lv:"basic", tags:["communication","education"], pos:"v"},
+
+  { word:"encouragement", ph:"/ɪnˈkɜːr.ɪdʒ.mənt/", en:"Words or actions that give confidence", cn:"鼓励；激励",
+    phrases:[
+      {phrase:"words of encouragement", sent:"Her words of encouragement helped me a lot.", sentCn:"她鼓励的话语对我帮助很大。"},
+      {phrase:"give encouragement", sent:"Good teachers give encouragement to all students.", sentCn:"好老师会鼓励所有学生。"},
+      {phrase:"need encouragement", sent:"Everyone needs encouragement sometimes.", sentCn:"每个人有时候都需要鼓励。"}
+    ],
+    ex:"My parents' encouragement helped me pass the exam.", family:{noun:"encouragement",verb:"encourage",adj:"encouraging"}, syn:["support","motivation"], ant:["discouragement"], lv:"intermediate", tags:["relationships","education"], pos:"n"},
+
+  { word:"instruction", ph:"/ɪnˈstrʌk.ʃən/", en:"Directions telling you what to do", cn:"说明；指导",
+    phrases:[
+      {phrase:"follow instructions", sent:"Read and follow the instructions carefully.", sentCn:"仔细阅读并遵循说明。"},
+      {phrase:"clear instruction", sent:"The teacher gave clear instructions for the test.", sentCn:"老师给出了关于考试的清楚说明。"},
+      {phrase:"safety instructions", sent:"Always follow safety instructions in the lab.", sentCn:"在实验室里要始终遵守安全说明。"}
+    ],
+    ex:"Follow the instructions on page one to start.", family:{noun:"instruction",verb:"instruct",adj:"instructive"}, syn:["direction","guide"], ant:[], lv:"intermediate", tags:["education","communication"], pos:"n"},
+
+  { word:"management", ph:"/ˈmæn.ɪdʒ.mənt/", en:"The control and organization of something", cn:"管理；经营",
+    phrases:[
+      {phrase:"time management", sent:"Good time management helps you study better.", sentCn:"良好的时间管理有助于更好地学习。"},
+      {phrase:"school management", sent:"The school management made new rules.", sentCn:"学校管理层制定了新规定。"},
+      {phrase:"stress management", sent:"Exercise is good for stress management.", sentCn:"锻炼对压力管理很有帮助。"}
+    ],
+    ex:"Good time management is the key to success.", family:{noun:"management",verb:"manage",adj:"managerial"}, syn:["control","organization"], ant:[], lv:"advanced", tags:["life","education"], pos:"n"},
+
+  { word:"competition", ph:"/ˌkɑːm.pɪˈtɪʃ.ən/", en:"An event where people try to win", cn:"竞争；比赛",
+    phrases:[
+      {phrase:"enter a competition", sent:"I entered a writing competition last month.", sentCn:"上个月我参加了一个写作比赛。"},
+      {phrase:"win a competition", sent:"Our school won the science competition.", sentCn:"我们学校赢得了科学竞赛。"},
+      {phrase:"healthy competition", sent:"Healthy competition helps us improve.", sentCn:"良性竞争帮助我们进步。"}
+    ],
+    ex:"She worked hard to prepare for the English competition.", family:{noun:"competition",verb:"compete",adj:"competitive"}, syn:["contest","tournament"], ant:["cooperation"], lv:"intermediate", tags:["education","sports"], pos:"n"},
+
+  { word:"embarrass", ph:"/ɪmˈbær.əs/", en:"To make someone feel ashamed", cn:"使尴尬；使难为情",
+    phrases:[
+      {phrase:"feel embarrassed", sent:"I felt embarrassed when I forgot my lines.", sentCn:"当我忘词时，我感到很尴尬。"},
+      {phrase:"embarrassing moment", sent:"That was the most embarrassing moment of my life.", sentCn:"那是我人生中最尴尬的时刻。"},
+      {phrase:"easily embarrassed", sent:"He gets easily embarrassed in public.", sentCn:"他在公共场合很容易感到难为情。"}
+    ],
+    ex:"I was embarrassed when I called the teacher 'mom'.", family:{noun:"embarrassment",verb:"embarrass",adj:"embarrassed/embarrassing"}, syn:["shame","humiliate"], ant:["proud","confident"], lv:"intermediate", tags:["emotion"], pos:"v"},
+
+  { word:"independence", ph:"/ˌɪn.dɪˈpen.dəns/", en:"The ability to do things alone", cn:"独立；自主",
+    phrases:[
+      {phrase:"gain independence", sent:"Going to university helps you gain independence.", sentCn:"上大学有助于你获得独立。"},
+      {phrase:"financial independence", sent:"She worked hard to reach financial independence.", sentCn:"她努力工作以实现经济独立。"},
+      {phrase:"show independence", sent:"Good students show independence in their thinking.", sentCn:"优秀的学生在思维上表现出独立性。"}
+    ],
+    ex:"Living alone taught me the value of independence.", family:{noun:"independence",adj:"independent",adv:"independently"}, syn:["freedom","self-reliance"], ant:["dependence"], lv:"advanced", tags:["life","character"], pos:"n"},
+
+  { word:"victory", ph:"/ˈvɪk.tər.i/", en:"Success in a competition or battle", cn:"胜利；成功",
+    phrases:[
+      {phrase:"win a victory", sent:"Our team won a great victory in the final.", sentCn:"我们的队伍在决赛中取得了伟大的胜利。"},
+      {phrase:"celebrate victory", sent:"We celebrated our victory with a big party.", sentCn:"我们用一场大派对庆祝了胜利。"},
+      {phrase:"hard-fought victory", sent:"It was a hard-fought victory for our school.", sentCn:"这是我们学校艰难赢得的胜利。"}
+    ],
+    ex:"The team celebrated their victory together.", family:{noun:"victory",adj:"victorious",adv:"victoriously"}, syn:["win","triumph"], ant:["defeat","loss"], lv:"intermediate", tags:["sports","motivation"], pos:"n"},
+
+  { word:"relation", ph:"/rɪˈleɪ.ʃən/", en:"A connection between things or people", cn:"关系；联系",
+    phrases:[
+      {phrase:"good relation", sent:"We have a good relation with our neighbours.", sentCn:"我们和邻居关系很好。"},
+      {phrase:"in relation to", sent:"In relation to last year, my grades improved.", sentCn:"与去年相比，我的成绩提高了。"},
+      {phrase:"family relation", sent:"She is a family relation on my mother's side.", sentCn:"她是我母亲那边的亲戚。"}
+    ],
+    ex:"There is a strong relation between exercise and health.", family:{noun:"relation/relationship",verb:"relate",adj:"related"}, syn:["connection","link"], ant:[], lv:"intermediate", tags:["relationships","life"], pos:"n"},
+
+  { word:"sense", ph:"/sens/", en:"The ability to understand or feel", cn:"感觉；意识；意义",
+    phrases:[
+      {phrase:"make sense", sent:"Your explanation makes a lot of sense.", sentCn:"你的解释很有道理。"},
+      {phrase:"sense of humor", sent:"A good sense of humor makes life better.", sentCn:"良好的幽默感使生活更美好。"},
+      {phrase:"common sense", sent:"Use your common sense when making decisions.", sentCn:"做决定时要运用常识。"}
+    ],
+    ex:"It makes sense to study a little every day.", family:{noun:"sense",verb:"sense",adj:"sensible/sensitive"}, syn:["feeling","understanding"], ant:[], lv:"intermediate", tags:["thinking","emotion"], pos:"n"},
+
+  { word:"celebrate", ph:"/ˈsel.ɪ.breɪt/", en:"To do something special for a happy event", cn:"庆祝；庆贺",
+    phrases:[
+      {phrase:"celebrate a birthday", sent:"We celebrate her birthday every year.", sentCn:"我们每年都庆祝她的生日。"},
+      {phrase:"celebrate success", sent:"It is good to celebrate your success with friends.", sentCn:"和朋友们一起庆祝成功是很好的。"},
+      {phrase:"celebrate together", sent:"The whole class celebrated together after winning.", sentCn:"获胜后全班同学一起庆祝。"}
+    ],
+    ex:"We celebrated the end of exams with a big dinner.", family:{noun:"celebration",verb:"celebrate",adj:"celebratory"}, syn:["mark","honour"], ant:["mourn"], lv:"basic", tags:["life","relationships"], verbForms:{past:"celebrated",pp:"celebrated",ing:"celebrating",s:"celebrates"}, pos:"v"},
+
+  { word:"remind", ph:"/rɪˈmaɪnd/", en:"To help someone remember something", cn:"提醒；使想起",
+    phrases:[
+      {phrase:"remind someone", sent:"Please remind me to call my mum tonight.", sentCn:"请提醒我今晚给妈妈打电话。"},
+      {phrase:"remind of", sent:"This song reminds me of my childhood.", sentCn:"这首歌让我想起了我的童年。"},
+      {phrase:"gentle reminder", sent:"A gentle reminder helps people not forget.", sentCn:"温和的提醒帮助人们不忘记事情。"}
+    ],
+    ex:"My teacher reminded us to bring our books tomorrow.", family:{noun:"reminder",verb:"remind"}, syn:["recall","prompt"], ant:["forget"], lv:"basic", tags:["communication"], verbForms:{past:"reminded",pp:"reminded",ing:"reminding",s:"reminds"}, pos:"v"},
+
+  { word:"seriously", ph:"/ˈsɪər.i.əs.li/", en:"In a serious, careful way", cn:"认真地；严重地",
+    phrases:[
+      {phrase:"take seriously", sent:"You should take your studies seriously.", sentCn:"你应该认真对待自己的学习。"},
+      {phrase:"hurt seriously", sent:"He was seriously hurt in the accident.", sentCn:"他在事故中受了重伤。"},
+      {phrase:"think seriously", sent:"Think seriously before making a big decision.", sentCn:"做重大决定之前要认真思考。"}
+    ],
+    ex:"I seriously believe that practice makes perfect.", family:{noun:"seriousness",adj:"serious",adv:"seriously"}, syn:["carefully","severely"], ant:["jokingly","carelessly"], lv:"intermediate", tags:["behavior"], pos:"adv"},
+
+  { word:"widely", ph:"/ˈwaɪd.li/", en:"By many people or in many places", cn:"广泛地；普遍地",
+    phrases:[
+      {phrase:"widely used", sent:"English is a widely used language in the world.", sentCn:"英语是世界上广泛使用的语言。"},
+      {phrase:"widely known", sent:"The problem is widely known but hard to fix.", sentCn:"这个问题广为人知，但很难解决。"},
+      {phrase:"widely accepted", sent:"This idea is widely accepted by scientists.", sentCn:"这个观点被科学家们广泛接受。"}
+    ],
+    ex:"Smartphones are now widely used by students.", family:{noun:"width",adj:"wide",adv:"widely"}, syn:["broadly","extensively"], ant:["narrowly","rarely"], lv:"intermediate", tags:["description"], pos:"adv"},
+
+  { word:"privately", ph:"/ˈpraɪ.vɪt.li/", en:"Without others knowing; in private", cn:"私下地；秘密地",
+    phrases:[
+      {phrase:"speak privately", sent:"She asked to speak privately with the teacher.", sentCn:"她请求与老师私下交谈。"},
+      {phrase:"meet privately", sent:"They met privately to discuss the problem.", sentCn:"他们私下会面讨论这个问题。"},
+      {phrase:"feel privately", sent:"He privately felt nervous before the speech.", sentCn:"他私下里在演讲前感到紧张。"}
+    ],
+    ex:"She privately hoped she would win the prize.", family:{noun:"privacy",adj:"private",adv:"privately"}, syn:["secretly","confidentially"], ant:["publicly","openly"], lv:"advanced", tags:["behavior"], pos:"adv"},
+
+  { word:"complain", ph:"/kəmˈpleɪn/", en:"To say you are unhappy about something", cn:"抱怨；投诉",
+    phrases:[
+      {phrase:"complain about", sent:"He always complains about too much homework.", sentCn:"他总是抱怨作业太多。"},
+      {phrase:"stop complaining", sent:"Stop complaining and start working.", sentCn:"停止抱怨，开始行动。"},
+      {phrase:"right to complain", sent:"You have the right to complain if the food is bad.", sentCn:"如果食物不好，你有权投诉。"}
+    ],
+    ex:"She complains when the weather is too cold.", family:{noun:"complaint",verb:"complain"}, syn:["grumble","moan"], ant:["praise","appreciate"], lv:"intermediate", tags:["communication","behavior"], pos:"v"},
+
+  { word:"interview", ph:"/ˈɪn.tər.vjuː/", en:"A formal conversation to test someone", cn:"面试；采访",
+    phrases:[
+      {phrase:"job interview", sent:"She was nervous before her first job interview.", sentCn:"她在第一次求职面试前很紧张。"},
+      {phrase:"prepare for interview", sent:"Prepare well for your interview questions.", sentCn:"为面试问题做好充分准备。"},
+      {phrase:"interview questions", sent:"The interview questions were very difficult.", sentCn:"面试问题非常困难。"}
+    ],
+    ex:"I had an interview for a part-time job last week.", family:{noun:"interview",verb:"interview"}, syn:["meeting","conversation"], ant:[], lv:"intermediate", tags:["work","communication"], pos:"n"},
+
+  { word:"congratulate", ph:"/kənˈɡrætʃ.ə.leɪt/", en:"To praise someone for their success", cn:"祝贺；恭喜",
+    phrases:[
+      {phrase:"congratulate on", sent:"We congratulate you on passing your exams.", sentCn:"我们祝贺你通过了考试。"},
+      {phrase:"warmly congratulate", sent:"The principal warmly congratulated the winners.", sentCn:"校长热烈祝贺了获奖者。"},
+      {phrase:"congratulate a friend", sent:"I called to congratulate my friend on her success.", sentCn:"我打电话祝贺朋友取得成功。"}
+    ],
+    ex:"Everyone congratulated her on her first place finish.", family:{noun:"congratulation",verb:"congratulate",adj:"congratulatory"}, syn:["praise","applaud"], ant:["criticize"], lv:"intermediate", tags:["communication","relationships"], pos:"v"},
+
+  // ══ 高考阅读高频词汇 (81 words) ══
+  { word:"government", ph:"/ˈɡʌv.ərn.mənt/", en:"The group that rules a country", cn:"政府",
+    phrases:[
+      {phrase:"local government", sent:"The local government built a new park.", sentCn:"地方政府建造了一个新公园。"},
+      {phrase:"government policy", sent:"The government policy helps poor families.", sentCn:"政府政策帮助贫困家庭。"},
+      {phrase:"government school", sent:"I study at a government school.", sentCn:"我在一所公立学校读书。"}
+    ],
+    ex:"The government made new rules about the environment.", family:{noun:"government", verb:"govern", adj:"governmental"}, syn:["authority", "administration"], ant:[],
+    lv:"intermediate", tags:["society"] , pos:"n"},
+  { word:"partner", ph:"/ˈpɑːrt.nər/", en:"Someone you work or do things with", cn:"伙伴；合作者",
+    phrases:[
+      {phrase:"business partner", sent:"He started a company with his business partner.", sentCn:"他和他的商业伙伴创办了一家公司。"},
+      {phrase:"study partner", sent:"We work better with a good study partner.", sentCn:"有一个好的学习伙伴，我们学得更好。"},
+      {phrase:"become partners", sent:"The two schools became partners last year.", sentCn:"这两所学校去年成为了合作伙伴。"}
+    ],
+    ex:"She found a partner for the science project.", family:{noun:"partner/partnership", verb:"partner"}, syn:["colleague", "teammate"], ant:[],
+    lv:"basic", tags:["relationships", "work"] , pos:"n"},
+  { word:"available", ph:"/əˈveɪ.lə.bəl/", en:"Free to use or easy to get", cn:"可获得的；有空的",
+    phrases:[
+      {phrase:"freely available", sent:"The information is freely available online.", sentCn:"这些信息可以在网上免费获取。"},
+      {phrase:"available time", sent:"Tell me when you have available time.", sentCn:"告诉我你什么时候有空。"},
+      {phrase:"available resources", sent:"We use all available resources to help students.", sentCn:"我们利用所有可用资源来帮助学生。"}
+    ],
+    ex:"The library books are available to all students.", family:{noun:"availability", adj:"available"}, syn:["accessible", "obtainable"], ant:["unavailable"],
+    lv:"intermediate", tags:["description"] , pos:"adj"},
+  { word:"youth", ph:"/juːθ/", en:"The time when you are young", cn:"青年；青春",
+    phrases:[
+      {phrase:"youth group", sent:"She joined a youth group in her community.", sentCn:"她加入了社区里的一个青年团体。"},
+      {phrase:"youth program", sent:"The youth program teaches students new skills.", sentCn:"青年计划教学生新技能。"},
+      {phrase:"in their youth", sent:"In their youth, they loved playing outdoors.", sentCn:"在年轻的时候，他们喜欢户外玩耍。"}
+    ],
+    ex:"Youth is the best time to learn new things.", family:{noun:"youth", adj:"youthful"}, syn:["teenagers", "young people"], ant:["old age"],
+    lv:"basic", tags:["life", "society"] , pos:"n"},
+  { word:"eligible", ph:"/ˈel.ɪ.dʒə.bəl/", en:"Meeting the rules to do or get something", cn:"有资格的；符合条件的",
+    phrases:[
+      {phrase:"eligible student", sent:"Only eligible students can apply for the scholarship.", sentCn:"只有符合条件的学生才能申请奖学金。"},
+      {phrase:"eligible to vote", sent:"Students over 18 are eligible to vote.", sentCn:"18岁以上的学生有资格投票。"},
+      {phrase:"become eligible", sent:"You become eligible after passing the test.", sentCn:"通过考试后你就有资格了。"}
+    ],
+    ex:"She is eligible for the school leadership award.", family:{noun:"eligibility", adj:"eligible"}, syn:["qualified", "suitable"], ant:["ineligible"],
+    lv:"advanced", tags:["education"] , pos:"adj"},
+  { word:"employment", ph:"/ɪmˈplɔɪ.mənt/", en:"Having a paid job", cn:"就业；雇用",
+    phrases:[
+      {phrase:"find employment", sent:"She found employment at a local company.", sentCn:"她在当地一家公司找到了工作。"},
+      {phrase:"employment rate", sent:"The employment rate rose this year.", sentCn:"今年就业率上升了。"},
+      {phrase:"full employment", sent:"Full employment means everyone has a job.", sentCn:"充分就业意味着每个人都有工作。"}
+    ],
+    ex:"Good grades help you find better employment.", family:{noun:"employment", verb:"employ", adj:"employed"}, syn:["work", "occupation"], ant:["unemployment"],
+    lv:"intermediate", tags:["work", "society"] , pos:"adj"},
+  { word:"community", ph:"/kəˈmjuː.nɪ.ti/", en:"A group of people living in one area", cn:"社区；社会",
+    phrases:[
+      {phrase:"local community", sent:"Our local community helped build the playground.", sentCn:"我们当地社区帮助建造了游乐场。"},
+      {phrase:"community service", sent:"We do community service on weekends.", sentCn:"我们在周末做社区服务。"},
+      {phrase:"online community", sent:"She joined an online community for readers.", sentCn:"她加入了一个读者在线社区。"}
+    ],
+    ex:"Working together makes our community stronger.", family:{noun:"community"}, syn:["neighbourhood", "society"], ant:[],
+    lv:"basic", tags:["society", "relationships"] , pos:"n"},
+  { word:"opportunity", ph:"/ˌɑːp.ərˈtʃuː.nɪ.ti/", en:"A chance to do something good", cn:"机会",
+    phrases:[
+      {phrase:"great opportunity", sent:"Studying abroad is a great opportunity.", sentCn:"出国留学是一个很好的机会。"},
+      {phrase:"miss an opportunity", sent:"Don't miss the opportunity to improve.", sentCn:"不要错过进步的机会。"},
+      {phrase:"opportunity to learn", sent:"Every mistake is an opportunity to learn.", sentCn:"每一个错误都是学习的机会。"}
+    ],
+    ex:"I had the opportunity to speak in front of the school.", family:{noun:"opportunity", adj:"opportune"}, syn:["chance", "occasion"], ant:[],
+    lv:"intermediate", tags:["life", "motivation"] , pos:"n"},
+  { word:"variety", ph:"/vəˈraɪ.ɪ.ti/", en:"Many different types of something", cn:"种类；多样性",
+    phrases:[
+      {phrase:"wide variety", sent:"The library has a wide variety of books.", sentCn:"图书馆有各种各样的书籍。"},
+      {phrase:"variety of topics", sent:"We discuss a variety of topics in class.", sentCn:"我们在课堂上讨论各种各样的话题。"},
+      {phrase:"variety show", sent:"The school held a variety show last week.", sentCn:"学校上周举办了文艺演出。"}
+    ],
+    ex:"Eating a variety of foods keeps you healthy.", family:{noun:"variety", verb:"vary", adj:"various"}, syn:["range", "diversity"], ant:["sameness"],
+    lv:"intermediate", tags:["description"] , pos:"n"},
+  { word:"disability", ph:"/ˌdɪs.əˈbɪl.ɪ.ti/", en:"A condition that limits what someone can do", cn:"残疾；残障",
+    phrases:[
+      {phrase:"physical disability", sent:"A physical disability does not stop success.", sentCn:"身体残疾不会阻止成功。"},
+      {phrase:"learning disability", sent:"Students with learning disabilities need extra help.", sentCn:"有学习障碍的学生需要额外帮助。"},
+      {phrase:"live with disability", sent:"Many people live well with a disability.", sentCn:"许多人带着残疾也能生活得很好。"}
+    ],
+    ex:"The school has ramps for students with disabilities.", family:{noun:"disability", adj:"disabled"}, syn:["impairment", "condition"], ant:["ability"],
+    lv:"intermediate", tags:["society", "health"] , pos:"n"},
+  { word:"environment", ph:"/ɪnˈvaɪ.rən.mənt/", en:"The natural world around us", cn:"环境",
+    phrases:[
+      {phrase:"protect the environment", sent:"We should all protect the environment.", sentCn:"我们都应该保护环境。"},
+      {phrase:"learning environment", sent:"A quiet room is a good learning environment.", sentCn:"安静的房间是良好的学习环境。"},
+      {phrase:"natural environment", sent:"Animals need a clean natural environment.", sentCn:"动物需要清洁的自然环境。"}
+    ],
+    ex:"Pollution damages the environment every day.", family:{noun:"environment", adj:"environmental", adv:"environmentally"}, syn:["nature", "surroundings"], ant:[],
+    lv:"intermediate", tags:["environment", "science"] , pos:"n"},
+  { word:"nervous", ph:"/ˈnɜːr.vəs/", en:"Worried or afraid about something", cn:"紧张的；焦虑的",
+    phrases:[
+      {phrase:"feel nervous", sent:"I always feel nervous before an exam.", sentCn:"我考试前总是感到紧张。"},
+      {phrase:"nervous about", sent:"She was nervous about speaking in public.", sentCn:"她对在公众面前讲话感到紧张。"},
+      {phrase:"nervous laugh", sent:"He gave a nervous laugh when asked.", sentCn:"当被问到时，他紧张地笑了笑。"}
+    ],
+    ex:"It is normal to feel nervous on your first day.", family:{noun:"nervousness", adj:"nervous", adv:"nervously"}, syn:["anxious", "worried"], ant:["calm", "relaxed"],
+    lv:"basic", tags:["emotion"] , pos:"n"},
+  { word:"pronunciation", ph:"/prəˌnʌn.siˈeɪ.ʃən/", en:"The way a word is spoken", cn:"发音；读音",
+    phrases:[
+      {phrase:"correct pronunciation", sent:"Good pronunciation helps others understand you.", sentCn:"正确的发音有助于别人理解你。"},
+      {phrase:"improve pronunciation", sent:"Listening to English songs improves pronunciation.", sentCn:"听英文歌可以改善发音。"},
+      {phrase:"practice pronunciation", sent:"We practice pronunciation in every English class.", sentCn:"我们在每节英语课上练习发音。"}
+    ],
+    ex:"Her pronunciation improved a lot after one month.", family:{noun:"pronunciation", verb:"pronounce"}, syn:["accent", "articulation"], ant:[],
+    lv:"intermediate", tags:["language", "education"] , pos:"n"},
+  { word:"stumble", ph:"/ˈstʌm.bəl/", en:"To trip or make mistakes when doing something", cn:"绊倒；犯错",
+    phrases:[
+      {phrase:"stumble over words", sent:"He stumbled over his words when nervous.", sentCn:"他紧张时说话磕磕巴巴的。"},
+      {phrase:"stumble upon", sent:"She stumbled upon a great book by accident.", sentCn:"她偶然发现了一本很棒的书。"},
+      {phrase:"stumble and fall", sent:"He stumbled and fell on the wet floor.", sentCn:"他在湿滑的地板上绊倒了。"}
+    ],
+    ex:"Don't be afraid to stumble — mistakes help you learn.", family:{noun:"stumble", verb:"stumble"}, syn:["trip", "struggle"], ant:[],
+    lv:"intermediate", tags:["behavior"] , pos:"v"},
+  { word:"campaign", ph:"/kæmˈpeɪn/", en:"An organised effort to achieve a goal", cn:"活动；运动；竞选",
+    phrases:[
+      {phrase:"awareness campaign", sent:"The school ran an anti-bullying awareness campaign.", sentCn:"学校开展了一项反欺凌意识活动。"},
+      {phrase:"election campaign", sent:"She worked hard on her class president campaign.", sentCn:"她为班长竞选活动努力工作。"},
+      {phrase:"health campaign", sent:"The health campaign encouraged students to exercise.", sentCn:"健康运动鼓励学生锻炼。"}
+    ],
+    ex:"The campaign to save energy was very successful.", family:{noun:"campaign", verb:"campaign"}, syn:["drive", "movement"], ant:[],
+    lv:"advanced", tags:["society"] , pos:"n"},
+  { word:"manner", ph:"/ˈmæn.ər/", en:"The way you behave or do things", cn:"方式；举止；礼貌",
+    phrases:[
+      {phrase:"good manners", sent:"Good manners make a good impression on others.", sentCn:"良好的礼貌给别人留下好印象。"},
+      {phrase:"in a polite manner", sent:"Always speak in a polite manner to teachers.", sentCn:"和老师说话时要始终用礼貌的方式。"},
+      {phrase:"table manners", sent:"We learn table manners from our parents.", sentCn:"我们从父母那里学习餐桌礼仪。"}
+    ],
+    ex:"She handled the problem in a very calm manner.", family:{noun:"manner", adj:"mannerly"}, syn:["way", "style"], ant:[],
+    lv:"intermediate", tags:["behavior", "character"] , pos:"n"},
+  { word:"quality", ph:"/ˈkwɑː.lɪ.ti/", en:"How good or bad something is", cn:"质量；品质",
+    phrases:[
+      {phrase:"high quality", sent:"This school is known for high quality teaching.", sentCn:"这所学校以高质量教学而闻名。"},
+      {phrase:"quality time", sent:"Spend quality time with your family every day.", sentCn:"每天花高质量的时间陪伴家人。"},
+      {phrase:"quality of life", sent:"Exercise improves your quality of life.", sentCn:"锻炼可以改善你的生活质量。"}
+    ],
+    ex:"We always aim for quality in our work.", family:{noun:"quality", adj:"quality"}, syn:["standard", "excellence"], ant:["inferiority"],
+    lv:"basic", tags:["description", "education"] , pos:"n"},
+  { word:"assess", ph:"/əˈses/", en:"To judge or measure something", cn:"评估；评价",
+    phrases:[
+      {phrase:"assess performance", sent:"Teachers assess student performance with tests.", sentCn:"老师通过考试评估学生的表现。"},
+      {phrase:"assess the situation", sent:"We need to assess the situation carefully.", sentCn:"我们需要仔细评估情况。"},
+      {phrase:"self-assess", sent:"Good students can self-assess their own work.", sentCn:"优秀的学生能够自我评估自己的作业。"}
+    ],
+    ex:"The teacher will assess your essay next week.", family:{noun:"assessment", verb:"assess"}, syn:["evaluate", "judge"], ant:[],
+    lv:"advanced", tags:["education"] , pos:"v"},
+  { word:"inspire", ph:"/ɪnˈspaɪər/", en:"To encourage someone to do great things", cn:"激励；启发",
+    phrases:[
+      {phrase:"inspire others", sent:"Great teachers inspire others to do their best.", sentCn:"伟大的老师激励他人做到最好。"},
+      {phrase:"feel inspired", sent:"I felt inspired after the speech.", sentCn:"听完演讲后我感到很受鼓舞。"},
+      {phrase:"inspire confidence", sent:"Her kind words inspired my confidence.", sentCn:"她亲切的话语激发了我的信心。"}
+    ],
+    ex:"Her story inspired me to never give up.", family:{noun:"inspiration", verb:"inspire", adj:"inspiring/inspired"}, syn:["motivate", "encourage"], ant:["discourage"],
+    lv:"intermediate", tags:["motivation", "emotion"] , verbForms:{past:"inspired",pp:"inspired",ing:"inspiring",s:"inspires"}, pos:"v"},
+  { word:"humorous", ph:"/ˈhjuː.mər.əs/", en:"Funny; making people laugh", cn:"幽默的；有趣的",
+    phrases:[
+      {phrase:"humorous story", sent:"He told a humorous story that made us all laugh.", sentCn:"他讲了一个幽默的故事让我们都笑了。"},
+      {phrase:"humorous style", sent:"Her humorous style makes lessons enjoyable.", sentCn:"她幽默的风格使课程变得有趣。"},
+      {phrase:"humorous comment", sent:"He made a humorous comment about the homework.", sentCn:"他对作业发表了一个幽默的评论。"}
+    ],
+    ex:"The teacher uses humorous examples to explain things.", family:{noun:"humour", adj:"humorous", adv:"humorously"}, syn:["funny", "amusing"], ant:["serious", "boring"],
+    lv:"intermediate", tags:["description", "character"] , pos:"n"},
+  { word:"demanding", ph:"/dɪˈmɑːn.dɪŋ/", en:"Needing a lot of effort or skill", cn:"要求高的；费力的",
+    phrases:[
+      {phrase:"demanding job", sent:"Being a teacher is a demanding but rewarding job.", sentCn:"当老师是一份要求高但很有意义的工作。"},
+      {phrase:"demanding course", sent:"Maths is the most demanding course this year.", sentCn:"数学是今年最难的课程。"},
+      {phrase:"demanding task", sent:"Writing a good essay is a demanding task.", sentCn:"写一篇好文章是一项要求很高的任务。"}
+    ],
+    ex:"This exam is demanding but I will prepare well.", family:{noun:"demand", verb:"demand", adj:"demanding"}, syn:["challenging", "difficult"], ant:["easy", "simple"],
+    lv:"intermediate", tags:["description", "education"] , pos:"adj"},
+  { word:"ambitious", ph:"/æmˈbɪʃ.əs/", en:"Having a strong wish to succeed", cn:"有抱负的；雄心勃勃的",
+    phrases:[
+      {phrase:"ambitious student", sent:"She is an ambitious student with big dreams.", sentCn:"她是一个有抱负、有大梦想的学生。"},
+      {phrase:"ambitious goal", sent:"His ambitious goal is to study medicine.", sentCn:"他雄心勃勃的目标是学医。"},
+      {phrase:"ambitious plan", sent:"The school has an ambitious plan to build a new lab.", sentCn:"学校有一个雄心勃勃的计划，要建造一个新实验室。"}
+    ],
+    ex:"Ambitious students are not afraid to work hard.", family:{noun:"ambition", adj:"ambitious", adv:"ambitiously"}, syn:["determined", "driven"], ant:["lazy", "unambitious"],
+    lv:"intermediate", tags:["character", "motivation"] , pos:"adj"},
+  { word:"identity", ph:"/aɪˈden.tɪ.ti/", en:"Who you are; what makes you unique", cn:"身份；个性",
+    phrases:[
+      {phrase:"personal identity", sent:"Your values are part of your personal identity.", sentCn:"你的价值观是你个人身份的一部分。"},
+      {phrase:"cultural identity", sent:"Language is an important part of cultural identity.", sentCn:"语言是文化认同的重要组成部分。"},
+      {phrase:"identity card", sent:"Always carry your identity card with you.", sentCn:"随时随身携带你的身份证。"}
+    ],
+    ex:"Your identity is shaped by your family and experiences.", family:{noun:"identity", verb:"identify", adj:"identical"}, syn:["character", "self"], ant:[],
+    lv:"advanced", tags:["society", "character"] , pos:"n"},
+  { word:"security", ph:"/sɪˈkjʊər.ɪ.ti/", en:"The state of being safe from danger", cn:"安全；保障",
+    phrases:[
+      {phrase:"feel security", sent:"Children need to feel security at home.", sentCn:"孩子们需要在家中感到安全。"},
+      {phrase:"online security", sent:"Always protect your online security with passwords.", sentCn:"始终用密码保护你的网络安全。"},
+      {phrase:"security guard", sent:"The security guard checked our bags.", sentCn:"安全人员检查了我们的包。"}
+    ],
+    ex:"The school has cameras for the security of students.", family:{noun:"security", adj:"secure", adv:"securely"}, syn:["safety", "protection"], ant:["danger", "risk"],
+    lv:"intermediate", tags:["society", "life"] , pos:"n"},
+  { word:"recognize", ph:"/ˈrek.əɡ.naɪz/", en:"To know who or what something is", cn:"认出；认可",
+    phrases:[
+      {phrase:"recognize a face", sent:"I recognized her face from the photo.", sentCn:"我从照片中认出了她的脸。"},
+      {phrase:"recognize talent", sent:"Good teachers recognize talent in their students.", sentCn:"好老师能发现学生的才华。"},
+      {phrase:"widely recognized", sent:"She is widely recognized as a great writer.", sentCn:"她被广泛认可为一位伟大的作家。"}
+    ],
+    ex:"I recognized the song as soon as it started.", family:{noun:"recognition", verb:"recognize", adj:"recognizable"}, syn:["identify", "acknowledge"], ant:[],
+    lv:"intermediate", tags:["thinking"] , verbForms:{past:"recognized",pp:"recognized",ing:"recognizing",s:"recognizes"}, pos:"v"},
+  { word:"accuracy", ph:"/ˈæk.jʊ.rə.si/", en:"The quality of being correct and precise", cn:"准确性；精确度",
+    phrases:[
+      {phrase:"improve accuracy", sent:"Careful checking improves the accuracy of your work.", sentCn:"仔细检查可以提高作业的准确性。"},
+      {phrase:"with accuracy", sent:"She solved every maths problem with accuracy.", sentCn:"她精确地解答了每一道数学题。"},
+      {phrase:"high accuracy", sent:"Medical tests need high accuracy.", sentCn:"医学检测需要高准确性。"}
+    ],
+    ex:"Good accuracy in maths comes from lots of practice.", family:{noun:"accuracy", adj:"accurate", adv:"accurately"}, syn:["precision", "correctness"], ant:["inaccuracy", "error"],
+    lv:"advanced", tags:["education", "science"] , pos:"n"},
+  { word:"popularity", ph:"/ˌpɒp.jʊˈlær.ɪ.ti/", en:"Being liked by many people", cn:"受欢迎；流行",
+    phrases:[
+      {phrase:"gain popularity", sent:"The app gained popularity among teenagers.", sentCn:"这款应用在青少年中越来越受欢迎。"},
+      {phrase:"rise in popularity", sent:"Online learning has risen in popularity.", sentCn:"在线学习越来越受欢迎。"},
+      {phrase:"social popularity", sent:"Some students care a lot about social popularity.", sentCn:"一些学生非常在意社交上的受欢迎程度。"}
+    ],
+    ex:"The new café gained popularity very quickly.", family:{noun:"popularity", adj:"popular", adv:"popularly"}, syn:["fame", "appeal"], ant:["unpopularity"],
+    lv:"intermediate", tags:["society", "description"] , pos:"n"},
+  { word:"adolescent", ph:"/ˌæd.əˈles.ənt/", en:"A young person between child and adult", cn:"青少年",
+    phrases:[
+      {phrase:"adolescent student", sent:"Adolescent students need support and understanding.", sentCn:"青少年学生需要支持和理解。"},
+      {phrase:"adolescent behavior", sent:"Some adolescent behavior can be hard to understand.", sentCn:"一些青少年的行为可能难以理解。"},
+      {phrase:"adolescent years", sent:"The adolescent years are full of changes.", sentCn:"青少年时期充满了变化。"}
+    ],
+    ex:"Adolescents often face pressure from school and friends.", family:{noun:"adolescent/adolescence", adj:"adolescent"}, syn:["teenager", "youth"], ant:[],
+    lv:"advanced", tags:["life", "society"] , pos:"n"},
+  { word:"adjustment", ph:"/əˈdʒʌst.mənt/", en:"A small change to improve something", cn:"调整；适应",
+    phrases:[
+      {phrase:"make adjustment", sent:"She made small adjustments to improve her essay.", sentCn:"她做了一些小调整来改善她的文章。"},
+      {phrase:"adjustment period", sent:"There is always an adjustment period at a new school.", sentCn:"在新学校总有一段适应期。"},
+      {phrase:"emotional adjustment", sent:"Moving to a new city requires emotional adjustment.", sentCn:"搬到新城市需要情感上的调整。"}
+    ],
+    ex:"A small adjustment to your study plan can help a lot.", family:{noun:"adjustment", verb:"adjust", adj:"adjustable"}, syn:["change", "adaptation"], ant:[],
+    lv:"intermediate", tags:["life", "education"] , pos:"n"},
+  { word:"generous", ph:"/ˈdʒen.ər.əs/", en:"Willing to give more than needed", cn:"慷慨的；大方的",
+    phrases:[
+      {phrase:"generous person", sent:"She is a generous person who always helps others.", sentCn:"她是一个慷慨的人，总是帮助别人。"},
+      {phrase:"generous donation", sent:"They made a generous donation to the school.", sentCn:"他们向学校捐赠了一大笔钱。"},
+      {phrase:"generous with time", sent:"Good teachers are generous with their time.", sentCn:"好老师在时间上是慷慨的。"}
+    ],
+    ex:"It is generous of you to share your notes.", family:{noun:"generosity", adj:"generous", adv:"generously"}, syn:["kind", "giving"], ant:["selfish", "stingy"],
+    lv:"intermediate", tags:["character", "relationships"] , pos:"adj"},
+  { word:"aggressive", ph:"/əˈɡres.ɪv/", en:"Acting in a forceful or angry way", cn:"有攻击性的；激进的",
+    phrases:[
+      {phrase:"aggressive behavior", sent:"Aggressive behavior is not allowed in school.", sentCn:"学校不允许有攻击性的行为。"},
+      {phrase:"too aggressive", sent:"His response was too aggressive and rude.", sentCn:"他的回应太有攻击性了，而且很粗鲁。"},
+      {phrase:"aggressive approach", sent:"He took an aggressive approach to win the debate.", sentCn:"他采取了激进的方式赢得辩论。"}
+    ],
+    ex:"Being too aggressive can damage your friendships.", family:{noun:"aggression", adj:"aggressive", adv:"aggressively"}, syn:["forceful", "hostile"], ant:["calm", "gentle"],
+    lv:"intermediate", tags:["behavior", "character"] , pos:"adj"},
+  { word:"adaptable", ph:"/əˈdæp.tə.bəl/", en:"Able to change for new situations", cn:"适应性强的；灵活的",
+    phrases:[
+      {phrase:"highly adaptable", sent:"Successful people are usually highly adaptable.", sentCn:"成功的人通常适应性很强。"},
+      {phrase:"adaptable student", sent:"An adaptable student does well in any school.", sentCn:"适应性强的学生在任何学校都能学得好。"},
+      {phrase:"adaptable skills", sent:"Adaptable skills help you in many different jobs.", sentCn:"适应性强的技能在许多不同的工作中都能派上用场。"}
+    ],
+    ex:"Being adaptable helps you handle change with confidence.", family:{noun:"adaptability", verb:"adapt", adj:"adaptable"}, syn:["flexible", "versatile"], ant:["rigid", "inflexible"],
+    lv:"advanced", tags:["character", "life"] , pos:"adj"},
+  { word:"appreciation", ph:"/əˌpriː.ʃiˈeɪ.ʃən/", en:"A feeling of being thankful", cn:"感激；欣赏；理解",
+    phrases:[
+      {phrase:"show appreciation", sent:"She showed appreciation by writing a thank-you note.", sentCn:"她通过写感谢信来表达感激之情。"},
+      {phrase:"deep appreciation", sent:"I have a deep appreciation for my teachers.", sentCn:"我对我的老师深表感激。"},
+      {phrase:"music appreciation", sent:"Music appreciation class taught me to love art.", sentCn:"音乐欣赏课让我爱上了艺术。"}
+    ],
+    ex:"He felt appreciation for the kind words of his teacher.", family:{noun:"appreciation", verb:"appreciate", adj:"appreciative"}, syn:["gratitude", "recognition"], ant:["ingratitude"],
+    lv:"intermediate", tags:["emotion", "character"] , pos:"n"},
+  { word:"delightful", ph:"/dɪˈlaɪt.fəl/", en:"Very pleasant and enjoyable", cn:"令人愉快的；可爱的",
+    phrases:[
+      {phrase:"delightful experience", sent:"The school trip was a truly delightful experience.", sentCn:"学校旅行是一次真正令人愉快的经历。"},
+      {phrase:"delightful surprise", sent:"The birthday party was a delightful surprise.", sentCn:"生日派对是一个令人愉快的惊喜。"},
+      {phrase:"delightful weather", sent:"We had delightful weather for our sports day.", sentCn:"我们运动会那天天气好极了。"}
+    ],
+    ex:"It was a delightful afternoon in the park.", family:{noun:"delight", verb:"delight", adj:"delightful", adv:"delightfully"}, syn:["wonderful", "charming"], ant:["unpleasant", "dreadful"],
+    lv:"intermediate", tags:["description", "emotion"] , pos:"adj"},
+  { word:"brilliant", ph:"/ˈbrɪl.jənt/", en:"Very clever or impressive", cn:"聪明的；出色的；灿烂的",
+    phrases:[
+      {phrase:"brilliant student", sent:"She is a brilliant student who always gets top marks.", sentCn:"她是一个总是得高分的出色学生。"},
+      {phrase:"brilliant idea", sent:"That is a brilliant idea for the project.", sentCn:"这对这个项目来说是个绝妙的主意。"},
+      {phrase:"brilliant performance", sent:"His brilliant performance won first prize.", sentCn:"他出色的表演赢得了一等奖。"}
+    ],
+    ex:"She had a brilliant idea to solve the problem.", family:{noun:"brilliance", adj:"brilliant", adv:"brilliantly"}, syn:["clever", "outstanding"], ant:["dull", "ordinary"],
+    lv:"intermediate", tags:["description", "character"] , pos:"adj"},
+  { word:"tension", ph:"/ˈten.ʃən/", en:"A feeling of worry or nervousness", cn:"紧张；张力",
+    phrases:[
+      {phrase:"feel tension", sent:"I could feel the tension in the room before the exam.", sentCn:"考试前我能感受到房间里的紧张气氛。"},
+      {phrase:"reduce tension", sent:"Deep breathing can help reduce tension.", sentCn:"深呼吸可以帮助减轻紧张情绪。"},
+      {phrase:"tension between", sent:"There was tension between the two teams.", sentCn:"两队之间存在着紧张关系。"}
+    ],
+    ex:"Exercise helps me release tension after a long day.", family:{noun:"tension", adj:"tense", verb:"tense"}, syn:["stress", "pressure"], ant:["relaxation", "calm"],
+    lv:"intermediate", tags:["emotion", "description"] , pos:"n"},
+  { word:"frustration", ph:"/frʌˈstreɪ.ʃən/", en:"The feeling of being upset by problems", cn:"沮丧；挫败感",
+    phrases:[
+      {phrase:"feel frustration", sent:"I felt frustration when I kept making the same mistake.", sentCn:"当我不断犯同样的错误时，我感到沮丧。"},
+      {phrase:"express frustration", sent:"It is okay to express frustration in a healthy way.", sentCn:"以健康的方式表达沮丧是可以的。"},
+      {phrase:"frustration with", sent:"She felt frustration with the difficult homework.", sentCn:"她对困难的作业感到沮丧。"}
+    ],
+    ex:"Don't let frustration stop you from trying again.", family:{noun:"frustration", verb:"frustrate", adj:"frustrated/frustrating"}, syn:["annoyance", "disappointment"], ant:["satisfaction", "joy"],
+    lv:"intermediate", tags:["emotion"] , pos:"n"},
+  { word:"fantasy", ph:"/ˈfæn.tə.si/", en:"Something imagined that is not real", cn:"幻想；想象",
+    phrases:[
+      {phrase:"fantasy world", sent:"She loves reading books about a fantasy world.", sentCn:"她喜欢读关于幻想世界的书。"},
+      {phrase:"childhood fantasy", sent:"Flying was a childhood fantasy for him.", sentCn:"飞翔是他童年的幻想。"},
+      {phrase:"science fantasy", sent:"Science fantasy mixes real science with imagination.", sentCn:"科幻结合了真实科学与想象。"}
+    ],
+    ex:"The story was pure fantasy, but I loved it.", family:{noun:"fantasy", adj:"fantastic/fantasy"}, syn:["imagination", "dream"], ant:["reality", "fact"],
+    lv:"intermediate", tags:["description", "thinking"] , pos:"n"},
+  { word:"outbreak", ph:"/ˈaʊt.breɪk/", en:"A sudden start of something bad", cn:"爆发；突然发生",
+    phrases:[
+      {phrase:"disease outbreak", sent:"The school closed during the disease outbreak.", sentCn:"疾病爆发期间学校关闭了。"},
+      {phrase:"outbreak of flu", sent:"There was an outbreak of flu in our class.", sentCn:"我们班里爆发了流感。"},
+      {phrase:"prevent an outbreak", sent:"Washing hands helps prevent an outbreak.", sentCn:"洗手有助于防止疾病爆发。"}
+    ],
+    ex:"The flu outbreak affected many students this winter.", family:{noun:"outbreak"}, syn:["epidemic", "surge"], ant:[],
+    lv:"advanced", tags:["health", "society"] , pos:"n"},
+  { word:"selfish", ph:"/ˈsel.fɪʃ/", en:"Only caring about yourself", cn:"自私的",
+    phrases:[
+      {phrase:"selfish behavior", sent:"Selfish behavior hurts friendships.", sentCn:"自私的行为会伤害友谊。"},
+      {phrase:"act selfishly", sent:"It is wrong to act selfishly in a team.", sentCn:"在团队中自私行事是不对的。"},
+      {phrase:"selfish attitude", sent:"A selfish attitude makes it hard to work with others.", sentCn:"自私的态度让人难以与他人合作。"}
+    ],
+    ex:"It is selfish to take all the food and leave none.", family:{noun:"selfishness", adj:"selfish", adv:"selfishly"}, syn:["greedy", "self-centred"], ant:["generous", "caring"],
+    lv:"basic", tags:["character", "behavior"] , pos:"adj"},
+  { word:"motivation", ph:"/ˌmoʊ.tɪˈveɪ.ʃən/", en:"The reason you want to do something", cn:"动力；动机",
+    phrases:[
+      {phrase:"lack motivation", sent:"When I am tired, I lack motivation to study.", sentCn:"当我累的时候，我缺乏学习的动力。"},
+      {phrase:"find motivation", sent:"I find motivation in my goal to help others.", sentCn:"我在帮助他人的目标中找到动力。"},
+      {phrase:"inner motivation", sent:"Inner motivation is stronger than pressure from others.", sentCn:"内在动力比外部压力更强大。"}
+    ],
+    ex:"Music gives me motivation when I study.", family:{noun:"motivation", verb:"motivate", adj:"motivated"}, syn:["drive", "inspiration"], ant:["laziness", "apathy"],
+    lv:"intermediate", tags:["motivation", "psychology"] , pos:"n"},
+  { word:"reflect", ph:"/rɪˈflekt/", en:"To think carefully about something past", cn:"反思；反射；体现",
+    phrases:[
+      {phrase:"reflect on", sent:"Take time to reflect on what you have learned.", sentCn:"花时间反思你所学到的东西。"},
+      {phrase:"reflect feelings", sent:"Her artwork reflects her feelings well.", sentCn:"她的艺术作品很好地表达了她的感受。"},
+      {phrase:"reflect light", sent:"Mirrors reflect light into the room.", sentCn:"镜子将光反射到房间里。"}
+    ],
+    ex:"I always reflect on my mistakes to improve.", family:{noun:"reflection", verb:"reflect", adj:"reflective"}, syn:["consider", "think about"], ant:[],
+    lv:"intermediate", tags:["thinking", "education"] , verbForms:{past:"reflected",pp:"reflected",ing:"reflecting",s:"reflects"}, pos:"v"},
+  { word:"awkward", ph:"/ˈɔːk.wəd/", en:"Uncomfortable or difficult to deal with", cn:"尴尬的；笨拙的",
+    phrases:[
+      {phrase:"awkward silence", sent:"There was an awkward silence after his comment.", sentCn:"他发表评论后出现了尴尬的沉默。"},
+      {phrase:"feel awkward", sent:"I always feel awkward when meeting new people.", sentCn:"认识新朋友时我总是感到不自在。"},
+      {phrase:"awkward question", sent:"The teacher asked an awkward question about my homework.", sentCn:"老师问了一个关于我作业的尴尬问题。"}
+    ],
+    ex:"It was awkward when I forgot her name.", family:{noun:"awkwardness", adj:"awkward", adv:"awkwardly"}, syn:["uncomfortable", "clumsy"], ant:["comfortable", "graceful"],
+    lv:"intermediate", tags:["emotion", "description"] , pos:"n"},
+  { word:"gravity", ph:"/ˈɡræv.ɪ.ti/", en:"The force that pulls things to earth", cn:"重力；严重性",
+    phrases:[
+      {phrase:"force of gravity", sent:"The force of gravity keeps us on the ground.", sentCn:"重力使我们站在地面上。"},
+      {phrase:"gravity of situation", sent:"He understood the gravity of the situation.", sentCn:"他意识到了情况的严重性。"},
+      {phrase:"zero gravity", sent:"Astronauts experience zero gravity in space.", sentCn:"宇航员在太空中经历失重状态。"}
+    ],
+    ex:"We learned about gravity in our science class.", family:{noun:"gravity", adj:"grave"}, syn:["seriousness", "weight"], ant:[],
+    lv:"intermediate", tags:["science", "description"] , pos:"n"},
+  { word:"reform", ph:"/rɪˈfɔːrm/", en:"To change something to make it better", cn:"改革；改良",
+    phrases:[
+      {phrase:"education reform", sent:"Education reform helps more students succeed.", sentCn:"教育改革帮助更多学生取得成功。"},
+      {phrase:"health reform", sent:"The government introduced a new health reform.", sentCn:"政府推出了新的医疗改革。"},
+      {phrase:"reform system", sent:"We need to reform the exam system.", sentCn:"我们需要改革考试制度。"}
+    ],
+    ex:"The school introduced a big reform to improve results.", family:{noun:"reform", verb:"reform", adj:"reformed"}, syn:["change", "improve"], ant:[],
+    lv:"advanced", tags:["society", "education"] , pos:"v"},
+  { word:"inspiration", ph:"/ˌɪn.spɪˈreɪ.ʃən/", en:"Something that makes you want to create", cn:"灵感；鼓舞",
+    phrases:[
+      {phrase:"find inspiration", sent:"She finds inspiration in nature and music.", sentCn:"她从自然和音乐中寻找灵感。"},
+      {phrase:"source of inspiration", sent:"My mother is my greatest source of inspiration.", sentCn:"我的母亲是我最大的灵感来源。"},
+      {phrase:"daily inspiration", sent:"Reading gives me daily inspiration.", sentCn:"阅读给我每日的灵感。"}
+    ],
+    ex:"Her story was an inspiration to everyone in school.", family:{noun:"inspiration", verb:"inspire", adj:"inspiring"}, syn:["motivation", "influence"], ant:[],
+    lv:"intermediate", tags:["emotion", "motivation"] , pos:"n"},
+  { word:"exhibition", ph:"/ˌek.sɪˈbɪʃ.ən/", en:"A public show of art or objects", cn:"展览；展示",
+    phrases:[
+      {phrase:"art exhibition", sent:"We visited an art exhibition at the museum.", sentCn:"我们参观了博物馆的艺术展览。"},
+      {phrase:"hold an exhibition", sent:"The school held an exhibition of student work.", sentCn:"学校举办了一次学生作品展览。"},
+      {phrase:"science exhibition", sent:"He won first prize at the science exhibition.", sentCn:"他在科学展览会上获得了一等奖。"}
+    ],
+    ex:"The photography exhibition was visited by many people.", family:{noun:"exhibition", verb:"exhibit"}, syn:["display", "show"], ant:[],
+    lv:"intermediate", tags:["culture", "education"] , pos:"n"},
+  { word:"contemporary", ph:"/kənˈtem.pər.er.i/", en:"Existing or happening now; modern", cn:"当代的；现代的",
+    phrases:[
+      {phrase:"contemporary art", sent:"I enjoy contemporary art more than classical art.", sentCn:"我比古典艺术更喜欢当代艺术。"},
+      {phrase:"contemporary society", sent:"Smartphones are a big part of contemporary society.", sentCn:"智能手机是当代社会的重要组成部分。"},
+      {phrase:"contemporary issue", sent:"Climate change is a major contemporary issue.", sentCn:"气候变化是一个重大的当代问题。"}
+    ],
+    ex:"She studies contemporary Chinese literature.", family:{noun:"contemporary", adj:"contemporary"}, syn:["modern", "current"], ant:["ancient", "historical"],
+    lv:"advanced", tags:["description", "culture"] , pos:"n"},
+  { word:"purchase", ph:"/ˈpɜːr.tʃɪs/", en:"To buy something", cn:"购买；采购",
+    phrases:[
+      {phrase:"online purchase", sent:"Online purchases are very common now.", sentCn:"网上购物现在非常普遍。"},
+      {phrase:"make a purchase", sent:"Think carefully before you make a big purchase.", sentCn:"在购买大件商品之前要仔细考虑。"},
+      {phrase:"purchase price", sent:"The purchase price was lower than expected.", sentCn:"购买价格比预期低。"}
+    ],
+    ex:"She saved money for three months before the purchase.", family:{noun:"purchase", verb:"purchase"}, syn:["buy", "acquire"], ant:["sell"],
+    lv:"intermediate", tags:["life", "society"] , pos:"v"},
+  { word:"systematic", ph:"/ˌsɪs.təˈmæt.ɪk/", en:"Done in an organised and thorough way", cn:"系统的；有条理的",
+    phrases:[
+      {phrase:"systematic approach", sent:"Use a systematic approach when studying for exams.", sentCn:"备考时使用系统的方法。"},
+      {phrase:"systematic review", sent:"A systematic review of your notes helps you remember.", sentCn:"系统地复习笔记有助于记忆。"},
+      {phrase:"systematic thinking", sent:"Systematic thinking helps solve complex problems.", sentCn:"系统思维有助于解决复杂问题。"}
+    ],
+    ex:"A systematic study plan leads to better results.", family:{noun:"system", adj:"systematic", adv:"systematically"}, syn:["organised", "methodical"], ant:["random", "chaotic"],
+    lv:"advanced", tags:["education", "thinking"] , pos:"adj"},
+  { word:"monument", ph:"/ˈmɒn.jʊ.mənt/", en:"A structure built to remember someone", cn:"纪念碑；历史遗迹",
+    phrases:[
+      {phrase:"historical monument", sent:"The Great Wall is a famous historical monument.", sentCn:"长城是著名的历史遗迹。"},
+      {phrase:"build a monument", sent:"The city built a monument to remember the soldiers.", sentCn:"该市建造了一座纪念碑来纪念士兵。"},
+      {phrase:"visit a monument", sent:"We visited a monument on our school trip.", sentCn:"我们在学校旅行中参观了一座纪念碑。"}
+    ],
+    ex:"We studied the famous monument in history class.", family:{noun:"monument", adj:"monumental"}, syn:["memorial", "landmark"], ant:[],
+    lv:"intermediate", tags:["culture", "history"] , pos:"n"},
+  { word:"memorial", ph:"/məˈmɔːr.i.əl/", en:"Something to remember a person or event", cn:"纪念的；纪念物",
+    phrases:[
+      {phrase:"war memorial", sent:"We held a ceremony at the war memorial.", sentCn:"我们在战争纪念碑前举行了仪式。"},
+      {phrase:"memorial service", sent:"A memorial service was held for the teacher.", sentCn:"为这位老师举行了追悼会。"},
+      {phrase:"memorial park", sent:"We visited a beautiful memorial park.", sentCn:"我们参观了一个美丽的纪念公园。"}
+    ],
+    ex:"The memorial garden was beautiful and peaceful.", family:{noun:"memorial/memory", verb:"memorise", adj:"memorial"}, syn:["monument", "tribute"], ant:[],
+    lv:"intermediate", tags:["culture", "history"] , pos:"n"},
+  { word:"exploration", ph:"/ˌek.splɒˈreɪ.ʃən/", en:"The act of travelling to find new things", cn:"探索；探险",
+    phrases:[
+      {phrase:"space exploration", sent:"Space exploration is one of humanity's greatest achievements.", sentCn:"太空探索是人类最伟大的成就之一。"},
+      {phrase:"exploration trip", sent:"Our class went on a nature exploration trip.", sentCn:"我们班去了一次自然探索之旅。"},
+      {phrase:"scientific exploration", sent:"Scientific exploration leads to new discoveries.", sentCn:"科学探索带来新的发现。"}
+    ],
+    ex:"Ocean exploration helps us learn about sea life.", family:{noun:"exploration", verb:"explore", adj:"exploratory"}, syn:["discovery", "investigation"], ant:[],
+    lv:"intermediate", tags:["science", "adventure"] , pos:"n"},
+  { word:"compulsory", ph:"/kəmˈpʌl.sər.i/", en:"Required by rules or law", cn:"义务的；强制的",
+    phrases:[
+      {phrase:"compulsory education", sent:"Compulsory education ensures every child goes to school.", sentCn:"义务教育确保每个孩子都能上学。"},
+      {phrase:"compulsory subject", sent:"Maths and English are compulsory subjects.", sentCn:"数学和英语是必修科目。"},
+      {phrase:"compulsory exercise", sent:"Daily exercise is compulsory for all students.", sentCn:"每日锻炼对所有学生都是必须的。"}
+    ],
+    ex:"Physical education is compulsory in our school.", family:{noun:"compulsion", adj:"compulsory"}, syn:["mandatory", "required"], ant:["optional", "voluntary"],
+    lv:"advanced", tags:["education", "society"] , pos:"adj"},
+  { word:"dominant", ph:"/ˈdɒm.ɪ.nənt/", en:"Most powerful or most common", cn:"占主导地位的；最重要的",
+    phrases:[
+      {phrase:"dominant language", sent:"English is the dominant language in global business.", sentCn:"英语是全球商业中占主导地位的语言。"},
+      {phrase:"dominant culture", sent:"Pop music is a dominant culture among teens.", sentCn:"流行音乐是青少年中占主导地位的文化。"},
+      {phrase:"dominant player", sent:"She was the dominant player in the debate.", sentCn:"她是辩论中最有影响力的选手。"}
+    ],
+    ex:"The dominant theme in the book is friendship.", family:{noun:"dominance", verb:"dominate", adj:"dominant"}, syn:["leading", "main"], ant:["minor", "weak"],
+    lv:"advanced", tags:["description"] , pos:"adj"},
+  { word:"consumption", ph:"/kənˈsʌmp.ʃən/", en:"The use of something like food or energy", cn:"消费；消耗",
+    phrases:[
+      {phrase:"energy consumption", sent:"Turning off lights reduces energy consumption.", sentCn:"关灯可以减少能源消耗。"},
+      {phrase:"food consumption", sent:"Healthy food consumption leads to a better life.", sentCn:"健康的饮食消费带来更好的生活。"},
+      {phrase:"reduce consumption", sent:"We should reduce our plastic consumption.", sentCn:"我们应该减少塑料消耗。"}
+    ],
+    ex:"The consumption of water in the city is very high.", family:{noun:"consumption", verb:"consume", adj:"consumable"}, syn:["use", "spending"], ant:["production", "saving"],
+    lv:"advanced", tags:["society", "environment"] , pos:"n"},
+  { word:"intelligence", ph:"/ɪnˈtel.ɪ.dʒəns/", en:"The ability to learn and understand", cn:"智力；聪明",
+    phrases:[
+      {phrase:"artificial intelligence", sent:"Artificial intelligence is changing the world.", sentCn:"人工智能正在改变世界。"},
+      {phrase:"emotional intelligence", sent:"Emotional intelligence helps you understand others.", sentCn:"情绪智力帮助你理解他人。"},
+      {phrase:"high intelligence", sent:"High intelligence alone does not guarantee success.", sentCn:"高智力本身并不能保证成功。"}
+    ],
+    ex:"Hard work matters more than intelligence alone.", family:{noun:"intelligence", adj:"intelligent", adv:"intelligently"}, syn:["cleverness", "intellect"], ant:["stupidity"],
+    lv:"intermediate", tags:["education", "psychology"] , pos:"n"},
+  { word:"psychology", ph:"/saɪˈkɒl.ə.dʒi/", en:"The study of the mind and behaviour", cn:"心理学",
+    phrases:[
+      {phrase:"study psychology", sent:"She wants to study psychology at university.", sentCn:"她想在大学学习心理学。"},
+      {phrase:"child psychology", sent:"Child psychology helps parents understand children.", sentCn:"儿童心理学帮助父母理解孩子。"},
+      {phrase:"psychology of learning", sent:"The psychology of learning explains how we remember.", sentCn:"学习心理学解释了我们如何记忆。"}
+    ],
+    ex:"Psychology teaches us why people behave the way they do.", family:{noun:"psychology/psychologist", adj:"psychological"}, syn:["mental science"], ant:[],
+    lv:"advanced", tags:["education", "science"] , pos:"n"},
+  { word:"inappropriate", ph:"/ˌɪn.əˈproʊ.pri.ɪt/", en:"Not suitable for the situation", cn:"不合适的；不恰当的",
+    phrases:[
+      {phrase:"inappropriate language", sent:"Inappropriate language is not allowed in school.", sentCn:"学校不允许使用不恰当的语言。"},
+      {phrase:"inappropriate behavior", sent:"The teacher warned against inappropriate behavior.", sentCn:"老师警告不要有不恰当的行为。"},
+      {phrase:"feel inappropriate", sent:"It felt inappropriate to laugh during the speech.", sentCn:"在演讲期间笑感觉很不合适。"}
+    ],
+    ex:"It is inappropriate to use your phone during class.", family:{noun:"appropriateness", adj:"inappropriate", adv:"inappropriately"}, syn:["unsuitable", "unacceptable"], ant:["appropriate", "suitable"],
+    lv:"intermediate", tags:["behavior", "education"] , pos:"adj"},
+  { word:"anniversary", ph:"/ˌæn.ɪˈvɜːr.sər.i/", en:"The date of an important past event", cn:"周年纪念日",
+    phrases:[
+      {phrase:"school anniversary", sent:"The school is celebrating its 50th anniversary.", sentCn:"学校正在庆祝50周年纪念日。"},
+      {phrase:"wedding anniversary", sent:"They celebrated their wedding anniversary at dinner.", sentCn:"他们在晚餐上庆祝了结婚周年纪念日。"},
+      {phrase:"mark an anniversary", sent:"We marked the anniversary with a special event.", sentCn:"我们用一个特别活动来纪念这个周年。"}
+    ],
+    ex:"Our school held a concert for its 100th anniversary.", family:{noun:"anniversary"}, syn:["commemoration", "celebration"], ant:[],
+    lv:"intermediate", tags:["life", "culture"] , pos:"n"},
+  { word:"donation", ph:"/doʊˈneɪ.ʃən/", en:"Something you give to help others", cn:"捐赠；捐款",
+    phrases:[
+      {phrase:"make a donation", sent:"She made a donation to help the flood victims.", sentCn:"她捐款帮助洪水受难者。"},
+      {phrase:"book donation", sent:"We organised a book donation for the library.", sentCn:"我们为图书馆组织了一次图书捐赠活动。"},
+      {phrase:"accept donations", sent:"The charity accepts donations of clothes and food.", sentCn:"该慈善机构接受衣物和食物的捐赠。"}
+    ],
+    ex:"The school received a generous donation for new computers.", family:{noun:"donation", verb:"donate"}, syn:["contribution", "gift"], ant:[],
+    lv:"intermediate", tags:["society", "relationships"] , pos:"n"},
+  { word:"necessity", ph:"/nɪˈses.ɪ.ti/", en:"Something you really need", cn:"必要性；必需品",
+    phrases:[
+      {phrase:"absolute necessity", sent:"Water is an absolute necessity for all life.", sentCn:"水是所有生命的绝对必需品。"},
+      {phrase:"basic necessity", sent:"Food, water and shelter are basic necessities.", sentCn:"食物、水和住所是基本必需品。"},
+      {phrase:"out of necessity", sent:"He studied hard out of necessity to pass.", sentCn:"他出于通过考试的必要性而努力学习。"}
+    ],
+    ex:"Sleep is not a luxury — it is a necessity.", family:{noun:"necessity", adj:"necessary", adv:"necessarily"}, syn:["requirement", "need"], ant:["luxury", "option"],
+    lv:"intermediate", tags:["life"] , pos:"n"},
+  { word:"landmark", ph:"/ˈlænd.mɑːrk/", en:"An important or easily noticed place", cn:"地标；里程碑",
+    phrases:[
+      {phrase:"famous landmark", sent:"The Eiffel Tower is a famous landmark in Paris.", sentCn:"埃菲尔铁塔是巴黎的著名地标。"},
+      {phrase:"historical landmark", sent:"The old temple is a historical landmark.", sentCn:"这座古庙是一个历史地标。"},
+      {phrase:"landmark decision", sent:"It was a landmark decision for education in China.", sentCn:"这对中国教育来说是一个里程碑式的决定。"}
+    ],
+    ex:"The new library has become a landmark in our city.", family:{noun:"landmark"}, syn:["monument", "milestone"], ant:[],
+    lv:"intermediate", tags:["culture", "society"] , pos:"n"},
+  { word:"architecture", ph:"/ˈɑːr.kɪ.tek.tʃər/", en:"The design and style of buildings", cn:"建筑；建筑风格",
+    phrases:[
+      {phrase:"modern architecture", sent:"Shanghai is known for its modern architecture.", sentCn:"上海以其现代建筑而闻名。"},
+      {phrase:"study architecture", sent:"He wants to study architecture and design buildings.", sentCn:"他想学习建筑并设计建筑物。"},
+      {phrase:"beautiful architecture", sent:"The beautiful architecture of the old town attracts tourists.", sentCn:"老城区美丽的建筑吸引了游客。"}
+    ],
+    ex:"The old church has amazing architecture.", family:{noun:"architecture/architect", adj:"architectural"}, syn:["design", "structure"], ant:[],
+    lv:"intermediate", tags:["culture", "art"] , pos:"n"},
+  { word:"harmony", ph:"/ˈhɑːr.mə.ni/", en:"A state of peace and agreement", cn:"和谐；协调",
+    phrases:[
+      {phrase:"live in harmony", sent:"People and nature should live in harmony.", sentCn:"人与自然应该和谐共处。"},
+      {phrase:"class harmony", sent:"Good teachers create a sense of class harmony.", sentCn:"好老师能营造班级和谐感。"},
+      {phrase:"music harmony", sent:"The choir sang in perfect music harmony.", sentCn:"合唱团用完美的和声演唱。"}
+    ],
+    ex:"The students worked together in harmony on the project.", family:{noun:"harmony", adj:"harmonious", adv:"harmoniously"}, syn:["peace", "unity"], ant:["conflict", "discord"],
+    lv:"intermediate", tags:["description", "relationships"] , pos:"n"},
+  { word:"passion", ph:"/ˈpæʃ.ən/", en:"A very strong feeling of love for something", cn:"热情；激情",
+    phrases:[
+      {phrase:"passion for learning", sent:"Her passion for learning inspired the whole class.", sentCn:"她对学习的热情激励了整个班级。"},
+      {phrase:"follow your passion", sent:"Work hard and follow your passion in life.", sentCn:"努力工作，追随你的人生热情。"},
+      {phrase:"with passion", sent:"He played the piano with great passion.", sentCn:"他充满激情地演奏钢琴。"}
+    ],
+    ex:"Her passion for science led her to become a researcher.", family:{noun:"passion", adj:"passionate", adv:"passionately"}, syn:["enthusiasm", "love"], ant:["indifference", "apathy"],
+    lv:"intermediate", tags:["emotion", "motivation"] , pos:"n"},
+  { word:"accomplishment", ph:"/əˈkʌm.plɪʃ.mənt/", en:"Something you have successfully done", cn:"成就；完成",
+    phrases:[
+      {phrase:"great accomplishment", sent:"Finishing the marathon was a great accomplishment.", sentCn:"完成马拉松是一项巨大的成就。"},
+      {phrase:"sense of accomplishment", sent:"I feel a strong sense of accomplishment after studying.", sentCn:"学习后我有强烈的成就感。"},
+      {phrase:"academic accomplishment", sent:"Her academic accomplishments are impressive.", sentCn:"她的学业成就令人印象深刻。"}
+    ],
+    ex:"Winning the award was her greatest accomplishment.", family:{noun:"accomplishment", verb:"accomplish"}, syn:["achievement", "success"], ant:["failure"],
+    lv:"intermediate", tags:["motivation", "education"] , pos:"n"},
+  { word:"awareness", ph:"/əˈweər.nəs/", en:"Knowing that something exists or is important", cn:"意识；了解",
+    phrases:[
+      {phrase:"raise awareness", sent:"The poster aims to raise awareness of pollution.", sentCn:"这张海报旨在提高对污染的意识。"},
+      {phrase:"environmental awareness", sent:"Environmental awareness starts at a young age.", sentCn:"环保意识从小就开始培养。"},
+      {phrase:"health awareness", sent:"Health awareness helps people make better choices.", sentCn:"健康意识帮助人们做出更好的选择。"}
+    ],
+    ex:"The school campaign raised awareness about bullying.", family:{noun:"awareness", adj:"aware"}, syn:["understanding", "knowledge"], ant:["ignorance"],
+    lv:"intermediate", tags:["education", "society"] , pos:"n"},
+  { word:"productivity", ph:"/ˌprɒd.ʌkˈtɪv.ɪ.ti/", en:"How much useful work you can do", cn:"生产力；效率",
+    phrases:[
+      {phrase:"improve productivity", sent:"Taking breaks improves your productivity.", sentCn:"休息可以提高你的效率。"},
+      {phrase:"high productivity", sent:"Good sleep leads to high productivity the next day.", sentCn:"好的睡眠有助于第二天的高效率。"},
+      {phrase:"study productivity", sent:"A quiet place increases study productivity.", sentCn:"安静的地方提高学习效率。"}
+    ],
+    ex:"Good organisation leads to higher productivity.", family:{noun:"productivity", adj:"productive", adv:"productively"}, syn:["efficiency", "output"], ant:["laziness", "inefficiency"],
+    lv:"advanced", tags:["education", "work"] , pos:"n"},
+  { word:"authentic", ph:"/ɔːˈθen.tɪk/", en:"Real and genuine, not fake", cn:"真实的；可靠的",
+    phrases:[
+      {phrase:"authentic food", sent:"This restaurant serves authentic Chinese food.", sentCn:"这家餐厅提供正宗的中国食物。"},
+      {phrase:"authentic experience", sent:"Travelling gives you an authentic cultural experience.", sentCn:"旅行给你真实的文化体验。"},
+      {phrase:"authentic style", sent:"Her writing has a very authentic style.", sentCn:"她的写作风格非常真实自然。"}
+    ],
+    ex:"An authentic friendship is honest and caring.", family:{noun:"authenticity", adj:"authentic", adv:"authentically"}, syn:["genuine", "real"], ant:["fake", "artificial"],
+    lv:"advanced", tags:["description", "character"] , pos:"adj"},
+  { word:"financial", ph:"/faɪˈnæn.ʃəl/", en:"Relating to money and finances", cn:"财务的；金融的",
+    phrases:[
+      {phrase:"financial support", sent:"The family needed financial support for school.", sentCn:"这个家庭需要经济支持来上学。"},
+      {phrase:"financial plan", sent:"Make a financial plan before spending money.", sentCn:"花钱前要制定财务计划。"},
+      {phrase:"financial pressure", sent:"Financial pressure affects many families.", sentCn:"经济压力影响着许多家庭。"}
+    ],
+    ex:"Getting a good job can help you achieve financial independence.", family:{noun:"finance", adj:"financial", adv:"financially"}, syn:["economic", "monetary"], ant:[],
+    lv:"advanced", tags:["society", "life"] , pos:"adj"},
+  { word:"wildlife", ph:"/ˈwaɪld.laɪf/", en:"Animals and plants in their natural habitat", cn:"野生动物；野生生物",
+    phrases:[
+      {phrase:"protect wildlife", sent:"We should protect wildlife from disappearing.", sentCn:"我们应该保护野生动物免于消失。"},
+      {phrase:"wildlife conservation", sent:"Wildlife conservation is important for the planet.", sentCn:"野生动物保护对地球非常重要。"},
+      {phrase:"wildlife park", sent:"We visited a wildlife park on our school trip.", sentCn:"我们在学校旅行中参观了一个野生动物园。"}
+    ],
+    ex:"The documentary showed the beauty of African wildlife.", family:{noun:"wildlife"}, syn:["fauna", "nature"], ant:[],
+    lv:"intermediate", tags:["environment", "nature"] , pos:"n"},
+  { word:"authority", ph:"/ɔːˈθɒr.ɪ.ti/", en:"The power to give orders or make decisions", cn:"权威；当局",
+    phrases:[
+      {phrase:"school authority", sent:"The school authority made new exam rules.", sentCn:"学校当局制定了新的考试规定。"},
+      {phrase:"respect authority", sent:"It is important to respect authority in school.", sentCn:"在学校尊重权威是很重要的。"},
+      {phrase:"authority figure", sent:"Parents and teachers are authority figures for children.", sentCn:"父母和教师是孩子的权威人物。"}
+    ],
+    ex:"The teacher spoke with authority on the subject.", family:{noun:"authority", adj:"authoritative"}, syn:["power", "control"], ant:[],
+    lv:"advanced", tags:["society", "education"] , pos:"n"},
+  { word:"curiosity", ph:"/ˌkjʊər.iˈɒs.ɪ.ti/", en:"A strong wish to know or learn things", cn:"好奇心",
+    phrases:[
+      {phrase:"natural curiosity", sent:"Children have a natural curiosity about the world.", sentCn:"孩子们对世界有天生的好奇心。"},
+      {phrase:"satisfy curiosity", sent:"Reading books helps satisfy your curiosity.", sentCn:"阅读书籍有助于满足你的好奇心。"},
+      {phrase:"out of curiosity", sent:"Out of curiosity, she looked inside the box.", sentCn:"出于好奇，她往盒子里看了看。"}
+    ],
+    ex:"Curiosity is one of the best qualities in a student.", family:{noun:"curiosity", adj:"curious", adv:"curiously"}, syn:["interest", "inquisitiveness"], ant:["indifference", "apathy"],
+    lv:"intermediate", tags:["education", "character"] , pos:"n"},
+  { word:"collaboration", ph:"/kəˌlæb.əˈreɪ.ʃən/", en:"Working with others to achieve something", cn:"合作；协作",
+    phrases:[
+      {phrase:"team collaboration", sent:"Team collaboration leads to better results.", sentCn:"团队合作带来更好的结果。"},
+      {phrase:"close collaboration", sent:"The two schools work in close collaboration.", sentCn:"两所学校密切合作。"},
+      {phrase:"creative collaboration", sent:"Art projects benefit from creative collaboration.", sentCn:"艺术项目受益于创意合作。"}
+    ],
+    ex:"The project was a great example of collaboration.", family:{noun:"collaboration", verb:"collaborate", adj:"collaborative"}, syn:["teamwork", "cooperation"], ant:["competition", "conflict"],
+    lv:"intermediate", tags:["relationships", "education"] , pos:"n"},
+  { word:"phenomenon", ph:"/fɪˈnɒm.ɪ.nən/", en:"Something that is remarkable or unusual", cn:"现象；奇迹",
+    phrases:[
+      {phrase:"natural phenomenon", sent:"A rainbow is a beautiful natural phenomenon.", sentCn:"彩虹是一种美丽的自然现象。"},
+      {phrase:"social phenomenon", sent:"Social media is an important social phenomenon.", sentCn:"社交媒体是一种重要的社会现象。"},
+      {phrase:"global phenomenon", sent:"Online learning has become a global phenomenon.", sentCn:"在线学习已成为一种全球现象。"}
+    ],
+    ex:"The Northern Lights are an amazing natural phenomenon.", family:{noun:"phenomenon (pl. phenomena)", adj:"phenomenal"}, syn:["event", "occurrence"], ant:[],
+    lv:"advanced", tags:["science", "description"] , pos:"n"},
+  { word:"satisfaction", ph:"/ˌsæt.ɪsˈfæk.ʃən/", en:"The good feeling of getting what you wanted", cn:"满足感；满意",
+    phrases:[
+      {phrase:"feel satisfaction", sent:"I feel great satisfaction after finishing my homework.", sentCn:"完成作业后我感到很满足。"},
+      {phrase:"job satisfaction", sent:"Job satisfaction is as important as salary.", sentCn:"工作满意度与薪水同样重要。"},
+      {phrase:"customer satisfaction", sent:"The shop aims for customer satisfaction.", sentCn:"这家商店以顾客满意为目标。"}
+    ],
+    ex:"Helping others gives me deep satisfaction.", family:{noun:"satisfaction", verb:"satisfy", adj:"satisfied/satisfying"}, syn:["fulfillment", "contentment"], ant:["dissatisfaction", "disappointment"],
+    lv:"intermediate", tags:["emotion", "motivation"] , pos:"n"},
+  { word:"admiration", ph:"/ˌæd.mɪˈreɪ.ʃən/", en:"A feeling of great respect and liking", cn:"钦佩；赞赏",
+    phrases:[
+      {phrase:"express admiration", sent:"She expressed admiration for the teacher's patience.", sentCn:"她表达了对老师耐心的钦佩。"},
+      {phrase:"full of admiration", sent:"I was full of admiration for her hard work.", sentCn:"我对她的努力充满了钦佩。"},
+      {phrase:"win admiration", sent:"His honesty won the admiration of his classmates.", sentCn:"他的诚实赢得了同学们的钦佩。"}
+    ],
+    ex:"I have great admiration for people who work hard.", family:{noun:"admiration", verb:"admire", adj:"admirable"}, syn:["respect", "appreciation"], ant:["contempt", "disrespect"],
+    lv:"intermediate", tags:["emotion", "relationships"] , pos:"n"},
+  { word:"uncertainty", ph:"/ʌnˈsɜːr.tən.ti/", en:"Not knowing what will happen", cn:"不确定性；不确定",
+    phrases:[
+      {phrase:"face uncertainty", sent:"We all face uncertainty about the future.", sentCn:"我们都面临着对未来的不确定性。"},
+      {phrase:"deal with uncertainty", sent:"Learning to deal with uncertainty is a life skill.", sentCn:"学会应对不确定性是一种生活技能。"},
+      {phrase:"economic uncertainty", sent:"Economic uncertainty makes planning harder.", sentCn:"经济不确定性使规划更加困难。"}
+    ],
+    ex:"There was uncertainty about the exam date.", family:{noun:"uncertainty", adj:"uncertain"}, syn:["doubt", "ambiguity"], ant:["certainty", "confidence"],
+    lv:"advanced", tags:["emotion", "life"] , pos:"n"},
+  { word:"psychologist", ph:"/saɪˈkɒl.ə.dʒɪst/", en:"An expert who studies the mind", cn:"心理学家",
+    phrases:[
+      {phrase:"school psychologist", sent:"The school psychologist helps students with stress.", sentCn:"学校心理学家帮助学生应对压力。"},
+      {phrase:"see a psychologist", sent:"It is brave to see a psychologist when you need help.", sentCn:"在需要帮助时去看心理学家是勇敢的。"},
+      {phrase:"child psychologist", sent:"A child psychologist studies how children develop.", sentCn:"儿童心理学家研究孩子的成长发育。"}
+    ],
+    ex:"The psychologist helped her manage her exam anxiety.", family:{noun:"psychologist/psychology", adj:"psychological"}, syn:["therapist", "counsellor"], ant:[],
+    lv:"advanced", tags:["education", "health"] , pos:"n"},
+  { word:"academic", ph:"/ˌæk.əˈdem.ɪk/", en:"Relating to school or university study", cn:"学术的；学业的",
+    phrases:[
+      {phrase:"academic performance", sent:"Her academic performance improved this year.", sentCn:"她今年的学业成绩有所提高。"},
+      {phrase:"academic pressure", sent:"High academic pressure can cause stress.", sentCn:"高学业压力可能会造成压力。"},
+      {phrase:"academic goal", sent:"Set a clear academic goal for each term.", sentCn:"每学期设定一个明确的学业目标。"}
+    ],
+    ex:"Academic success requires hard work and good habits.", family:{noun:"academy", adj:"academic", adv:"academically"}, syn:["educational", "scholarly"], ant:[],
+    lv:"intermediate", tags:["education"] , pos:"adj"},
+
+  // ══ 动词刻意训练词汇 (10 words) ══
+  { word:"strengthen", ph:"/ˈstreŋk.θən/", en:"To make something stronger", cn:"加强；增强",
+    phrases:[
+      {phrase:"strengthen skills", sent:"Reading every day strengthens your language skills.", sentCn:"每天阅读能加强你的语言技能。"},
+      {phrase:"strengthen friendship", sent:"Working together strengthens friendship.", sentCn:"共同合作能加深友谊。"},
+      {phrase:"strengthen confidence", sent:"Success helps strengthen your confidence.", sentCn:"成功有助于增强你的信心。"}
+    ],
+    ex:"Exercise strengthens both your body and your mind.", family:{noun:"strength", verb:"strengthen", adj:"strong"}, syn:["reinforce", "boost"], ant:["weaken"],
+    lv:"intermediate", tags:["character", "lifestyle"] , verbForms:{past:"strengthened",pp:"strengthened",ing:"strengthening",s:"strengthens"}, pos:"v"},
+  { word:"weaken", ph:"/ˈwiː.kən/", en:"To make something less strong", cn:"削弱；变弱",
+    phrases:[
+      {phrase:"weaken resolve", sent:"Negative thoughts can weaken your resolve.", sentCn:"消极的想法会削弱你的意志力。"},
+      {phrase:"weaken position", sent:"Making excuses weakens your position.", sentCn:"找借口会削弱你的立场。"},
+      {phrase:"weaken over time", sent:"Friendships can weaken over time without care.", sentCn:"友谊若不用心维护会随时间减弱。"}
+    ],
+    ex:"Lack of sleep weakens your ability to concentrate.", family:{noun:"weakness", verb:"weaken", adj:"weak"}, syn:["diminish", "reduce"], ant:["strengthen"],
+    lv:"intermediate", tags:["description"] , verbForms:{past:"weakened",pp:"weakened",ing:"weakening",s:"weakens"}, pos:"v"},
+  { word:"deepen", ph:"/ˈdiː.pən/", en:"To make something greater or more serious", cn:"加深；深化",
+    phrases:[
+      {phrase:"deepen understanding", sent:"Discussion helps deepen understanding of a topic.", sentCn:"讨论有助于加深对主题的理解。"},
+      {phrase:"deepen friendship", sent:"Sharing experiences deepens friendship.", sentCn:"共同经历能加深友谊。"},
+      {phrase:"deepen knowledge", sent:"Reading widely deepens your knowledge.", sentCn:"广泛阅读能深化你的知识。"}
+    ],
+    ex:"Travel deepens your understanding of other cultures.", family:{noun:"depth", verb:"deepen", adj:"deep"}, syn:["intensify", "strengthen"], ant:["lessen", "reduce"],
+    lv:"intermediate", tags:["thinking", "education"] , pos:"v"},
+  { word:"shorten", ph:"/ˈʃɔːr.tən/", en:"To make something shorter in length or time", cn:"缩短；变短",
+    phrases:[
+      {phrase:"shorten an essay", sent:"The teacher asked me to shorten my essay.", sentCn:"老师让我缩短我的文章。"},
+      {phrase:"shorten the distance", sent:"Technology has shortened the distance between people.", sentCn:"技术缩短了人与人之间的距离。"},
+      {phrase:"shorten a journey", sent:"The new train line shortens the journey by one hour.", sentCn:"新铁路线将旅程缩短了一个小时。"}
+    ],
+    ex:"We can shorten the meeting if we focus.", family:{noun:"length", verb:"shorten", adj:"short"}, syn:["reduce", "cut"], ant:["lengthen", "extend"],
+    lv:"basic", tags:["description"] , pos:"v"},
+  { word:"lengthen", ph:"/ˈleŋk.θən/", en:"To make something longer", cn:"延长；加长",
+    phrases:[
+      {phrase:"lengthen a speech", sent:"He decided to lengthen his speech with examples.", sentCn:"他决定用例子来延长他的演讲。"},
+      {phrase:"lengthen study time", sent:"I need to lengthen my study time before exams.", sentCn:"考试前我需要延长学习时间。"},
+      {phrase:"lengthen life", sent:"Exercise and good food can lengthen your life.", sentCn:"锻炼和好的饮食可以延长你的寿命。"}
+    ],
+    ex:"Days lengthen in spring as summer gets closer.", family:{noun:"length", verb:"lengthen", adj:"long"}, syn:["extend", "prolong"], ant:["shorten"],
+    lv:"intermediate", tags:["description"] , pos:"v"},
+  { word:"heighten", ph:"/ˈhaɪ.tən/", en:"To increase or make stronger", cn:"增强；加剧",
+    phrases:[
+      {phrase:"heighten awareness", sent:"This campaign heightens awareness of recycling.", sentCn:"这次活动提高了人们对回收利用的意识。"},
+      {phrase:"heighten tension", sent:"The loud noise heightened the tension in the room.", sentCn:"嘈杂的声音加剧了房间里的紧张气氛。"},
+      {phrase:"heighten interest", sent:"Good stories heighten students' interest in reading.", sentCn:"好故事能提高学生对阅读的兴趣。"}
+    ],
+    ex:"Loud music heightened the excitement at the event.", family:{noun:"height", verb:"heighten", adj:"high"}, syn:["intensify", "increase"], ant:["reduce", "lessen"],
+    lv:"advanced", tags:["description"] , pos:"n"},
+  { word:"worsen", ph:"/ˈwɜːr.sən/", en:"To become or make something worse", cn:"恶化；变差",
+    phrases:[
+      {phrase:"worsen health", sent:"Not sleeping enough will worsen your health.", sentCn:"睡眠不足会损害你的健康。"},
+      {phrase:"worsen situation", sent:"Arguing only worsens the situation.", sentCn:"争吵只会使情况变得更糟。"},
+      {phrase:"worsen over time", sent:"The problem worsened over time without attention.", sentCn:"这个问题由于没有得到重视而随时间恶化。"}
+    ],
+    ex:"His cold worsened because he did not rest.", family:{verb:"worsen", adj:"worse"}, syn:["deteriorate", "decline"], ant:["improve", "better"],
+    lv:"intermediate", tags:["description", "health"] , pos:"v"},
+  { word:"simplify", ph:"/ˈsɪm.plɪ.faɪ/", en:"To make something easier to understand", cn:"简化；使简单",
+    phrases:[
+      {phrase:"simplify instructions", sent:"Good teachers simplify difficult instructions.", sentCn:"好老师会简化复杂的说明。"},
+      {phrase:"simplify a problem", sent:"Break it into steps to simplify the problem.", sentCn:"把它分成几步来简化这个问题。"},
+      {phrase:"simplify language", sent:"Simplify your language when writing for beginners.", sentCn:"为初学者写作时要简化语言。"}
+    ],
+    ex:"The teacher simplified the explanation for the class.", family:{noun:"simplicity", verb:"simplify", adj:"simple", adv:"simply"}, syn:["clarify", "streamline"], ant:["complicate"],
+    lv:"intermediate", tags:["education", "communication"] , verbForms:{past:"simplified",pp:"simplified",ing:"simplifying",s:"simplifies"}, pos:"v"},
+  { word:"beautify", ph:"/ˈbjuː.tɪ.faɪ/", en:"To make something more beautiful", cn:"美化；装饰",
+    phrases:[
+      {phrase:"beautify the environment", sent:"Planting trees helps beautify the environment.", sentCn:"种树有助于美化环境。"},
+      {phrase:"beautify the classroom", sent:"We worked together to beautify our classroom.", sentCn:"我们共同努力美化了我们的教室。"},
+      {phrase:"beautify a city", sent:"Art and parks beautify a city.", sentCn:"艺术和公园能美化一座城市。"}
+    ],
+    ex:"Flowers beautify the school garden every spring.", family:{noun:"beauty", verb:"beautify", adj:"beautiful", adv:"beautifully"}, syn:["decorate", "enhance"], ant:["spoil", "damage"],
+    lv:"intermediate", tags:["environment", "art"] , pos:"v"},
+  { word:"fasten", ph:"/ˈfæs.ən/", en:"To close or attach something firmly", cn:"系紧；固定",
+    phrases:[
+      {phrase:"fasten a seatbelt", sent:"Always fasten your seatbelt in a car.", sentCn:"在汽车里要始终系好安全带。"},
+      {phrase:"fasten buttons", sent:"Fasten all buttons before the interview.", sentCn:"面试前把所有扣子都系好。"},
+      {phrase:"fasten the door", sent:"Please fasten the door so it does not swing open.", sentCn:"请把门关紧，以免它敞开。"}
+    ],
+    ex:"Fasten your bag before leaving the classroom.", family:{noun:"fastener", verb:"fasten"}, syn:["secure", "attach"], ant:["unfasten", "loosen"],
+    lv:"basic", tags:["behavior", "lifestyle"] , pos:"v"},
+
+  // ══ 高考形容词（副词源词）(24 words) ══
+  { word:"comfortable", ph:"/ˈkʌmf.tə.bəl/", en:"Feeling at ease; not causing discomfort", cn:"舒适的；自在的",
+    phrases:[
+      {phrase:"feel comfortable", sent:"I feel comfortable talking to my teacher.", sentCn:"我和老师说话感到自在。"},
+      {phrase:"comfortable home", sent:"They made a comfortable home for the family.", sentCn:"他们为家人建造了一个舒适的家。"},
+      {phrase:"comfortable with change", sent:"Being comfortable with change helps you grow.", sentCn:"对变化感到自在有助于你成长。"}
+    ],
+    ex:"A good chair makes studying more comfortable.", family:{noun:"comfort", adj:"comfortable", adv:"comfortably"}, syn:["cosy", "relaxed"], ant:["uncomfortable", "uneasy"],
+    lv:"basic", tags:["description", "lifestyle"] , pos:"adj"},
+  { word:"responsible", ph:"/rɪˈspɒn.sɪ.bəl/", en:"Having a duty to deal with something", cn:"负责任的；可靠的",
+    phrases:[
+      {phrase:"responsible student", sent:"A responsible student always completes homework.", sentCn:"一个负责任的学生总是完成作业。"},
+      {phrase:"feel responsible", sent:"I feel responsible for helping my classmates.", sentCn:"我觉得有责任帮助我的同学。"},
+      {phrase:"responsible for", sent:"Each student is responsible for their own learning.", sentCn:"每个学生都要对自己的学习负责。"}
+    ],
+    ex:"Being responsible means keeping your promises.", family:{noun:"responsibility", adj:"responsible", adv:"responsibly"}, syn:["reliable", "dependable"], ant:["irresponsible", "careless"],
+    lv:"intermediate", tags:["character", "behavior"] , pos:"adj"},
+  { word:"reasonable", ph:"/ˈriː.zən.ə.bəl/", en:"Fair and sensible", cn:"合理的；有道理的",
+    phrases:[
+      {phrase:"reasonable price", sent:"The book has a very reasonable price.", sentCn:"这本书的价格非常合理。"},
+      {phrase:"reasonable request", sent:"That is a reasonable request from the teacher.", sentCn:"那是老师提出的合理要求。"},
+      {phrase:"reasonable decision", sent:"She made a reasonable decision after thinking carefully.", sentCn:"她仔细考虑后做出了合理的决定。"}
+    ],
+    ex:"It is reasonable to ask for help when you are stuck.", family:{noun:"reason", adj:"reasonable", adv:"reasonably"}, syn:["sensible", "fair"], ant:["unreasonable", "extreme"],
+    lv:"intermediate", tags:["thinking", "description"] , pos:"adj"},
+  { word:"fortunate", ph:"/ˈfɔːr.tʃən.ɪt/", en:"Lucky; having good things happen", cn:"幸运的",
+    phrases:[
+      {phrase:"feel fortunate", sent:"I feel fortunate to have such great teachers.", sentCn:"我感到很幸运，有这么好的老师。"},
+      {phrase:"fortunate enough", sent:"She was fortunate enough to get a scholarship.", sentCn:"她幸运地获得了奖学金。"},
+      {phrase:"fortunate opportunity", sent:"This is a fortunate opportunity for all of us.", sentCn:"这对我们所有人来说都是一个幸运的机会。"}
+    ],
+    ex:"I am fortunate to study at such a good school.", family:{noun:"fortune", adj:"fortunate", adv:"fortunately"}, syn:["lucky", "blessed"], ant:["unfortunate", "unlucky"],
+    lv:"intermediate", tags:["emotion", "life"] , pos:"adj"},
+  { word:"sincere", ph:"/sɪnˈsɪər/", en:"Truly meaning what you say or do", cn:"真诚的；诚实的",
+    phrases:[
+      {phrase:"sincere apology", sent:"He gave a sincere apology to his friend.", sentCn:"他向朋友真诚地道歉了。"},
+      {phrase:"sincere effort", sent:"Teachers appreciate a sincere effort from students.", sentCn:"老师欣赏学生真诚的努力。"},
+      {phrase:"sincere friendship", sent:"A sincere friendship is built on trust.", sentCn:"真诚的友谊建立在信任的基础上。"}
+    ],
+    ex:"She gave a sincere thank-you to everyone who helped.", family:{noun:"sincerity", adj:"sincere", adv:"sincerely"}, syn:["genuine", "honest"], ant:["insincere", "fake"],
+    lv:"intermediate", tags:["character", "relationships"] , pos:"adj"},
+  { word:"patient", ph:"/ˈpeɪ.ʃənt/", en:"Able to wait calmly without complaining", cn:"耐心的；有耐性的",
+    phrases:[
+      {phrase:"be patient", sent:"Be patient — learning takes time.", sentCn:"要有耐心——学习需要时间。"},
+      {phrase:"patient teacher", sent:"A patient teacher explains things again and again.", sentCn:"耐心的老师一遍又一遍地解释。"},
+      {phrase:"patient with others", sent:"Try to be patient with others when they make mistakes.", sentCn:"当别人犯错时，试着对他们有耐心。"}
+    ],
+    ex:"You need to be patient when learning a new skill.", family:{noun:"patience", adj:"patient", adv:"patiently"}, syn:["calm", "tolerant"], ant:["impatient", "restless"],
+    lv:"basic", tags:["character", "behavior"] , pos:"adj"},
+  { word:"peaceful", ph:"/ˈpiːs.fəl/", en:"Calm and free from trouble", cn:"平静的；和平的",
+    phrases:[
+      {phrase:"peaceful environment", sent:"A peaceful environment helps you concentrate.", sentCn:"平静的环境有助于你集中注意力。"},
+      {phrase:"peaceful solution", sent:"We found a peaceful solution to the argument.", sentCn:"我们找到了解决争论的和平方式。"},
+      {phrase:"feel peaceful", sent:"I feel peaceful when I walk in the park.", sentCn:"在公园散步时我感到很平静。"}
+    ],
+    ex:"The library is a peaceful place to study.", family:{noun:"peace", adj:"peaceful", adv:"peacefully"}, syn:["calm", "quiet"], ant:["violent", "noisy"],
+    lv:"basic", tags:["description", "emotion"] , pos:"adj"},
+  { word:"powerful", ph:"/ˈpaʊ.ər.fəl/", en:"Having great strength or influence", cn:"强大的；有力的",
+    phrases:[
+      {phrase:"powerful speech", sent:"Her powerful speech moved everyone in the room.", sentCn:"她有力的演讲感动了房间里的每一个人。"},
+      {phrase:"powerful tool", sent:"Education is a powerful tool for change.", sentCn:"教育是改变的有力工具。"},
+      {phrase:"powerful message", sent:"The poem carries a powerful message about nature.", sentCn:"这首诗传达了关于自然的有力信息。"}
+    ],
+    ex:"A powerful team works together with one goal.", family:{noun:"power", adj:"powerful", adv:"powerfully"}, syn:["strong", "influential"], ant:["powerless", "weak"],
+    lv:"intermediate", tags:["description", "character"] , pos:"adj"},
+  { word:"professional", ph:"/prəˈfeʃ.ən.əl/", en:"Relating to a skilled job or expert behaviour", cn:"专业的；职业的",
+    phrases:[
+      {phrase:"professional advice", sent:"Ask for professional advice before making big choices.", sentCn:"做出重大选择前要寻求专业建议。"},
+      {phrase:"professional manner", sent:"Always behave in a professional manner at work.", sentCn:"在工作中要始终以专业的态度行事。"},
+      {phrase:"professional development", sent:"Teachers need professional development to improve.", sentCn:"教师需要专业发展来提高自己。"}
+    ],
+    ex:"He gave a very professional presentation to the class.", family:{noun:"profession/professional", adj:"professional", adv:"professionally"}, syn:["expert", "skilled"], ant:["amateur", "unprofessional"],
+    lv:"intermediate", tags:["work", "description"] , pos:"adj"},
+  { word:"sympathetic", ph:"/ˌsɪm.pəˈθet.ɪk/", en:"Showing care for someone's feelings", cn:"同情的；有同情心的",
+    phrases:[
+      {phrase:"sympathetic listener", sent:"A good friend is a sympathetic listener.", sentCn:"好朋友是善于倾听、富有同情心的人。"},
+      {phrase:"sympathetic response", sent:"Her sympathetic response helped me feel better.", sentCn:"她富有同情心的回应让我感觉好多了。"},
+      {phrase:"sympathetic teacher", sent:"A sympathetic teacher understands students' problems.", sentCn:"富有同情心的老师理解学生的问题。"}
+    ],
+    ex:"She was sympathetic when I failed the test.", family:{noun:"sympathy", adj:"sympathetic", adv:"sympathetically"}, syn:["understanding", "caring"], ant:["cold", "indifferent"],
+    lv:"intermediate", tags:["character", "emotion"] , pos:"adj"},
+  { word:"respectful", ph:"/rɪˈspekt.fəl/", en:"Showing politeness and respect", cn:"尊重的；有礼貌的",
+    phrases:[
+      {phrase:"respectful attitude", sent:"A respectful attitude towards teachers is important.", sentCn:"对老师的尊重态度很重要。"},
+      {phrase:"be respectful", sent:"Be respectful even when you disagree with someone.", sentCn:"即使你不同意某人的观点，也要保持尊重。"},
+      {phrase:"respectful tone", sent:"Always use a respectful tone in class discussions.", sentCn:"在课堂讨论中要始终使用尊重的语气。"}
+    ],
+    ex:"Students should be respectful of different opinions.", family:{noun:"respect", adj:"respectful", adv:"respectfully"}, syn:["polite", "courteous"], ant:["disrespectful", "rude"],
+    lv:"intermediate", tags:["character", "behavior"] , pos:"adj"},
+  { word:"meaningful", ph:"/ˈmiː.nɪŋ.fəl/", en:"Having real importance or purpose", cn:"有意义的；有价值的",
+    phrases:[
+      {phrase:"meaningful conversation", sent:"We had a meaningful conversation about our future.", sentCn:"我们就未来进行了一次有意义的对话。"},
+      {phrase:"meaningful work", sent:"Helping others is meaningful work.", sentCn:"帮助他人是有意义的工作。"},
+      {phrase:"meaningful experience", sent:"This trip was a truly meaningful experience.", sentCn:"这次旅行是一次真正有意义的经历。"}
+    ],
+    ex:"Reading good books leads to meaningful learning.", family:{noun:"meaning", adj:"meaningful", adv:"meaningfully"}, syn:["significant", "valuable"], ant:["meaningless", "pointless"],
+    lv:"intermediate", tags:["description", "motivation"] , pos:"adj"},
+  { word:"unusual", ph:"/ʌnˈjuː.ʒu.əl/", en:"Not common or expected", cn:"不寻常的；与众不同的",
+    phrases:[
+      {phrase:"unusual idea", sent:"She came up with an unusual idea for the project.", sentCn:"她为这个项目想出了一个不寻常的主意。"},
+      {phrase:"unusual talent", sent:"He has an unusual talent for drawing.", sentCn:"他有不寻常的绘画天赋。"},
+      {phrase:"unusual situation", sent:"We found ourselves in an unusual situation.", sentCn:"我们发现自己处于一种不寻常的情况。"}
+    ],
+    ex:"It is unusual for snow to fall in this city.", family:{adj:"unusual", adv:"unusually"}, syn:["rare", "unique"], ant:["usual", "common"],
+    lv:"basic", tags:["description"] , pos:"adj"},
+  { word:"confident", ph:"/ˈkɒn.fɪ.dənt/", en:"Feeling sure about yourself or something", cn:"自信的；确信的",
+    phrases:[
+      {phrase:"feel confident", sent:"Practising makes you feel more confident.", sentCn:"练习让你感到更自信。"},
+      {phrase:"confident speaker", sent:"She is a confident speaker who never gets nervous.", sentCn:"她是一个自信的演讲者，从不紧张。"},
+      {phrase:"become confident", sent:"You become more confident as you gain experience.", sentCn:"随着经验的积累，你会变得更加自信。"}
+    ],
+    ex:"After practising daily, I felt confident on exam day.", family:{noun:"confidence", adj:"confident", adv:"confidently"}, syn:["self-assured", "bold"], ant:["nervous", "unsure"],
+    lv:"intermediate", tags:["character", "emotion"] , pos:"adj"},
+  { word:"attractive", ph:"/əˈtræk.tɪv/", en:"Pleasing to look at or interesting", cn:"吸引人的；有吸引力的",
+    phrases:[
+      {phrase:"attractive design", sent:"The website has a very attractive design.", sentCn:"该网站有一个非常吸引人的设计。"},
+      {phrase:"attractive offer", sent:"The school made an attractive offer for the scholarship.", sentCn:"学校为奖学金提供了一个吸引人的条件。"},
+      {phrase:"attractive personality", sent:"An attractive personality helps you make friends.", sentCn:"有吸引力的个性有助于你交朋友。"}
+    ],
+    ex:"The colourful poster made the event look attractive.", family:{noun:"attraction", verb:"attract", adj:"attractive", adv:"attractively"}, syn:["appealing", "charming"], ant:["unattractive", "repulsive"],
+    lv:"intermediate", tags:["description"] , pos:"adj"},
+  { word:"extreme", ph:"/ɪkˈstriːm/", en:"Very great in degree; far beyond normal", cn:"极端的；极度的",
+    phrases:[
+      {phrase:"extreme weather", sent:"Extreme weather can be dangerous for everyone.", sentCn:"极端天气对所有人都可能是危险的。"},
+      {phrase:"extreme pressure", sent:"Students face extreme pressure before exams.", sentCn:"学生在考试前面临极大的压力。"},
+      {phrase:"extreme sport", sent:"Rock climbing is an exciting extreme sport.", sentCn:"攀岩是一项令人兴奋的极限运动。"}
+    ],
+    ex:"The team worked under extreme pressure to finish in time.", family:{noun:"extreme", adj:"extreme", adv:"extremely"}, syn:["intense", "severe"], ant:["mild", "moderate"],
+    lv:"intermediate", tags:["description"] , pos:"adj"},
+  { word:"rapid", ph:"/ˈræp.ɪd/", en:"Happening very quickly", cn:"快速的；迅速的",
+    phrases:[
+      {phrase:"rapid progress", sent:"She made rapid progress in her English studies.", sentCn:"她在英语学习上取得了快速进步。"},
+      {phrase:"rapid change", sent:"Technology has brought rapid change to our lives.", sentCn:"技术给我们的生活带来了快速变化。"},
+      {phrase:"rapid growth", sent:"The school has seen rapid growth in student numbers.", sentCn:"学校的学生人数出现了快速增长。"}
+    ],
+    ex:"The rapid development of the internet changed everything.", family:{noun:"speed", adj:"rapid", adv:"rapidly"}, syn:["fast", "quick"], ant:["slow", "gradual"],
+    lv:"intermediate", tags:["description"] , pos:"adj"},
+  { word:"official", ph:"/əˈfɪʃ.əl/", en:"Approved or done by authority", cn:"官方的；正式的",
+    phrases:[
+      {phrase:"official announcement", sent:"The official announcement was made by the principal.", sentCn:"校长发表了官方声明。"},
+      {phrase:"official language", sent:"English is the official language in many countries.", sentCn:"英语是许多国家的官方语言。"},
+      {phrase:"official result", sent:"We waited for the official exam results.", sentCn:"我们等待着官方考试结果。"}
+    ],
+    ex:"The official rules of the competition were explained clearly.", family:{noun:"office/official", adj:"official", adv:"officially"}, syn:["formal", "authorised"], ant:["unofficial", "informal"],
+    lv:"intermediate", tags:["society", "education"] , pos:"adj"},
+  { word:"successful", ph:"/səkˈses.fəl/", en:"Achieving what you wanted to do", cn:"成功的",
+    phrases:[
+      {phrase:"successful student", sent:"A successful student works hard and stays focused.", sentCn:"一个成功的学生努力学习，保持专注。"},
+      {phrase:"successful career", sent:"A good education leads to a successful career.", sentCn:"良好的教育有助于成功的事业。"},
+      {phrase:"successful team", sent:"A successful team shares the same goal.", sentCn:"一个成功的团队有着共同的目标。"}
+    ],
+    ex:"Hard work makes you more successful in the long run.", family:{noun:"success", verb:"succeed", adj:"successful", adv:"successfully"}, syn:["accomplished", "effective"], ant:["unsuccessful", "failed"],
+    lv:"basic", tags:["motivation", "life"] , pos:"adj"},
+  { word:"unfortunate", ph:"/ʌnˈfɔːr.tʃən.ɪt/", en:"Having bad luck; sad to say", cn:"不幸的；遗憾的",
+    phrases:[
+      {phrase:"unfortunate event", sent:"An unfortunate event stopped the school trip.", sentCn:"一件不幸的事件阻止了学校旅行。"},
+      {phrase:"unfortunate mistake", sent:"He made an unfortunate mistake on the last question.", sentCn:"他在最后一道题上犯了一个不幸的错误。"},
+      {phrase:"unfortunate situation", sent:"It is an unfortunate situation for everyone.", sentCn:"这对所有人来说都是一个不幸的情况。"}
+    ],
+    ex:"It was unfortunate that she missed the exam.", family:{noun:"misfortune", adj:"unfortunate", adv:"unfortunately"}, syn:["unlucky", "regrettable"], ant:["fortunate", "lucky"],
+    lv:"intermediate", tags:["emotion", "description"] , pos:"adj"},
+  { word:"instant", ph:"/ˈɪn.stənt/", en:"Happening immediately, without delay", cn:"立即的；即时的",
+    phrases:[
+      {phrase:"instant response", sent:"She gave an instant response to my question.", sentCn:"她立即回答了我的问题。"},
+      {phrase:"instant message", sent:"I sent her an instant message after class.", sentCn:"课后我给她发了一条即时消息。"},
+      {phrase:"in an instant", sent:"In an instant, the class fell silent.", sentCn:"一瞬间，教室变得安静了。"}
+    ],
+    ex:"I knew the answer in an instant.", family:{noun:"instant", adj:"instant", adv:"instantly"}, syn:["immediate", "instant"], ant:["delayed", "slow"],
+    lv:"basic", tags:["time", "description"] , pos:"adj"},
+  { word:"wasteful", ph:"/ˈweɪst.fəl/", en:"Using more than necessary; causing waste", cn:"浪费的；挥霍的",
+    phrases:[
+      {phrase:"wasteful habit", sent:"Leaving food on your plate is a wasteful habit.", sentCn:"把食物留在盘子里是一种浪费的习惯。"},
+      {phrase:"wasteful use", sent:"Wasteful use of water is a serious problem.", sentCn:"浪费水是一个严重的问题。"},
+      {phrase:"wasteful spending", sent:"Avoid wasteful spending on things you don't need.", sentCn:"避免在不需要的东西上浪费金钱。"}
+    ],
+    ex:"Printing too many pages is wasteful and bad for the environment.", family:{noun:"waste", verb:"waste", adj:"wasteful", adv:"wastefully"}, syn:["extravagant", "careless"], ant:["careful", "economical"],
+    lv:"intermediate", tags:["behavior", "environment"] , pos:"n"},
+  { word:"personal", ph:"/ˈpɜːr.sən.əl/", en:"Belonging to or about one person", cn:"个人的；私人的",
+    phrases:[
+      {phrase:"personal experience", sent:"She shared a personal experience in her essay.", sentCn:"她在文章中分享了一段个人经历。"},
+      {phrase:"personal goal", sent:"Set a personal goal at the start of each term.", sentCn:"每学期开始时设定一个个人目标。"},
+      {phrase:"personal development", sent:"Reading helps your personal development.", sentCn:"阅读有助于你的个人发展。"}
+    ],
+    ex:"Your personal opinion matters in this discussion.", family:{noun:"person", adj:"personal", adv:"personally"}, syn:["individual", "private"], ant:["public", "general"],
+    lv:"basic", tags:["life", "description"] , pos:"adj"},
+  { word:"economic", ph:"/ˌiː.kəˈnɒm.ɪk/", en:"Related to money and trade in society", cn:"经济的；经济上的",
+    phrases:[
+      {phrase:"economic problem", sent:"High prices are a major economic problem.", sentCn:"高价格是一个主要的经济问题。"},
+      {phrase:"economic growth", sent:"Education supports long-term economic growth.", sentCn:"教育支持长期经济增长。"},
+      {phrase:"economic pressure", sent:"Many families face economic pressure today.", sentCn:"今天许多家庭面临经济压力。"}
+    ],
+    ex:"Getting a good education helps your economic future.", family:{noun:"economy", adj:"economic", adv:"economically"}, syn:["financial", "commercial"], ant:[],
+    lv:"advanced", tags:["society", "life"] , pos:"adj"},
+
+  // ══ 名词构词法词汇 (40 words) ══
+  { word:"attract", ph:"/əˈtrækt/", en:"To make someone interested or want to come", cn:"吸引；引起",
+    phrases:[
+      {phrase:"attract attention", sent:"Bright colours attract attention easily.", sentCn:"鲜艳的颜色很容易吸引注意力。"},
+      {phrase:"attract tourists", sent:"The old city attracts many tourists every year.", sentCn:"古城每年吸引许多游客。"},
+      {phrase:"attract students", sent:"Good teachers attract students to their subject.", sentCn:"好老师能吸引学生喜欢他们的科目。"}
+    ],
+    ex:"The poster attracted a lot of interest from students.", family:{noun:"attraction", verb:"attract", adj:"attractive"}, syn:["draw", "appeal"], ant:["repel", "bore"],
+    lv:"intermediate", tags:["behavior", "description"] , verbForms:{past:"attracted",pp:"attracted",ing:"attracting",s:"attracts"}, pos:"v"},
+  { word:"invent", ph:"/ɪnˈvent/", en:"To create something new for the first time", cn:"发明；创造",
+    phrases:[
+      {phrase:"invent a machine", sent:"He wanted to invent a machine to help farmers.", sentCn:"他想发明一台帮助农民的机器。"},
+      {phrase:"invent a solution", sent:"Students were asked to invent a solution to pollution.", sentCn:"学生们被要求发明一个解决污染的方案。"},
+      {phrase:"invent a story", sent:"She likes to invent funny stories for her little brother.", sentCn:"她喜欢为弟弟编有趣的故事。"}
+    ],
+    ex:"The team worked hard to invent a better battery.", family:{noun:"invention/inventor", verb:"invent", adj:"inventive"}, syn:["create", "discover"], ant:[],
+    lv:"intermediate", tags:["science", "creativity"] , verbForms:{past:"invented",pp:"invented",ing:"inventing",s:"invents"}, pos:"v"},
+  { word:"express", ph:"/ɪkˈspres/", en:"To show feelings or ideas in words or actions", cn:"表达；表示",
+    phrases:[
+      {phrase:"express feelings", sent:"It is healthy to express your feelings openly.", sentCn:"公开表达自己的感受是有益的。"},
+      {phrase:"express ideas", sent:"Writing helps you express ideas more clearly.", sentCn:"写作帮助你更清楚地表达想法。"},
+      {phrase:"express gratitude", sent:"She expressed gratitude to everyone who helped her.", sentCn:"她对所有帮助过她的人表示感谢。"}
+    ],
+    ex:"Art is a great way to express your emotions.", family:{noun:"expression", verb:"express", adj:"expressive"}, syn:["show", "communicate"], ant:["hide", "suppress"],
+    lv:"basic", tags:["communication", "emotion"] , verbForms:{past:"expressed",pp:"expressed",ing:"expressing",s:"expresses"}, pos:"v"},
+  { word:"graduate", ph:"/ˈɡrædʒ.u.eɪt/", en:"To finish school or university successfully", cn:"毕业；毕业生",
+    phrases:[
+      {phrase:"graduate from school", sent:"She will graduate from high school next June.", sentCn:"她明年六月将从高中毕业。"},
+      {phrase:"graduate with honours", sent:"He graduated with honours from university.", sentCn:"他以优异成绩从大学毕业。"},
+      {phrase:"recent graduate", sent:"Many recent graduates struggle to find jobs.", sentCn:"许多应届毕业生努力寻找工作。"}
+    ],
+    ex:"I hope to graduate with top marks this year.", family:{noun:"graduation/graduate", verb:"graduate"}, syn:["finish", "complete"], ant:[],
+    lv:"intermediate", tags:["education", "life"] , verbForms:{past:"graduated",pp:"graduated",ing:"graduating",s:"graduates"}, pos:"v"},
+  { word:"operate", ph:"/ˈɒp.ər.eɪt/", en:"To work or make something work", cn:"操作；运行；动手术",
+    phrases:[
+      {phrase:"operate a machine", sent:"You need training to operate this machine safely.", sentCn:"你需要培训才能安全操作这台机器。"},
+      {phrase:"operate a school", sent:"The foundation operates ten schools in the city.", sentCn:"该基金会在市内运营十所学校。"},
+      {phrase:"operate on a patient", sent:"The doctor operated on the patient for three hours.", sentCn:"医生为患者进行了三个小时的手术。"}
+    ],
+    ex:"The new system will operate from Monday.", family:{noun:"operation", verb:"operate", adj:"operational"}, syn:["run", "function"], ant:[],
+    lv:"intermediate", tags:["work", "science"] , verbForms:{past:"operated",pp:"operated",ing:"operating",s:"operates"}, pos:"v"},
+  { word:"create", ph:"/kriˈeɪt/", en:"To make something new", cn:"创造；创建",
+    phrases:[
+      {phrase:"create a project", sent:"Students were asked to create a project on climate.", sentCn:"学生们被要求创建一个关于气候的项目。"},
+      {phrase:"create opportunities", sent:"Good education creates more opportunities in life.", sentCn:"良好的教育能创造更多人生机会。"},
+      {phrase:"create a positive environment", sent:"Teachers create a positive environment for learning.", sentCn:"老师为学习创造积极的环境。"}
+    ],
+    ex:"She loves to create art in her free time.", family:{noun:"creation/creativity/creator", verb:"create", adj:"creative"}, syn:["make", "design"], ant:["destroy"],
+    lv:"basic", tags:["creativity", "art"] , verbForms:{past:"created",pp:"created",ing:"creating",s:"creates"}, pos:"v"},
+  { word:"translate", ph:"/trænsˈleɪt/", en:"To change words into another language", cn:"翻译；转化",
+    phrases:[
+      {phrase:"translate a text", sent:"I had to translate the article from English to Chinese.", sentCn:"我必须把这篇文章从英语翻译成中文。"},
+      {phrase:"translate ideas", sent:"A good teacher translates complex ideas into simple ones.", sentCn:"好老师能把复杂的概念转化为简单的内容。"},
+      {phrase:"translate accurately", sent:"Translating accurately requires deep knowledge.", sentCn:"准确翻译需要深厚的知识。"}
+    ],
+    ex:"Can you translate this sentence into English for me?", family:{noun:"translation/translator", verb:"translate"}, syn:["interpret", "convert"], ant:[],
+    lv:"intermediate", tags:["language", "education"] , verbForms:{past:"translated",pp:"translated",ing:"translating",s:"translates"}, pos:"v"},
+  { word:"devote", ph:"/dɪˈvoʊt/", en:"To give time or energy to something", cn:"致力于；奉献",
+    phrases:[
+      {phrase:"devote time to", sent:"She devotes two hours each day to studying.", sentCn:"她每天花两个小时学习。"},
+      {phrase:"devote yourself to", sent:"He devoted himself to helping others.", sentCn:"他致力于帮助他人。"},
+      {phrase:"devote energy to", sent:"Devote your energy to things that matter most.", sentCn:"把精力投入到最重要的事情上。"}
+    ],
+    ex:"She devoted her life to teaching children.", family:{noun:"devotion", verb:"devote", adj:"devoted"}, syn:["dedicate", "commit"], ant:["neglect", "ignore"],
+    lv:"advanced", tags:["character", "motivation"] , verbForms:{past:"devoted",pp:"devoted",ing:"devoting",s:"devotes"}, pos:"v"},
+  { word:"pollute", ph:"/pəˈluːt/", en:"To make the environment dirty or harmful", cn:"污染",
+    phrases:[
+      {phrase:"pollute the air", sent:"Factory smoke pollutes the air in cities.", sentCn:"工厂的烟雾污染了城市的空气。"},
+      {phrase:"pollute rivers", sent:"Rubbish in rivers pollutes the water supply.", sentCn:"河里的垃圾污染了水源。"},
+      {phrase:"stop polluting", sent:"We must stop polluting the ocean with plastic.", sentCn:"我们必须停止用塑料污染海洋。"}
+    ],
+    ex:"Cars pollute the air and harm people's health.", family:{noun:"pollution", verb:"pollute", adj:"polluted"}, syn:["contaminate", "dirty"], ant:["clean", "purify"],
+    lv:"intermediate", tags:["environment"] , verbForms:{past:"polluted",pp:"polluted",ing:"polluting",s:"pollutes"}, pos:"v"},
+  { word:"solve", ph:"/sɒlv/", en:"To find the answer to a problem", cn:"解决；解答",
+    phrases:[
+      {phrase:"solve a problem", sent:"Working together helps us solve problems faster.", sentCn:"共同合作有助于我们更快地解决问题。"},
+      {phrase:"solve an equation", sent:"She solved the maths equation in two minutes.", sentCn:"她在两分钟内解出了数学方程式。"},
+      {phrase:"solve a mystery", sent:"The class tried to solve the mystery in the story.", sentCn:"同学们试图解开故事中的谜题。"}
+    ],
+    ex:"Think carefully before you try to solve the problem.", family:{noun:"solution", verb:"solve", adj:"solvable"}, syn:["resolve", "fix"], ant:["create", "complicate"],
+    lv:"basic", tags:["thinking", "education"] , verbForms:{past:"solved",pp:"solved",ing:"solving",s:"solves"}, pos:"v"},
+  { word:"perform", ph:"/pərˈfɔːrm/", en:"To do something in front of others", cn:"表演；执行；表现",
+    phrases:[
+      {phrase:"perform on stage", sent:"She was nervous to perform on stage for the first time.", sentCn:"她第一次在舞台上表演时很紧张。"},
+      {phrase:"perform well", sent:"Students who sleep well perform better in exams.", sentCn:"睡眠好的学生在考试中表现更好。"},
+      {phrase:"perform a task", sent:"The robot was programmed to perform simple tasks.", sentCn:"机器人被编程执行简单任务。"}
+    ],
+    ex:"The choir performed beautifully at the school concert.", family:{noun:"performance", verb:"perform", adj:"performing"}, syn:["act", "present"], ant:[],
+    lv:"intermediate", tags:["art", "education"] , verbForms:{past:"performed",pp:"performed",ing:"performing",s:"performs"}, pos:"v"},
+  { word:"differ", ph:"/ˈdɪf.ər/", en:"To be different from something else", cn:"不同；有差异",
+    phrases:[
+      {phrase:"differ from", sent:"My opinion differs from yours on this topic.", sentCn:"我对这个话题的看法与你不同。"},
+      {phrase:"differ greatly", sent:"People's learning styles can differ greatly.", sentCn:"人们的学习方式可能大不相同。"},
+      {phrase:"differ in opinion", sent:"It is normal to differ in opinion sometimes.", sentCn:"有时候意见不同是很正常的。"}
+    ],
+    ex:"The two essays differ in style but not in ideas.", family:{noun:"difference", verb:"differ", adj:"different"}, syn:["vary", "contrast"], ant:["agree", "match"],
+    lv:"intermediate", tags:["thinking", "description"] , verbForms:{past:"differed",pp:"differed",ing:"differing",s:"differs"}, pos:"v"},
+  { word:"prefer", ph:"/prɪˈfɜːr/", en:"To like one thing more than another", cn:"更喜欢；偏好",
+    phrases:[
+      {phrase:"prefer to study", sent:"I prefer to study in the morning when I am fresh.", sentCn:"我更喜欢在早上精神好的时候学习。"},
+      {phrase:"prefer reading", sent:"She prefers reading to watching TV.", sentCn:"她更喜欢阅读而不是看电视。"},
+      {phrase:"prefer a quiet place", sent:"Most students prefer a quiet place to do homework.", sentCn:"大多数学生更喜欢在安静的地方做作业。"}
+    ],
+    ex:"I prefer learning by doing rather than just listening.", family:{noun:"preference", verb:"prefer", adj:"preferable"}, syn:["favour", "choose"], ant:["dislike", "avoid"],
+    lv:"basic", tags:["behavior", "thinking"] , verbForms:{past:"preferred",pp:"preferred",ing:"preferring",s:"prefers"}, pos:"v"},
+  { word:"achieve", ph:"/əˈtʃiːv/", en:"To successfully reach a goal", cn:"实现；达到；取得",
+    phrases:[
+      {phrase:"achieve a goal", sent:"Hard work helps you achieve any goal.", sentCn:"努力工作帮助你实现任何目标。"},
+      {phrase:"achieve success", sent:"She achieved success through years of practice.", sentCn:"她通过多年的练习取得了成功。"},
+      {phrase:"achieve high marks", sent:"Regular revision helps you achieve high marks.", sentCn:"定期复习有助于取得高分。"}
+    ],
+    ex:"You can achieve great things if you believe in yourself.", family:{noun:"achievement", verb:"achieve"}, syn:["accomplish", "reach"], ant:["fail", "miss"],
+    lv:"intermediate", tags:["motivation", "education"] , verbForms:{past:"achieved",pp:"achieved",ing:"achieving",s:"achieves"}, pos:"v"},
+  { word:"disappoint", ph:"/ˌdɪs.əˈpɔɪnt/", en:"To make someone feel sad by not meeting expectations", cn:"使失望",
+    phrases:[
+      {phrase:"disappoint parents", sent:"He didn't want to disappoint his parents with bad grades.", sentCn:"他不想因为成绩不好而让父母失望。"},
+      {phrase:"deeply disappoint", sent:"Losing the final deeply disappointed the whole team.", sentCn:"输掉决赛让整个队伍深感失望。"},
+      {phrase:"disappoint yourself", sent:"Don't disappoint yourself by giving up too early.", sentCn:"不要因为过早放弃而让自己失望。"}
+    ],
+    ex:"I didn't want to disappoint my teacher after all her help.", family:{noun:"disappointment", verb:"disappoint", adj:"disappointed/disappointing"}, syn:["let down", "sadden"], ant:["please", "satisfy"],
+    lv:"intermediate", tags:["emotion", "relationships"] , verbForms:{past:"disappointed",pp:"disappointed",ing:"disappointing",s:"disappoints"}, pos:"v"},
+  { word:"disagree", ph:"/ˌdɪs.əˈɡriː/", en:"To have a different opinion from someone", cn:"不同意；持异议",
+    phrases:[
+      {phrase:"disagree politely", sent:"You can disagree with others politely.", sentCn:"你可以礼貌地不同意他人的观点。"},
+      {phrase:"disagree with", sent:"I respectfully disagree with your conclusion.", sentCn:"我不赞同你的结论，但表示尊重。"},
+      {phrase:"agree to disagree", sent:"Sometimes it is fine to agree to disagree.", sentCn:"有时候求同存异也是可以的。"}
+    ],
+    ex:"It is healthy to disagree and share different views.", family:{noun:"disagreement", verb:"disagree"}, syn:["differ", "dispute"], ant:["agree", "accept"],
+    lv:"basic", tags:["communication", "thinking"] , verbForms:{past:"disagreed",pp:"disagreed",ing:"disagreeing",s:"disagrees"}, pos:"v"},
+  { word:"amaze", ph:"/əˈmeɪz/", en:"To surprise someone greatly", cn:"使惊讶；使惊叹",
+    phrases:[
+      {phrase:"amaze everyone", sent:"Her performance amazed everyone in the hall.", sentCn:"她的表演让大厅里的每个人都惊叹不已。"},
+      {phrase:"be amazed by", sent:"I was amazed by the beauty of the mountains.", sentCn:"我被山脉的美丽所震撼。"},
+      {phrase:"never ceases to amaze", sent:"Her creativity never ceases to amaze her teachers.", sentCn:"她的创造力让老师们一直感到惊叹。"}
+    ],
+    ex:"The magician's tricks amazed the whole audience.", family:{noun:"amazement", verb:"amaze", adj:"amazing/amazed"}, syn:["astonish", "surprise"], ant:["bore", "disappoint"],
+    lv:"intermediate", tags:["emotion", "description"] , verbForms:{past:"amazed",pp:"amazed",ing:"amazing",s:"amazes"}, pos:"v"},
+  { word:"excite", ph:"/ɪkˈsaɪt/", en:"To make someone feel happy and eager", cn:"使兴奋；激动",
+    phrases:[
+      {phrase:"excite students", sent:"A good teacher excites students about learning.", sentCn:"好老师能让学生对学习感到兴奋。"},
+      {phrase:"excite the crowd", sent:"The final goal excited the crowd.", sentCn:"最后进球让观众们兴奋起来。"},
+      {phrase:"feel excited", sent:"I feel excited before every new challenge.", sentCn:"每次面对新挑战前我都感到兴奋。"}
+    ],
+    ex:"The news of the trip excited everyone in the class.", family:{noun:"excitement", verb:"excite", adj:"excited/exciting"}, syn:["thrill", "energise"], ant:["bore", "calm"],
+    lv:"basic", tags:["emotion", "description"] , verbForms:{past:"excited",pp:"excited",ing:"exciting",s:"excites"}, pos:"v"},
+  { word:"improve", ph:"/ɪmˈpruːv/", en:"To become or make something better", cn:"改善；提高",
+    phrases:[
+      {phrase:"improve grades", sent:"Studying harder helps you improve your grades.", sentCn:"更努力地学习有助于提高成绩。"},
+      {phrase:"improve skills", sent:"Practice every day to improve your skills.", sentCn:"每天练习来提高你的技能。"},
+      {phrase:"improve health", sent:"Exercise and rest improve your health.", sentCn:"锻炼和休息可以改善你的健康。"}
+    ],
+    ex:"I want to improve my English speaking this year.", family:{noun:"improvement", verb:"improve", adj:"improved"}, syn:["enhance", "develop"], ant:["worsen", "decline"],
+    lv:"basic", tags:["education", "motivation"] , verbForms:{past:"improved",pp:"improved",ing:"improving",s:"improves"}, pos:"v"},
+  { word:"argue", ph:"/ˈɑːr.ɡjuː/", en:"To disagree with someone strongly", cn:"争论；辩论；主张",
+    phrases:[
+      {phrase:"argue about", sent:"They argued about who should clean the classroom.", sentCn:"他们为谁应该打扫教室而争论。"},
+      {phrase:"argue your point", sent:"You can argue your point calmly and clearly.", sentCn:"你可以冷静清晰地表达你的观点。"},
+      {phrase:"argue in favour", sent:"She argued in favour of more school sports.", sentCn:"她主张增加更多学校体育活动。"}
+    ],
+    ex:"Try to argue your ideas with evidence not emotions.", family:{noun:"argument", verb:"argue", adj:"argumentative"}, syn:["debate", "dispute"], ant:["agree", "accept"],
+    lv:"intermediate", tags:["communication", "thinking"] , verbForms:{past:"argued",pp:"argued",ing:"arguing",s:"argues"}, pos:"v"},
+  { word:"treat", ph:"/triːt/", en:"To behave toward someone in a certain way", cn:"对待；治疗；招待",
+    phrases:[
+      {phrase:"treat others", sent:"Treat others the way you want to be treated.", sentCn:"以你希望被对待的方式对待他人。"},
+      {phrase:"treat a patient", sent:"The doctor treated the patient with care.", sentCn:"医生细心地治疗了那位病人。"},
+      {phrase:"treat as a friend", sent:"She always treats newcomers as friends.", sentCn:"她总是把新来的人当朋友对待。"}
+    ],
+    ex:"Good teachers treat every student fairly.", family:{noun:"treatment", verb:"treat", adj:"treatable"}, syn:["handle", "care for"], ant:["ignore", "neglect"],
+    lv:"basic", tags:["behavior", "health"] , verbForms:{past:"treated",pp:"treated",ing:"treating",s:"treats"}, pos:"v"},
+  { word:"kind", ph:"/kaɪnd/", en:"Caring and friendly to others", cn:"善良的；亲切的",
+    phrases:[
+      {phrase:"be kind to", sent:"Always be kind to people who need help.", sentCn:"总是对需要帮助的人友善。"},
+      {phrase:"kind words", sent:"A few kind words can make someone's day better.", sentCn:"几句亲切的话可以让人一天都心情愉快。"},
+      {phrase:"kind gesture", sent:"Small kind gestures mean a lot to others.", sentCn:"小小的善意举动对他人意义重大。"}
+    ],
+    ex:"She is so kind that she always helps her classmates.", family:{noun:"kindness", adj:"kind", adv:"kindly"}, syn:["caring", "generous"], ant:["cruel", "unkind"],
+    lv:"basic", tags:["character", "relationships"] , pos:"adj"},
+  { word:"shy", ph:"/ʃaɪ/", en:"Nervous or uncomfortable with other people", cn:"害羞的；腼腆的",
+    phrases:[
+      {phrase:"feel shy", sent:"She felt shy on her first day at the new school.", sentCn:"她在新学校的第一天感到害羞。"},
+      {phrase:"too shy to speak", sent:"He was too shy to speak in front of the class.", sentCn:"他太害羞了，不敢在全班面前发言。"},
+      {phrase:"overcome shyness", sent:"Joining a club helped her overcome shyness.", sentCn:"加入一个社团帮助她克服了害羞。"}
+    ],
+    ex:"Being shy is normal, but practice helps you grow.", family:{noun:"shyness", adj:"shy", adv:"shyly"}, syn:["timid", "reserved"], ant:["confident", "outgoing"],
+    lv:"basic", tags:["character", "emotion"] , pos:"n"},
+  { word:"creative", ph:"/kriˈeɪ.tɪv/", en:"Having the ability to make new ideas", cn:"有创造力的；创意的",
+    phrases:[
+      {phrase:"creative thinking", sent:"Creative thinking helps solve difficult problems.", sentCn:"创造性思维有助于解决困难问题。"},
+      {phrase:"creative student", sent:"She is a creative student who makes beautiful art.", sentCn:"她是一个有创造力的学生，能制作漂亮的艺术品。"},
+      {phrase:"creative writing", sent:"I enjoy creative writing classes most.", sentCn:"我最喜欢创意写作课。"}
+    ],
+    ex:"A creative mind finds solutions others cannot see.", family:{noun:"creativity/creation", verb:"create", adj:"creative", adv:"creatively"}, syn:["imaginative", "innovative"], ant:["unimaginative", "conventional"],
+    lv:"intermediate", tags:["character", "art", "education"] , pos:"adj"},
+  { word:"freedom", ph:"/ˈfriː.dəm/", en:"The state of being free to do what you want", cn:"自由",
+    phrases:[
+      {phrase:"freedom of speech", sent:"Freedom of speech means you can share your opinion.", sentCn:"言论自由意味着你可以分享自己的观点。"},
+      {phrase:"personal freedom", sent:"Living alone gives you more personal freedom.", sentCn:"独自生活给你更多个人自由。"},
+      {phrase:"freedom to choose", sent:"Students have the freedom to choose their own topics.", sentCn:"学生有自由选择自己题目的权利。"}
+    ],
+    ex:"Reading gives me a sense of freedom and escape.", family:{noun:"freedom", adj:"free", adv:"freely"}, syn:["liberty", "independence"], ant:["captivity", "restriction"],
+    lv:"intermediate", tags:["life", "society"] , pos:"n"},
+  { word:"friendship", ph:"/ˈfrend.ʃɪp/", en:"A close relationship between friends", cn:"友谊；友情",
+    phrases:[
+      {phrase:"true friendship", sent:"True friendship means being there in hard times.", sentCn:"真正的友谊意味着在困难时期相互陪伴。"},
+      {phrase:"build friendship", sent:"Sharing activities helps build friendship.", sentCn:"共同参与活动有助于建立友谊。"},
+      {phrase:"long-lasting friendship", sent:"We have had a long-lasting friendship since primary school.", sentCn:"我们从小学起就有了持久的友谊。"}
+    ],
+    ex:"Friendship is one of the most important things in life.", family:{noun:"friendship", adj:"friendly"}, syn:["companionship", "bond"], ant:["rivalry", "enmity"],
+    lv:"basic", tags:["relationships", "life"] , pos:"n"},
+  { word:"hardship", ph:"/ˈhɑːrd.ʃɪp/", en:"Difficulty and suffering in life", cn:"艰辛；困苦",
+    phrases:[
+      {phrase:"face hardship", sent:"Many students face hardship but still work hard.", sentCn:"许多学生面临困难，但仍然努力学习。"},
+      {phrase:"overcome hardship", sent:"Overcoming hardship makes you stronger.", sentCn:"克服困难使你更强大。"},
+      {phrase:"hardship builds character", sent:"Hardship often builds character and resilience.", sentCn:"艰辛往往能塑造性格和韧性。"}
+    ],
+    ex:"Despite hardship, she never stopped learning.", family:{noun:"hardship", adj:"hard"}, syn:["difficulty", "struggle"], ant:["ease", "comfort"],
+    lv:"advanced", tags:["life", "character"] , pos:"n"},
+  { word:"honesty", ph:"/ˈɒn.ɪ.sti/", en:"The quality of always telling the truth", cn:"诚实；正直",
+    phrases:[
+      {phrase:"value honesty", sent:"I value honesty above all other qualities.", sentCn:"我把诚实看得比其他任何品质都重要。"},
+      {phrase:"honesty is important", sent:"Honesty is important in all relationships.", sentCn:"诚实在所有关系中都很重要。"},
+      {phrase:"with honesty", sent:"She spoke with honesty about her mistakes.", sentCn:"她诚实地谈到了自己的错误。"}
+    ],
+    ex:"Honesty and hard work are the keys to success.", family:{noun:"honesty", adj:"honest", adv:"honestly"}, syn:["truthfulness", "integrity"], ant:["dishonesty", "deception"],
+    lv:"basic", tags:["character", "relationships"] , pos:"n"},
+  { word:"warmth", ph:"/wɔːrmθ/", en:"The quality of being friendly and caring", cn:"温暖；热情",
+    phrases:[
+      {phrase:"warmth of family", sent:"The warmth of family support helped her through exams.", sentCn:"家人的温暖帮助她度过了考试。"},
+      {phrase:"show warmth", sent:"Good teachers show warmth towards all students.", sentCn:"好老师对所有学生都表现出温情。"},
+      {phrase:"sense of warmth", sent:"A smile gives others a sense of warmth.", sentCn:"微笑给他人带来温暖的感觉。"}
+    ],
+    ex:"The warmth of her welcome made me feel at home.", family:{noun:"warmth", adj:"warm", adv:"warmly"}, syn:["kindness", "affection"], ant:["coldness", "hostility"],
+    lv:"intermediate", tags:["emotion", "character"] , pos:"n"},
+  { word:"truth", ph:"/truːθ/", en:"The real facts about something", cn:"真相；真理",
+    phrases:[
+      {phrase:"tell the truth", sent:"Always tell the truth even when it is hard.", sentCn:"即使很难，也要始终说真话。"},
+      {phrase:"discover the truth", sent:"Scientists work to discover the truth about nature.", sentCn:"科学家努力发现自然的真相。"},
+      {phrase:"truth hurts", sent:"Sometimes the truth hurts but helps us grow.", sentCn:"有时候真相很痛，但能帮助我们成长。"}
+    ],
+    ex:"The truth is more important than a comfortable lie.", family:{noun:"truth", adj:"true/truthful", adv:"truly"}, syn:["fact", "reality"], ant:["lie", "fiction"],
+    lv:"basic", tags:["character", "thinking"] , pos:"n"},
+  { word:"journalist", ph:"/ˈdʒɜːr.nə.lɪst/", en:"A person who writes or reports news", cn:"记者；新闻工作者",
+    phrases:[
+      {phrase:"news journalist", sent:"The journalist interviewed the school principal.", sentCn:"记者采访了校长。"},
+      {phrase:"become a journalist", sent:"She wants to become a journalist after university.", sentCn:"她大学毕业后想成为一名记者。"},
+      {phrase:"journalist report", sent:"The journalist's report was published in the paper.", sentCn:"记者的报道发表在报纸上。"}
+    ],
+    ex:"A good journalist always checks facts carefully.", family:{noun:"journalist/journalism"}, syn:["reporter", "correspondent"], ant:[],
+    lv:"intermediate", tags:["work", "society"] , pos:"n"},
+  { word:"tourist", ph:"/ˈtʊər.ɪst/", en:"A person who travels to visit places", cn:"游客；旅游者",
+    phrases:[
+      {phrase:"foreign tourist", sent:"Many foreign tourists visit the Great Wall every year.", sentCn:"每年有很多外国游客参观长城。"},
+      {phrase:"tourist attraction", sent:"The old temple is a popular tourist attraction.", sentCn:"这座古庙是受欢迎的旅游景点。"},
+      {phrase:"tourist information", sent:"The tourist information centre helps visitors plan their trip.", sentCn:"游客信息中心帮助游客规划行程。"}
+    ],
+    ex:"The city is very popular with tourists in summer.", family:{noun:"tourist/tourism", adj:"touristy"}, syn:["traveller", "visitor"], ant:[],
+    lv:"basic", tags:["travel", "society"] , pos:"n"},
+  { word:"inventor", ph:"/ɪnˈven.tər/", en:"A person who creates something new", cn:"发明家；发明者",
+    phrases:[
+      {phrase:"famous inventor", sent:"Thomas Edison was a famous inventor.", sentCn:"托马斯·爱迪生是著名的发明家。"},
+      {phrase:"young inventor", sent:"The young inventor won a national science award.", sentCn:"这位年轻的发明家获得了全国科学奖。"},
+      {phrase:"inventor of", sent:"Who was the inventor of the telephone?", sentCn:"谁是电话的发明者？"}
+    ],
+    ex:"A great inventor solves problems that others ignore.", family:{noun:"inventor/invention", verb:"invent", adj:"inventive"}, syn:["creator", "innovator"], ant:[],
+    lv:"intermediate", tags:["science", "creativity"] , pos:"n"},
+  { word:"competitor", ph:"/kəmˈpet.ɪ.tər/", en:"A person who takes part in a competition", cn:"竞争者；参赛者",
+    phrases:[
+      {phrase:"strong competitor", sent:"She is a strong competitor who always gives her best.", sentCn:"她是一个总是全力以赴的强劲竞争者。"},
+      {phrase:"meet a competitor", sent:"I respect every competitor I face in a tournament.", sentCn:"我尊重在比赛中遇到的每一位竞争对手。"},
+      {phrase:"ahead of competitors", sent:"Study hard to stay ahead of your competitors.", sentCn:"努力学习以在竞争者中保持领先。"}
+    ],
+    ex:"Every competitor gave their best in the final.", family:{noun:"competitor/competition", verb:"compete", adj:"competitive"}, syn:["opponent", "rival"], ant:["partner", "teammate"],
+    lv:"intermediate", tags:["sports", "education"] , pos:"n"},
+  { word:"achievement", ph:"/əˈtʃiːv.mənt/", en:"Something done successfully with effort", cn:"成就；成绩",
+    phrases:[
+      {phrase:"academic achievement", sent:"Her academic achievements are truly impressive.", sentCn:"她的学业成就令人印象深刻。"},
+      {phrase:"great achievement", sent:"Finishing the marathon was a great achievement.", sentCn:"完成马拉松是一项伟大的成就。"},
+      {phrase:"celebrate achievement", sent:"We should celebrate every achievement, big or small.", sentCn:"我们应该庆祝每一个成就，无论大小。"}
+    ],
+    ex:"Getting into a top school was her greatest achievement.", family:{noun:"achievement", verb:"achieve"}, syn:["accomplishment", "success"], ant:["failure"],
+    lv:"intermediate", tags:["motivation", "education"] , pos:"n"},
+  { word:"disappointment", ph:"/ˌdɪs.əˈpɔɪnt.mənt/", en:"The feeling of being let down", cn:"失望；令人失望的事",
+    phrases:[
+      {phrase:"express disappointment", sent:"She expressed her disappointment calmly.", sentCn:"她平静地表达了自己的失望。"},
+      {phrase:"hide disappointment", sent:"He tried to hide his disappointment after losing.", sentCn:"他试图在失败后掩藏自己的失望。"},
+      {phrase:"overcome disappointment", sent:"Learning to overcome disappointment is a life skill.", sentCn:"学会克服失望是一种生活技能。"}
+    ],
+    ex:"Missing the finals was a great disappointment for the team.", family:{noun:"disappointment", verb:"disappoint", adj:"disappointed"}, syn:["letdown", "sadness"], ant:["satisfaction", "joy"],
+    lv:"intermediate", tags:["emotion", "life"] , pos:"n"},
+  { word:"excitement", ph:"/ɪkˈsaɪt.mənt/", en:"A feeling of great enthusiasm", cn:"兴奋；激动",
+    phrases:[
+      {phrase:"full of excitement", sent:"The children were full of excitement on sports day.", sentCn:"运动会那天孩子们充满了兴奋。"},
+      {phrase:"excitement builds", sent:"The excitement builds as exam results get closer.", sentCn:"随着考试成绩临近，兴奋感越来越强。"},
+      {phrase:"hide excitement", sent:"She tried to hide her excitement before opening the gift.", sentCn:"她试图在拆礼物前掩藏自己的兴奋。"}
+    ],
+    ex:"There was great excitement before the school trip.", family:{noun:"excitement", verb:"excite", adj:"excited/exciting"}, syn:["enthusiasm", "thrill"], ant:["boredom", "calm"],
+    lv:"basic", tags:["emotion", "description"] , pos:"n"},
+  { word:"improvement", ph:"/ɪmˈpruːv.mənt/", en:"A change that makes something better", cn:"改进；进步；改善",
+    phrases:[
+      {phrase:"show improvement", sent:"Her test scores show great improvement this term.", sentCn:"她这学期的考试成绩显示出很大进步。"},
+      {phrase:"continuous improvement", sent:"Continuous improvement is the key to mastery.", sentCn:"持续改进是精通的关键。"},
+      {phrase:"room for improvement", sent:"There is always room for improvement in any skill.", sentCn:"任何技能都有改进的空间。"}
+    ],
+    ex:"With hard work comes steady improvement.", family:{noun:"improvement", verb:"improve", adj:"improved"}, syn:["progress", "advance"], ant:["decline", "deterioration"],
+    lv:"intermediate", tags:["education", "motivation"] , pos:"n"},
+  { word:"argument", ph:"/ˈɑːr.ɡjʊ.mənt/", en:"A reason given for or against something", cn:"争论；论点；争吵",
+    phrases:[
+      {phrase:"strong argument", sent:"She made a strong argument for more school sports.", sentCn:"她为增加更多学校体育活动提出了有力的论点。"},
+      {phrase:"have an argument", sent:"Try not to have an argument when you are angry.", sentCn:"生气时尽量不要争吵。"},
+      {phrase:"win an argument", sent:"Winning an argument does not always mean you are right.", sentCn:"赢得争论并不总是意味着你是对的。"}
+    ],
+    ex:"They had an argument about which book was better.", family:{noun:"argument", verb:"argue", adj:"argumentative"}, syn:["debate", "dispute"], ant:["agreement", "harmony"],
+    lv:"intermediate", tags:["communication", "thinking"] , pos:"n"},
+  { word:"statement", ph:"/ˈsteɪt.mənt/", en:"Something said or written officially", cn:"声明；陈述；说法",
+    phrases:[
+      {phrase:"make a statement", sent:"The school made a statement about the new rules.", sentCn:"学校就新规定发表了声明。"},
+      {phrase:"false statement", sent:"Making a false statement can cause serious problems.", sentCn:"作出虚假陈述可能会造成严重问题。"},
+      {phrase:"clear statement", sent:"She gave a clear statement about her plans.", sentCn:"她就自己的计划作出了清晰的陈述。"}
+    ],
+    ex:"Please write a clear opening statement in your essay.", family:{noun:"statement", verb:"state", adj:"stated"}, syn:["declaration", "announcement"], ant:[],
+    lv:"intermediate", tags:["communication", "education"] , pos:"n"},
+
+  // ══ 形容词构词法词汇 (43 words) ══
+  { word:"wealthy", ph:"/ˈwel.θi/", en:"Having a lot of money", cn:"富有的；富裕的",
+    phrases:[
+      {phrase:"wealthy family", sent:"She comes from a wealthy family but is still humble.", sentCn:"她来自一个富裕的家庭，但仍然很谦逊。"},
+      {phrase:"wealthy country", sent:"A wealthy country can provide better education.", sentCn:"富裕的国家能提供更好的教育。"},
+      {phrase:"become wealthy", sent:"Hard work and good planning can help you become wealthy.", sentCn:"努力工作和良好规划可以帮助你变得富裕。"}
+    ],
+    ex:"Being wealthy does not always mean being happy.", family:{noun:"wealth", adj:"wealthy"}, syn:["rich", "prosperous"], ant:["poor", "broke"],
+    lv:"intermediate", tags:["society", "description"] , pos:"adj"},
+  { word:"thirsty", ph:"/ˈθɜːr.sti/", en:"Needing or wanting to drink", cn:"口渴的；渴望的",
+    phrases:[
+      {phrase:"feel thirsty", sent:"I always feel thirsty after exercise.", sentCn:"运动后我总是感到口渴。"},
+      {phrase:"thirsty for knowledge", sent:"Good students are thirsty for knowledge.", sentCn:"好学生渴望知识。"},
+      {phrase:"hot and thirsty", sent:"After the game, everyone was hot and thirsty.", sentCn:"比赛结束后，每个人都又热又渴。"}
+    ],
+    ex:"Drink water when you feel thirsty during study.", family:{noun:"thirst", adj:"thirsty"}, syn:["parched", "eager"], ant:["satisfied"],
+    lv:"basic", tags:["health", "description"] , pos:"adj"},
+  { word:"angry", ph:"/ˈæŋ.ɡri/", en:"Feeling strong displeasure", cn:"生气的；愤怒的",
+    phrases:[
+      {phrase:"feel angry", sent:"I felt angry when someone took my book without asking.", sentCn:"当有人不问自取我的书时，我感到很生气。"},
+      {phrase:"angry at", sent:"She was angry at herself for making the mistake.", sentCn:"她因为犯了错误而对自己感到生气。"},
+      {phrase:"stay calm when angry", sent:"It is important to stay calm when you feel angry.", sentCn:"感到愤怒时保持冷静是很重要的。"}
+    ],
+    ex:"Take a deep breath when you feel angry.", family:{noun:"anger", adj:"angry", adv:"angrily"}, syn:["furious", "upset"], ant:["calm", "happy"],
+    lv:"basic", tags:["emotion"] , pos:"adj"},
+  { word:"hungry", ph:"/ˈhʌŋ.ɡri/", en:"Needing food; strongly wanting something", cn:"饥饿的；渴望的",
+    phrases:[
+      {phrase:"feel hungry", sent:"I always feel hungry after a long class.", sentCn:"上了很长时间的课后我总是感到饥饿。"},
+      {phrase:"hungry for success", sent:"Ambitious students are hungry for success.", sentCn:"有抱负的学生渴望成功。"},
+      {phrase:"go hungry", sent:"No child should have to go hungry.", sentCn:"任何孩子都不应该挨饿。"}
+    ],
+    ex:"Study well and you will never go hungry in life.", family:{noun:"hunger", adj:"hungry", adv:"hungrily"}, syn:["starving", "eager"], ant:["full", "satisfied"],
+    lv:"basic", tags:["health", "emotion"] , pos:"adj"},
+  { word:"careful", ph:"/ˈker.fəl/", en:"Giving attention to avoid mistakes", cn:"小心的；仔细的",
+    phrases:[
+      {phrase:"be careful", sent:"Be careful when crossing the road.", sentCn:"过马路时要小心。"},
+      {phrase:"careful reading", sent:"Careful reading helps you understand the question.", sentCn:"仔细阅读有助于你理解问题。"},
+      {phrase:"careful planning", sent:"Careful planning leads to better results.", sentCn:"仔细规划能带来更好的结果。"}
+    ],
+    ex:"Be careful to check your answers before handing in.", family:{noun:"care", adj:"careful", adv:"carefully"}, syn:["cautious", "thorough"], ant:["careless", "reckless"],
+    lv:"basic", tags:["behavior", "education"] , pos:"adj"},
+  { word:"careless", ph:"/ˈker.ləs/", en:"Not giving enough attention; making mistakes", cn:"粗心的；不小心的",
+    phrases:[
+      {phrase:"careless mistake", sent:"A careless mistake cost him five marks.", sentCn:"一个粗心的错误让他失去了五分。"},
+      {phrase:"careless attitude", sent:"A careless attitude in exams leads to poor grades.", sentCn:"考试中粗心的态度会导致成绩不好。"},
+      {phrase:"avoid being careless", sent:"Check your work twice to avoid being careless.", sentCn:"检查两遍你的作业以避免粗心。"}
+    ],
+    ex:"Don't be careless — small mistakes add up quickly.", family:{noun:"carelessness", adj:"careless", adv:"carelessly"}, syn:["negligent", "sloppy"], ant:["careful", "thorough"],
+    lv:"basic", tags:["behavior", "education"] , pos:"adj"},
+  { word:"determined", ph:"/dɪˈtɜːr.mɪnd/", en:"Having a strong will to succeed", cn:"坚定的；有决心的",
+    phrases:[
+      {phrase:"determined student", sent:"A determined student never gives up on their goals.", sentCn:"一个有决心的学生从不放弃自己的目标。"},
+      {phrase:"remain determined", sent:"Remain determined even when things are difficult.", sentCn:"即使事情困难也要保持坚定。"},
+      {phrase:"determined to succeed", sent:"She was determined to succeed no matter what.", sentCn:"她下定决心无论如何都要成功。"}
+    ],
+    ex:"Being determined helps you overcome any obstacle.", family:{noun:"determination", verb:"determine", adj:"determined"}, syn:["resolute", "committed"], ant:["uncertain", "weak"],
+    lv:"intermediate", tags:["character", "motivation"] , pos:"adj"},
+  { word:"talented", ph:"/ˈtæl.ən.tɪd/", en:"Having a natural ability for something", cn:"有才华的；天才的",
+    phrases:[
+      {phrase:"talented student", sent:"She is a talented student who excels in music.", sentCn:"她是一个在音乐方面表现出色的有才华的学生。"},
+      {phrase:"highly talented", sent:"He is highly talented but still works very hard.", sentCn:"他非常有才华，但仍然非常努力地工作。"},
+      {phrase:"talented performer", sent:"The talented performer won the school competition.", sentCn:"这位有才华的表演者赢得了学校比赛。"}
+    ],
+    ex:"Even talented students need practice to improve.", family:{noun:"talent", adj:"talented"}, syn:["gifted", "skilled"], ant:["untalented"],
+    lv:"intermediate", tags:["character", "education"] , pos:"adj"},
+  { word:"delighted", ph:"/dɪˈlaɪ.tɪd/", en:"Very pleased and happy", cn:"高兴的；愉快的",
+    phrases:[
+      {phrase:"feel delighted", sent:"I was delighted to hear I had passed the exam.", sentCn:"听到我通过了考试，我非常高兴。"},
+      {phrase:"delighted with", sent:"She was delighted with her new school bag.", sentCn:"她对她的新书包感到非常高兴。"},
+      {phrase:"delighted to meet", sent:"I am delighted to meet you at last.", sentCn:"我很高兴终于见到你了。"}
+    ],
+    ex:"He was delighted when his team won the final.", family:{noun:"delight", verb:"delight", adj:"delighted/delightful"}, syn:["thrilled", "overjoyed"], ant:["disappointed", "sad"],
+    lv:"intermediate", tags:["emotion"] , pos:"adj"},
+  { word:"crowded", ph:"/ˈkraʊ.dɪd/", en:"Full of people or things", cn:"拥挤的；人多的",
+    phrases:[
+      {phrase:"crowded classroom", sent:"A crowded classroom makes it harder to focus.", sentCn:"拥挤的教室使人更难集中注意力。"},
+      {phrase:"crowded city", sent:"Shanghai is a busy, crowded city.", sentCn:"上海是一个繁忙、拥挤的城市。"},
+      {phrase:"crowded bus", sent:"The bus was so crowded I couldn't find a seat.", sentCn:"公交车太拥挤了，我找不到座位。"}
+    ],
+    ex:"The school canteen is always crowded at lunchtime.", family:{noun:"crowd", verb:"crowd", adj:"crowded"}, syn:["packed", "busy"], ant:["empty", "quiet"],
+    lv:"basic", tags:["description"] , pos:"adj"},
+  { word:"advanced", ph:"/ədˈvɑːnst/", en:"At a high level; far ahead", cn:"高级的；先进的",
+    phrases:[
+      {phrase:"advanced student", sent:"Advanced students can take extra classes.", sentCn:"高水平学生可以参加额外的课程。"},
+      {phrase:"advanced technology", sent:"Advanced technology is changing modern life.", sentCn:"先进技术正在改变现代生活。"},
+      {phrase:"advanced level", sent:"She is ready for the advanced level course.", sentCn:"她已经准备好参加高级课程了。"}
+    ],
+    ex:"This is an advanced topic — not easy for beginners.", family:{noun:"advance", verb:"advance", adj:"advanced"}, syn:["high-level", "sophisticated"], ant:["basic", "simple"],
+    lv:"intermediate", tags:["education", "description"] , pos:"adj"},
+  { word:"balanced", ph:"/ˈbæl.ənst/", en:"Having the right amount of everything", cn:"均衡的；平衡的",
+    phrases:[
+      {phrase:"balanced diet", sent:"A balanced diet keeps your body healthy.", sentCn:"均衡的饮食让你的身体保持健康。"},
+      {phrase:"balanced lifestyle", sent:"A balanced lifestyle includes study, rest and exercise.", sentCn:"均衡的生活方式包括学习、休息和锻炼。"},
+      {phrase:"balanced view", sent:"A good essay should present a balanced view.", sentCn:"一篇好文章应该呈现平衡的观点。"}
+    ],
+    ex:"A balanced study plan prevents burnout.", family:{noun:"balance", verb:"balance", adj:"balanced"}, syn:["equal", "fair"], ant:["unbalanced", "extreme"],
+    lv:"intermediate", tags:["health", "lifestyle", "education"] , pos:"adj"},
+  { word:"dangerous", ph:"/ˈdeɪn.dʒər.əs/", en:"Likely to cause harm or injury", cn:"危险的",
+    phrases:[
+      {phrase:"dangerous situation", sent:"Walking alone at night can be a dangerous situation.", sentCn:"晚上独自行走可能是危险的情况。"},
+      {phrase:"dangerous habit", sent:"Staying up all night is a dangerous habit.", sentCn:"整夜不睡是一个危险的习惯。"},
+      {phrase:"dangerous road", sent:"The icy road is very dangerous for drivers.", sentCn:"结冰的道路对司机来说非常危险。"}
+    ],
+    ex:"Playing with electricity is extremely dangerous.", family:{noun:"danger", adj:"dangerous", adv:"dangerously"}, syn:["risky", "unsafe"], ant:["safe", "harmless"],
+    lv:"basic", tags:["description", "health"] , pos:"adj"},
+  { word:"valuable", ph:"/ˈvæl.jʊ.bəl/", en:"Worth a lot; very useful", cn:"有价值的；宝贵的",
+    phrases:[
+      {phrase:"valuable lesson", sent:"Every failure teaches a valuable lesson.", sentCn:"每次失败都教给我们宝贵的一课。"},
+      {phrase:"valuable experience", sent:"Working part-time gives you valuable experience.", sentCn:"兼职工作给你宝贵的经验。"},
+      {phrase:"valuable time", sent:"Don't waste valuable time on unimportant things.", sentCn:"不要把宝贵的时间浪费在不重要的事情上。"}
+    ],
+    ex:"Good friendships are among the most valuable things in life.", family:{noun:"value", verb:"value", adj:"valuable"}, syn:["precious", "worthwhile"], ant:["worthless", "useless"],
+    lv:"intermediate", tags:["description", "life"] , pos:"adj"},
+  { word:"suitable", ph:"/ˈsuː.tə.bəl/", en:"Right for a particular purpose", cn:"合适的；适当的",
+    phrases:[
+      {phrase:"suitable for students", sent:"This book is suitable for high school students.", sentCn:"这本书适合高中生阅读。"},
+      {phrase:"find suitable", sent:"I need to find a suitable time to study.", sentCn:"我需要找一个合适的时间学习。"},
+      {phrase:"not suitable", sent:"That film is not suitable for young children.", sentCn:"那部电影不适合小孩子看。"}
+    ],
+    ex:"Choose a study method that is suitable for you.", family:{noun:"suitability", adj:"suitable", adv:"suitably"}, syn:["appropriate", "fitting"], ant:["unsuitable", "inappropriate"],
+    lv:"intermediate", tags:["description", "education"] , pos:"adj"},
+  { word:"enjoyable", ph:"/ɪnˈdʒɔɪ.ə.bəl/", en:"Giving pleasure; fun to do", cn:"令人愉快的；有趣的",
+    phrases:[
+      {phrase:"enjoyable lesson", sent:"She makes every lesson enjoyable and interesting.", sentCn:"她让每节课都变得有趣愉快。"},
+      {phrase:"enjoyable experience", sent:"The school trip was a very enjoyable experience.", sentCn:"学校旅行是一次非常愉快的经历。"},
+      {phrase:"enjoyable activity", sent:"Reading is an enjoyable activity for many students.", sentCn:"阅读对许多学生来说是一项令人愉快的活动。"}
+    ],
+    ex:"Make studying enjoyable by using different methods.", family:{noun:"enjoyment", verb:"enjoy", adj:"enjoyable"}, syn:["pleasant", "fun"], ant:["boring", "unpleasant"],
+    lv:"basic", tags:["description", "emotion"] , pos:"adj"},
+  { word:"impressive", ph:"/ɪmˈpres.ɪv/", en:"Making a strong positive impact", cn:"令人印象深刻的",
+    phrases:[
+      {phrase:"impressive result", sent:"She got an impressive result in the final exam.", sentCn:"她在期末考试中取得了令人印象深刻的成绩。"},
+      {phrase:"impressive speech", sent:"His impressive speech moved the whole audience.", sentCn:"他令人印象深刻的演讲打动了全场观众。"},
+      {phrase:"impressive performance", sent:"The choir gave an impressive performance.", sentCn:"合唱团进行了令人印象深刻的演出。"}
+    ],
+    ex:"The school's science exhibition was truly impressive.", family:{noun:"impression", verb:"impress", adj:"impressive", adv:"impressively"}, syn:["remarkable", "outstanding"], ant:["ordinary", "unremarkable"],
+    lv:"intermediate", tags:["description", "education"] , pos:"adj"},
+  { word:"expensive", ph:"/ɪkˈspen.sɪv/", en:"Costing a lot of money", cn:"昂贵的；费钱的",
+    phrases:[
+      {phrase:"too expensive", sent:"The phone was too expensive for me to buy.", sentCn:"这部手机对我来说太贵了，买不起。"},
+      {phrase:"expensive school", sent:"A good education does not have to be expensive.", sentCn:"好的教育不必是昂贵的。"},
+      {phrase:"expensive mistake", sent:"Dropping out of school is an expensive mistake.", sentCn:"辍学是一个代价高昂的错误。"}
+    ],
+    ex:"Books are never too expensive if they teach you something.", family:{noun:"expense", adj:"expensive", adv:"expensively"}, syn:["costly", "pricey"], ant:["cheap", "affordable"],
+    lv:"basic", tags:["description", "life"] , pos:"adj"},
+  { word:"competitive", ph:"/kəmˈpet.ɪ.tɪv/", en:"Wanting to win or be the best", cn:"竞争性的；好胜的",
+    phrases:[
+      {phrase:"competitive student", sent:"She is a competitive student who always aims for first.", sentCn:"她是一个总是以第一为目标的好胜学生。"},
+      {phrase:"competitive exam", sent:"The university entrance exam is very competitive.", sentCn:"大学入学考试竞争非常激烈。"},
+      {phrase:"competitive spirit", sent:"A competitive spirit pushes you to improve.", sentCn:"竞争精神促使你不断进步。"}
+    ],
+    ex:"The job market is very competitive these days.", family:{noun:"competition", verb:"compete", adj:"competitive", adv:"competitively"}, syn:["ambitious", "driven"], ant:["cooperative", "laid-back"],
+    lv:"intermediate", tags:["character", "education", "society"] , pos:"adj"},
+  { word:"natural", ph:"/ˈnætʃ.ər.əl/", en:"Existing in nature; normal", cn:"自然的；天然的；正常的",
+    phrases:[
+      {phrase:"natural environment", sent:"Animals should live in their natural environment.", sentCn:"动物应该生活在它们自然的环境中。"},
+      {phrase:"natural talent", sent:"She has a natural talent for drawing.", sentCn:"她有绘画的天赋。"},
+      {phrase:"natural disaster", sent:"A flood is a frightening natural disaster.", sentCn:"洪水是一种可怕的自然灾害。"}
+    ],
+    ex:"It is natural to feel nervous before a big exam.", family:{noun:"nature", adj:"natural", adv:"naturally"}, syn:["normal", "organic"], ant:["artificial", "unnatural"],
+    lv:"basic", tags:["environment", "description"] , pos:"adj"},
+  { word:"cultural", ph:"/ˈkʌl.tʃər.əl/", en:"Related to the customs and beliefs of a group", cn:"文化的；文化上的",
+    phrases:[
+      {phrase:"cultural exchange", sent:"Cultural exchange helps people understand each other.", sentCn:"文化交流有助于人们相互理解。"},
+      {phrase:"cultural heritage", sent:"The Great Wall is an important cultural heritage.", sentCn:"长城是重要的文化遗产。"},
+      {phrase:"cultural differences", sent:"Learning about cultural differences broadens your mind.", sentCn:"了解文化差异能开阔你的思维。"}
+    ],
+    ex:"This festival is a wonderful cultural tradition.", family:{noun:"culture", adj:"cultural", adv:"culturally"}, syn:["social", "traditional"], ant:[],
+    lv:"intermediate", tags:["culture", "society"] , pos:"adj"},
+  { word:"traditional", ph:"/trəˈdɪʃ.ən.əl/", en:"Following old customs or ways", cn:"传统的",
+    phrases:[
+      {phrase:"traditional festival", sent:"Spring Festival is China's most important traditional festival.", sentCn:"春节是中国最重要的传统节日。"},
+      {phrase:"traditional values", sent:"Traditional values like respect are still important today.", sentCn:"像尊重这样的传统价值观在今天仍然重要。"},
+      {phrase:"traditional method", sent:"Some teachers still use traditional teaching methods.", sentCn:"一些老师仍然使用传统教学方法。"}
+    ],
+    ex:"Traditional music connects us to our history.", family:{noun:"tradition", adj:"traditional", adv:"traditionally"}, syn:["conventional", "classic"], ant:["modern", "progressive"],
+    lv:"intermediate", tags:["culture", "society"] , pos:"adj"},
+  { word:"educational", ph:"/ˌedʒ.ʊˈkeɪ.ʃən.əl/", en:"Related to learning and teaching", cn:"教育的；有教育意义的",
+    phrases:[
+      {phrase:"educational trip", sent:"We went on an educational trip to the science museum.", sentCn:"我们去科学博物馆进行了一次有教育意义的参观。"},
+      {phrase:"educational system", sent:"A good educational system helps all students succeed.", sentCn:"良好的教育体系有助于所有学生取得成功。"},
+      {phrase:"educational value", sent:"Reading has great educational value.", sentCn:"阅读具有很高的教育价值。"}
+    ],
+    ex:"The documentary was both entertaining and educational.", family:{noun:"education", verb:"educate", adj:"educational", adv:"educationally"}, syn:["instructive", "academic"], ant:[],
+    lv:"intermediate", tags:["education"] , pos:"adj"},
+  { word:"formal", ph:"/ˈfɔːr.məl/", en:"Official; following strict rules of behaviour", cn:"正式的；规范的",
+    phrases:[
+      {phrase:"formal letter", sent:"Write a formal letter when applying for a job.", sentCn:"申请工作时要写一封正式的信。"},
+      {phrase:"formal occasion", sent:"School graduation is a formal occasion.", sentCn:"学校毕业典礼是一个正式的场合。"},
+      {phrase:"formal language", sent:"Use formal language when writing essays.", sentCn:"写文章时要使用正式的语言。"}
+    ],
+    ex:"This is a formal event, so please dress smartly.", family:{noun:"formality", adj:"formal", adv:"formally"}, syn:["official", "proper"], ant:["informal", "casual"],
+    lv:"intermediate", tags:["behavior", "education"] , pos:"adj"},
+  { word:"typical", ph:"/ˈtɪp.ɪ.kəl/", en:"Having the usual features of something", cn:"典型的；有代表性的",
+    phrases:[
+      {phrase:"typical student", sent:"A typical student spends about two hours on homework.", sentCn:"一个典型的学生大约花两个小时做作业。"},
+      {phrase:"typical example", sent:"This is a typical example of a well-structured essay.", sentCn:"这是一篇结构良好的文章的典型例子。"},
+      {phrase:"typical day", sent:"Describe a typical day in your life in your essay.", sentCn:"在你的文章中描述你生活中的典型一天。"}
+    ],
+    ex:"A typical Chinese New Year includes fireworks and dumplings.", family:{noun:"type", adj:"typical", adv:"typically"}, syn:["common", "representative"], ant:["unusual", "atypical"],
+    lv:"intermediate", tags:["description"] , pos:"adj"},
+  { word:"medical", ph:"/ˈmed.ɪ.kəl/", en:"Related to medicine and health", cn:"医疗的；医学的",
+    phrases:[
+      {phrase:"medical treatment", sent:"Everyone deserves proper medical treatment.", sentCn:"每个人都应该得到适当的医疗治疗。"},
+      {phrase:"medical research", sent:"Medical research helps us find cures for diseases.", sentCn:"医学研究帮助我们找到疾病的治疗方法。"},
+      {phrase:"medical school", sent:"She dreams of getting into medical school.", sentCn:"她梦想进入医学院。"}
+    ],
+    ex:"Regular medical check-ups are important for your health.", family:{noun:"medicine", adj:"medical", adv:"medically"}, syn:["clinical", "health-related"], ant:[],
+    lv:"intermediate", tags:["health", "science"] , pos:"adj"},
+  { word:"physical", ph:"/ˈfɪz.ɪ.kəl/", en:"Related to the body or the natural world", cn:"身体的；物质的；体育的",
+    phrases:[
+      {phrase:"physical exercise", sent:"Regular physical exercise improves focus and mood.", sentCn:"定期体育锻炼改善注意力和情绪。"},
+      {phrase:"physical health", sent:"Good physical health supports good mental health.", sentCn:"良好的身体健康有助于良好的心理健康。"},
+      {phrase:"physical activity", sent:"Schools should encourage more physical activity.", sentCn:"学校应该鼓励更多的体育活动。"}
+    ],
+    ex:"Physical fitness is just as important as academic study.", family:{noun:"physics", adj:"physical", adv:"physically"}, syn:["bodily", "material"], ant:["mental", "emotional"],
+    lv:"intermediate", tags:["health", "science"] , pos:"adj"},
+  { word:"historical", ph:"/hɪˈstɔːr.ɪ.kəl/", en:"Related to history or the past", cn:"历史的；有历史意义的",
+    phrases:[
+      {phrase:"historical event", sent:"The moon landing was an important historical event.", sentCn:"登月是一个重要的历史事件。"},
+      {phrase:"historical figure", sent:"Napoleon is a famous historical figure.", sentCn:"拿破仑是一位著名的历史人物。"},
+      {phrase:"historical site", sent:"We visited a famous historical site during the trip.", sentCn:"旅行中我们参观了一处著名的历史遗址。"}
+    ],
+    ex:"Reading historical novels helps you understand the past.", family:{noun:"history", adj:"historical", adv:"historically"}, syn:["ancient", "past"], ant:["modern", "contemporary"],
+    lv:"intermediate", tags:["history", "education"] , pos:"adj"},
+  { word:"important", ph:"/ɪmˈpɔːr.tənt/", en:"Having great value or effect", cn:"重要的；重大的",
+    phrases:[
+      {phrase:"most important", sent:"Sleep is the most important thing before an exam.", sentCn:"考试前睡眠是最重要的事情。"},
+      {phrase:"important decision", sent:"Choosing a career is one of the most important decisions.", sentCn:"选择职业是最重要的决定之一。"},
+      {phrase:"important skill", sent:"Reading is an important skill for all students.", sentCn:"阅读对所有学生来说都是重要的技能。"}
+    ],
+    ex:"It is important to review your notes after every class.", family:{noun:"importance", adj:"important", adv:"importantly"}, syn:["significant", "vital"], ant:["unimportant", "trivial"],
+    lv:"basic", tags:["description", "education"] , pos:"adj"},
+  { word:"convenient", ph:"/kənˈviː.ni.ənt/", en:"Easy to use or suitable for needs", cn:"方便的；便利的",
+    phrases:[
+      {phrase:"convenient location", sent:"The school has a convenient location near the subway.", sentCn:"学校位置方便，靠近地铁站。"},
+      {phrase:"convenient time", sent:"Choose a convenient time for the meeting.", sentCn:"选择一个方便的时间开会。"},
+      {phrase:"not convenient", sent:"Is it convenient for you to call me tonight?", sentCn:"今晚给我打电话方便吗？"}
+    ],
+    ex:"Having a library nearby is very convenient for students.", family:{noun:"convenience", adj:"convenient", adv:"conveniently"}, syn:["handy", "accessible"], ant:["inconvenient", "difficult"],
+    lv:"intermediate", tags:["description", "lifestyle"] , pos:"adj"},
+  { word:"intelligent", ph:"/ɪnˈtel.ɪ.dʒənt/", en:"Having the ability to think and learn quickly", cn:"聪明的；有才智的",
+    phrases:[
+      {phrase:"intelligent student", sent:"She is an intelligent student who learns very fast.", sentCn:"她是一个学得非常快的聪明学生。"},
+      {phrase:"intelligent question", sent:"Asking intelligent questions shows deep thinking.", sentCn:"提出聪明的问题表明思考深刻。"},
+      {phrase:"intelligent solution", sent:"He found an intelligent solution to the problem.", sentCn:"他找到了一个聪明的解决方案。"}
+    ],
+    ex:"Being intelligent helps, but hard work matters more.", family:{noun:"intelligence", adj:"intelligent", adv:"intelligently"}, syn:["clever", "smart"], ant:["unintelligent", "slow"],
+    lv:"intermediate", tags:["character", "education"] , pos:"adj"},
+  { word:"excellent", ph:"/ˈek.sə.lənt/", en:"Extremely good; outstanding", cn:"优秀的；卓越的",
+    phrases:[
+      {phrase:"excellent student", sent:"She is an excellent student admired by all teachers.", sentCn:"她是一个受所有老师钦佩的优秀学生。"},
+      {phrase:"excellent work", sent:"The teacher praised her for excellent work.", sentCn:"老师因她出色的工作而表扬了她。"},
+      {phrase:"excellent opportunity", sent:"This is an excellent opportunity to improve your English.", sentCn:"这是一个提高英语的绝佳机会。"}
+    ],
+    ex:"She received excellent marks in every subject.", family:{noun:"excellence", adj:"excellent", adv:"excellently"}, syn:["outstanding", "superb"], ant:["poor", "terrible"],
+    lv:"basic", tags:["description", "education"] , pos:"adj"},
+  { word:"frequent", ph:"/ˈfriː.kwənt/", en:"Happening often", cn:"频繁的；经常的",
+    phrases:[
+      {phrase:"frequent practice", sent:"Frequent practice is the key to improving any skill.", sentCn:"频繁练习是提高任何技能的关键。"},
+      {phrase:"frequent mistakes", sent:"He makes frequent mistakes because he rushes.", sentCn:"他因为急躁而经常犯错误。"},
+      {phrase:"frequent traveller", sent:"She is a frequent traveller who visits many countries.", sentCn:"她是一个经常旅行、走访许多国家的人。"}
+    ],
+    ex:"Frequent revision helps you remember more.", family:{noun:"frequency", adj:"frequent", adv:"frequently"}, syn:["regular", "common"], ant:["rare", "infrequent"],
+    lv:"intermediate", tags:["description", "education"] , pos:"adj"},
+  { word:"famous", ph:"/ˈfeɪ.məs/", en:"Known by many people", cn:"著名的；有名的",
+    phrases:[
+      {phrase:"famous person", sent:"She wants to be a famous scientist one day.", sentCn:"她希望有一天成为著名的科学家。"},
+      {phrase:"famous for", sent:"China is famous for its long history and culture.", sentCn:"中国以其悠久的历史和文化而著名。"},
+      {phrase:"world famous", sent:"The Great Wall is a world famous landmark.", sentCn:"长城是世界著名的地标。"}
+    ],
+    ex:"Many famous people started with very little.", family:{noun:"fame", adj:"famous", adv:"famously"}, syn:["well-known", "celebrated"], ant:["unknown", "obscure"],
+    lv:"basic", tags:["description", "society"] , pos:"adj"},
+  { word:"various", ph:"/ˈver.i.əs/", en:"Of several different types", cn:"各种各样的；不同的",
+    phrases:[
+      {phrase:"various topics", sent:"We discussed various topics during the debate.", sentCn:"我们在辩论中讨论了各种各样的话题。"},
+      {phrase:"various reasons", sent:"Students fail for various reasons, not just laziness.", sentCn:"学生失败有各种各样的原因，不仅仅是懒惰。"},
+      {phrase:"various methods", sent:"Try various methods to find what works best for you.", sentCn:"尝试各种方法，找到最适合你的方式。"}
+    ],
+    ex:"The library has books on various topics.", family:{noun:"variety", verb:"vary", adj:"various"}, syn:["different", "diverse"], ant:["same", "identical"],
+    lv:"intermediate", tags:["description"] , pos:"adj"},
+  { word:"helpful", ph:"/ˈhelp.fəl/", en:"Giving useful help to others", cn:"有帮助的；乐于助人的",
+    phrases:[
+      {phrase:"helpful teacher", sent:"A helpful teacher always answers students' questions.", sentCn:"乐于助人的老师总是回答学生的问题。"},
+      {phrase:"helpful advice", sent:"She gave me very helpful advice about the exam.", sentCn:"她给了我关于考试的非常有帮助的建议。"},
+      {phrase:"helpful classmate", sent:"Being a helpful classmate makes school more enjoyable.", sentCn:"做一个乐于助人的同学使学校生活更愉快。"}
+    ],
+    ex:"It is helpful to review each chapter after class.", family:{noun:"help", verb:"help", adj:"helpful", adv:"helpfully"}, syn:["useful", "supportive"], ant:["unhelpful", "useless"],
+    lv:"basic", tags:["character", "description"] , pos:"adj"},
+  { word:"hopeful", ph:"/ˈhoʊp.fəl/", en:"Feeling that good things will happen", cn:"充满希望的；乐观的",
+    phrases:[
+      {phrase:"remain hopeful", sent:"Stay hopeful even when things seem difficult.", sentCn:"即使事情看起来很困难，也要保持希望。"},
+      {phrase:"hopeful about", sent:"I am hopeful about my exam results.", sentCn:"我对我的考试结果充满希望。"},
+      {phrase:"hopeful future", sent:"Young people deserve a hopeful future.", sentCn:"年轻人应该拥有充满希望的未来。"}
+    ],
+    ex:"She remained hopeful that things would improve.", family:{noun:"hope", verb:"hope", adj:"hopeful", adv:"hopefully"}, syn:["optimistic", "positive"], ant:["hopeless", "pessimistic"],
+    lv:"basic", tags:["emotion", "character"] , pos:"adj"},
+  { word:"doubtful", ph:"/ˈdaʊt.fəl/", en:"Not sure; unlikely to be true", cn:"怀疑的；不确定的",
+    phrases:[
+      {phrase:"feel doubtful", sent:"I felt doubtful about my ability to pass.", sentCn:"我对自己能否通过感到怀疑。"},
+      {phrase:"doubtful result", sent:"The teacher said the result was doubtful without more proof.", sentCn:"老师说没有更多证据，结果是不确定的。"},
+      {phrase:"remain doubtful", sent:"He remained doubtful until he saw the evidence.", sentCn:"他一直持怀疑态度，直到看到证据。"}
+    ],
+    ex:"I was doubtful at first, but the plan worked well.", family:{noun:"doubt", verb:"doubt", adj:"doubtful", adv:"doubtfully"}, syn:["uncertain", "unsure"], ant:["certain", "confident"],
+    lv:"intermediate", tags:["thinking", "emotion"] , pos:"adj"},
+  { word:"skillful", ph:"/ˈskɪl.fəl/", en:"Good at doing something through practice", cn:"熟练的；有技巧的",
+    phrases:[
+      {phrase:"skillful writer", sent:"She is a skillful writer who tells great stories.", sentCn:"她是一位讲述精彩故事的熟练作家。"},
+      {phrase:"skillful player", sent:"A skillful player knows when to pass and when to shoot.", sentCn:"一个熟练的球员知道何时传球何时射门。"},
+      {phrase:"become skillful", sent:"You become skillful by practising every day.", sentCn:"通过每天练习你会变得熟练。"}
+    ],
+    ex:"A skillful teacher makes every student feel included.", family:{noun:"skill", adj:"skillful", adv:"skillfully"}, syn:["talented", "expert"], ant:["unskilled", "clumsy"],
+    lv:"intermediate", tags:["character", "education"] , pos:"adj"},
+  { word:"wonderful", ph:"/ˈwʌn.dər.fəl/", en:"Extremely good; amazing", cn:"极好的；美好的",
+    phrases:[
+      {phrase:"wonderful experience", sent:"Studying abroad was a truly wonderful experience.", sentCn:"出国留学是一次真正美好的经历。"},
+      {phrase:"wonderful teacher", sent:"She is a wonderful teacher who makes learning fun.", sentCn:"她是一位让学习变得有趣的出色老师。"},
+      {phrase:"wonderful news", sent:"The wonderful news made everyone smile.", sentCn:"这个极好的消息让每个人都笑了。"}
+    ],
+    ex:"It was a wonderful day that I will never forget.", family:{noun:"wonder", adj:"wonderful", adv:"wonderfully"}, syn:["amazing", "fantastic"], ant:["terrible", "awful"],
+    lv:"basic", tags:["description", "emotion"] , pos:"adj"},
+  { word:"harmless", ph:"/ˈhɑːrm.ləs/", en:"Not causing any harm", cn:"无害的；无恶意的",
+    phrases:[
+      {phrase:"completely harmless", sent:"The spider looks scary but is completely harmless.", sentCn:"这只蜘蛛看起来很可怕，但完全无害。"},
+      {phrase:"harmless joke", sent:"It was just a harmless joke between friends.", sentCn:"这只是朋友之间的一个无害玩笑。"},
+      {phrase:"harmless activity", sent:"Drawing is a harmless activity that helps creativity.", sentCn:"绘画是一项有益于创造力的无害活动。"}
+    ],
+    ex:"Most garden insects are harmless to humans.", family:{noun:"harm", verb:"harm", adj:"harmless", adv:"harmlessly"}, syn:["safe", "innocent"], ant:["harmful", "dangerous"],
+    lv:"intermediate", tags:["description", "health"] , pos:"adj"},
+  { word:"helpless", ph:"/ˈhelp.ləs/", en:"Unable to do anything by yourself", cn:"无助的；无能为力的",
+    phrases:[
+      {phrase:"feel helpless", sent:"I felt helpless when I couldn't understand the lesson.", sentCn:"当我无法理解课程时，我感到无助。"},
+      {phrase:"helpless situation", sent:"She was in a helpless situation without her phone.", sentCn:"没有手机，她处于一种无助的处境。"},
+      {phrase:"never feel helpless", sent:"Never feel helpless — always ask for help.", sentCn:"永远不要感到无助——总是要寻求帮助。"}
+    ],
+    ex:"Even when you feel helpless, asking for help is strength.", family:{noun:"helplessness", adj:"helpless", adv:"helplessly"}, syn:["powerless", "unable"], ant:["capable", "empowered"],
+    lv:"intermediate", tags:["emotion", "description"] , pos:"adj"},
+  { word:"friendly", ph:"/ˈfrend.li/", en:"Kind and pleasant to others", cn:"友好的；友善的",
+    phrases:[
+      {phrase:"friendly smile", sent:"A friendly smile can brighten someone's day.", sentCn:"友好的微笑可以使人的一天变得明朗。"},
+      {phrase:"friendly classmate", sent:"She is a friendly classmate who welcomes newcomers.", sentCn:"她是一个欢迎新同学的友好同学。"},
+      {phrase:"friendly atmosphere", sent:"Our school has a friendly and welcoming atmosphere.", sentCn:"我们学校有一个友好热情的氛围。"}
+    ],
+    ex:"Being friendly makes it easy to make new friends.", family:{noun:"friend", adj:"friendly"}, syn:["warm", "welcoming"], ant:["unfriendly", "cold"],
+    lv:"basic", tags:["character", "relationships"] , pos:"adv"},
+
+  /* ═══ NEW: 科技 / 环境 / 太空 词汇 ═══ */
+  {word:"access",ph:"/ˈæk.ses/",en:"The ability or right to approach or enter a place or use something",cn:"访问；获取；使用权",lv:"intermediate",pos:"v/n",tags:["technology"],phrases:[{phrase:"internet access", sent:"Many students rely on internet access to complete their homework.", sentCn:"许多学生依靠网络访问来完成作业。"}, {phrase:"access to information", sent:"Everyone should have equal access to information.", sentCn:"每个人都应该平等获取信息。"}, {phrase:"gain access", sent:"She gained access to the laboratory after passing the test.", sentCn:"她通过考试后获得了进入实验室的权限。"}],ex:"Students can access the library resources online.",family:{noun:"access", verb:"access", adj:"accessible"},syn:["enter", "obtain"],ant:["deny", "block"]},
+  {word:"aerospace",ph:"/ˈeə.rəʊ.speɪs/",en:"The industry concerned with the design and manufacture of aircraft and spacecraft",cn:"航空航天",lv:"advanced",pos:"n",tags:["space", "technology"],phrases:[{phrase:"aerospace industry", sent:"China's aerospace industry has made remarkable progress.", sentCn:"中国的航空航天工业取得了显著进步。"}, {phrase:"aerospace engineer", sent:"She dreams of becoming an aerospace engineer.", sentCn:"她梦想成为一名航空航天工程师。"}, {phrase:"aerospace technology", sent:"Aerospace technology benefits everyday life in many ways.", sentCn:"航空航天技术以多种方式造福日常生活。"}],ex:"Aerospace research has led to many useful inventions.",family:{noun:"aerospace"},syn:["aviation", "space industry"],ant:[]},
+  {word:"algorithm",ph:"/ˈæl.ɡə.rɪ.ðəm/",en:"A set of rules or instructions for solving a problem or completing a task",cn:"算法",lv:"advanced",pos:"n",tags:["technology", "AI"],phrases:[{phrase:"search algorithm", sent:"Search engines use complex algorithms to rank results.", sentCn:"搜索引擎使用复杂的算法对结果进行排序。"}, {phrase:"design an algorithm", sent:"Computer scientists design algorithms to solve problems efficiently.", sentCn:"计算机科学家设计算法来高效解决问题。"}, {phrase:"recommendation algorithm", sent:"The recommendation algorithm suggests videos based on your history.", sentCn:"推荐算法根据你的历史记录推荐视频。"}],ex:"The algorithm can process millions of data points in seconds.",family:{noun:"algorithm", adj:"algorithmic"},syn:["formula", "procedure"],ant:[]},
+  {word:"analyze",ph:"/ˈæn.ə.laɪz/",en:"To examine something in detail in order to understand it",cn:"分析；解析",lv:"intermediate",pos:"v",tags:["technology", "science"],phrases:[{phrase:"analyze data", sent:"Scientists analyze data to find patterns and trends.", sentCn:"科学家分析数据以寻找规律和趋势。"}, {phrase:"carefully analyze", sent:"We need to carefully analyze the results before drawing conclusions.", sentCn:"在得出结论之前，我们需要仔细分析结果。"}, {phrase:"analyze a problem", sent:"A good engineer can analyze a problem and find the best solution.", sentCn:"一个优秀的工程师能够分析问题并找到最佳解决方案。"}],ex:"AI systems can analyze thousands of images in minutes.",family:{noun:"analysis", verb:"analyze", adj:"analytical"},syn:["examine", "study"],ant:["ignore", "overlook"]},
+  {word:"astronaut",ph:"/ˈæs.trə.nɔːt/",en:"A person trained to travel and work in space",cn:"宇航员；航天员",lv:"intermediate",pos:"n",tags:["space"],phrases:[{phrase:"become an astronaut", sent:"It takes years of training to become an astronaut.", sentCn:"成为一名宇航员需要多年的训练。"}, {phrase:"astronaut training", sent:"Astronaut training includes physical fitness and technical skills.", sentCn:"宇航员训练包括体能和技术技能。"}, {phrase:"experienced astronaut", sent:"The experienced astronaut guided the mission successfully.", sentCn:"这位经验丰富的宇航员成功引导了任务。"}],ex:"The astronaut spent six months on the space station.",family:{noun:"astronaut", adj:"astronautical"},syn:["cosmonaut", "taikonaut"],ant:[]},
+  {word:"automation",ph:"/ˌɔː.təˈmeɪ.ʃən/",en:"The use of technology to perform tasks with minimal human involvement",cn:"自动化",lv:"advanced",pos:"n",tags:["technology"],phrases:[{phrase:"factory automation", sent:"Factory automation has replaced many manual jobs.", sentCn:"工厂自动化取代了许多体力劳动岗位。"}, {phrase:"office automation", sent:"Office automation software saves time on repetitive tasks.", sentCn:"办公自动化软件节省了重复任务的时间。"}, {phrase:"automation technology", sent:"Automation technology continues to reshape the workforce.", sentCn:"自动化技术持续重塑劳动力市场。"}],ex:"Automation has transformed the manufacturing industry.",family:{noun:"automation", verb:"automate", adj:"automated"},syn:["mechanization"],ant:["manual operation"]},
+  {word:"biodiversity",ph:"/ˌbaɪ.əʊ.daɪˈvɜː.sɪ.ti/",en:"The variety of plant and animal life in a particular habitat or in the world as a whole",cn:"生物多样性",lv:"advanced",pos:"n",tags:["environment"],phrases:[{phrase:"protect biodiversity", sent:"We must protect biodiversity to maintain healthy ecosystems.", sentCn:"我们必须保护生物多样性以维护健康的生态系统。"}, {phrase:"loss of biodiversity", sent:"The loss of biodiversity threatens the planet's future.", sentCn:"生物多样性的丧失威胁着地球的未来。"}, {phrase:"rich biodiversity", sent:"Tropical rainforests are known for their rich biodiversity.", sentCn:"热带雨林以其丰富的生物多样性而闻名。"}],ex:"Biodiversity is essential for a stable and healthy planet.",family:{noun:"biodiversity", adj:"biodiverse"},syn:["ecological variety"],ant:["monoculture"]},
+  {word:"contaminate",ph:"/kənˈtæm.ɪ.neɪt/",en:"To make something impure or harmful by adding a dangerous substance",cn:"污染；使受污染",lv:"advanced",pos:"v",tags:["environment"],phrases:[{phrase:"contaminate water", sent:"Chemical spills can contaminate drinking water.", sentCn:"化学品泄漏可能污染饮用水。"}, {phrase:"contaminate soil", sent:"Pesticides can contaminate the soil and harm wildlife.", sentCn:"农药可能污染土壤并危害野生动物。"}, {phrase:"contaminate food", sent:"Improper storage can contaminate food with bacteria.", sentCn:"不当储存会使食物被细菌污染。"}],ex:"Industrial waste contaminated the river for miles.",family:{noun:"contamination", verb:"contaminate", adj:"contaminated"},syn:["pollute", "taint"],ant:["purify", "clean"]},
+  {word:"drone",ph:"/drəʊn/",en:"An unmanned aircraft controlled remotely or by a computer",cn:"无人机",lv:"intermediate",pos:"n",tags:["technology"],phrases:[{phrase:"delivery drone", sent:"Companies are testing delivery drones for faster shipping.", sentCn:"公司正在测试快递无人机以加快配送速度。"}, {phrase:"military drone", sent:"Military drones are used for surveillance and missions.", sentCn:"军用无人机用于侦察和执行任务。"}, {phrase:"operate a drone", sent:"You need a licence to operate a drone in public areas.", sentCn:"在公共场所操作无人机需要持证。"}],ex:"The farmer used a drone to inspect crops from above.",family:{noun:"drone", verb:"drone"},syn:["UAV", "unmanned aircraft"],ant:[]},
+  {word:"emission",ph:"/ɪˈmɪʃ.ən/",en:"The production and release of gas, heat, or light into the atmosphere",cn:"排放；散发",lv:"advanced",pos:"n",tags:["environment"],phrases:[{phrase:"carbon emission", sent:"Reducing carbon emissions is key to fighting climate change.", sentCn:"减少碳排放是应对气候变化的关键。"}, {phrase:"cut emissions", sent:"Countries around the world are trying to cut emissions.", sentCn:"世界各地的国家都在努力削减排放。"}, {phrase:"zero emission", sent:"Electric cars produce zero emissions while driving.", sentCn:"电动汽车行驶时零排放。"}],ex:"The factory was fined for excessive gas emissions.",family:{noun:"emission", verb:"emit", adj:"emissive"},syn:["discharge", "release"],ant:["absorption"]},
+  {word:"endangered",ph:"/ɪnˈdeɪn.dʒəd/",en:"At risk of becoming extinct or dying out",cn:"濒危的；濒临灭绝的",lv:"intermediate",pos:"adj",tags:["environment", "nature"],phrases:[{phrase:"endangered species", sent:"The giant panda was once one of the most endangered species.", sentCn:"大熊猫曾经是最濒危的物种之一。"}, {phrase:"endangered animal", sent:"Conservation programs help protect endangered animals.", sentCn:"保护项目有助于保护濒危动物。"}, {phrase:"critically endangered", sent:"The snow leopard is critically endangered due to habitat loss.", sentCn:"由于栖息地丧失，雪豹处于极度濒危状态。"}],ex:"Many endangered plants grow only in tropical rainforests.",family:{adj:"endangered", verb:"endanger"},syn:["threatened", "at risk"],ant:["thriving", "abundant"]},
+  {word:"extinct",ph:"/ɪkˈstɪŋkt/",en:"No longer in existence; having died out completely",cn:"灭绝的；绝种的",lv:"intermediate",pos:"adj",tags:["environment", "nature"],phrases:[{phrase:"become extinct", sent:"Dinosaurs became extinct millions of years ago.", sentCn:"恐龙在数百万年前灭绝了。"}, {phrase:"extinct species", sent:"Scientists study extinct species through fossils.", sentCn:"科学家通过化石研究已灭绝的物种。"}, {phrase:"nearly extinct", sent:"Some whale species are nearly extinct because of hunting.", sentCn:"由于捕猎，一些鲸鱼物种几近灭绝。"}],ex:"The dodo bird has been extinct for over 300 years.",family:{adj:"extinct", noun:"extinction", verb:"extinguish"},syn:["vanished", "died out"],ant:["living", "thriving"]},
+  {word:"habitat",ph:"/ˈhæb.ɪ.tæt/",en:"The natural environment in which an animal or plant normally lives",cn:"栖息地；生存环境",lv:"intermediate",pos:"n",tags:["environment", "nature"],phrases:[{phrase:"natural habitat", sent:"Tigers need large natural habitats to survive.", sentCn:"老虎需要广阔的自然栖息地才能生存。"}, {phrase:"habitat destruction", sent:"Habitat destruction is the leading cause of species loss.", sentCn:"栖息地破坏是物种灭绝的主要原因。"}, {phrase:"protect habitats", sent:"Nature reserves help protect the habitats of rare animals.", sentCn:"自然保护区有助于保护珍稀动物的栖息地。"}],ex:"Deforestation destroys the habitat of thousands of species.",family:{noun:"habitat", verb:"inhabit"},syn:["environment", "ecosystem"],ant:[]},
+  {word:"innovation",ph:"/ˌɪn.əˈveɪ.ʃən/",en:"The introduction of new ideas, methods, or inventions",cn:"创新；革新",lv:"intermediate",pos:"n",tags:["technology"],phrases:[{phrase:"technological innovation", sent:"Technological innovation is changing the way we live.", sentCn:"技术创新正在改变我们的生活方式。"}, {phrase:"drive innovation", sent:"Competition drives innovation in the tech industry.", sentCn:"竞争推动科技行业的创新。"}, {phrase:"spirit of innovation", sent:"A spirit of innovation is valued in modern companies.", sentCn:"创新精神在现代企业中备受重视。"}],ex:"China's rapid innovation has impressed the world.",family:{noun:"innovation", verb:"innovate", adj:"innovative"},syn:["invention", "breakthrough"],ant:["tradition", "stagnation"]},
+  {word:"launch",ph:"/lɔːntʃ/",en:"To send a spacecraft, satellite, or rocket into space; to start something new",cn:"发射；发布；启动",lv:"intermediate",pos:"v/n",tags:["space", "technology"],phrases:[{phrase:"launch a rocket", sent:"China launched a rocket to explore the moon.", sentCn:"中国发射了一枚火箭探索月球。"}, {phrase:"launch a satellite", sent:"The company plans to launch 100 satellites this year.", sentCn:"该公司计划今年发射100颗卫星。"}, {phrase:"successful launch", sent:"The successful launch was celebrated by the whole nation.", sentCn:"成功发射举国欢庆。"}],ex:"The new app was launched last week to great success.",family:{noun:"launch", verb:"launch"},syn:["send off", "release"],ant:["cancel", "abort"]},
+  {word:"microplastic",ph:"/ˌmaɪ.krəʊˈplæs.tɪk/",en:"Tiny pieces of plastic less than 5mm in size that pollute the environment",cn:"微塑料",lv:"advanced",pos:"n",tags:["environment"],phrases:[{phrase:"microplastic pollution", sent:"Microplastic pollution has been found even in the deep ocean.", sentCn:"微塑料污染甚至在深海中也被发现。"}, {phrase:"contain microplastics", sent:"Many bottled waters contain tiny amounts of microplastics.", sentCn:"许多瓶装水含有微量微塑料。"}, {phrase:"microplastic problem", sent:"The microplastic problem requires global cooperation.", sentCn:"微塑料问题需要全球合作解决。"}],ex:"Scientists discovered microplastics in human blood for the first time.",family:{noun:"microplastic"},syn:["micro-pollutant"],ant:[]},
+  {word:"mission",ph:"/ˈmɪʃ.ən/",en:"An important assignment or task, especially one involving travel or danger",cn:"任务；使命；航天任务",lv:"intermediate",pos:"n",tags:["space"],phrases:[{phrase:"space mission", sent:"The astronauts prepared for the six-month space mission.", sentCn:"宇航员为为期六个月的太空任务做准备。"}, {phrase:"complete a mission", sent:"The team worked together to complete the mission.", sentCn:"团队合作完成了任务。"}, {phrase:"on a mission", sent:"She is on a mission to protect endangered wildlife.", sentCn:"她正致力于保护濒危野生动物。"}],ex:"China's lunar mission brought back samples from the moon.",family:{noun:"mission", verb:"mission"},syn:["assignment", "task"],ant:[]},
+  {word:"pollution",ph:"/pəˈluː.ʃən/",en:"The presence of harmful substances in the environment",cn:"污染；环境污染",lv:"intermediate",pos:"n",tags:["environment"],phrases:[{phrase:"air pollution", sent:"Air pollution in big cities causes serious health problems.", sentCn:"大城市的空气污染会导致严重的健康问题。"}, {phrase:"water pollution", sent:"Water pollution threatens both humans and marine life.", sentCn:"水污染威胁着人类和海洋生物。"}, {phrase:"reduce pollution", sent:"Using public transport helps reduce pollution.", sentCn:"乘坐公共交通有助于减少污染。"}],ex:"Pollution from factories has damaged the local river.",family:{noun:"pollution", verb:"pollute", adj:"polluted"},syn:["contamination", "toxicity"],ant:["purity", "cleanliness"]},
+  {word:"robot",ph:"/ˈrəʊ.bɒt/",en:"A machine that can carry out complex tasks automatically",cn:"机器人",lv:"intermediate",pos:"n",tags:["technology"],phrases:[{phrase:"industrial robot", sent:"Industrial robots are used to assemble cars in factories.", sentCn:"工业机器人被用于工厂中的汽车组装。"}, {phrase:"robot technology", sent:"Robot technology is advancing at an incredible speed.", sentCn:"机器人技术正在以惊人的速度发展。"}, {phrase:"program a robot", sent:"Students learned to program a robot in their science class.", sentCn:"学生们在科学课上学习了如何给机器人编程。"}],ex:"A robot can perform surgery with greater precision than a human.",family:{noun:"robot", adj:"robotic"},syn:["machine", "android"],ant:[]},
+  {word:"satellite",ph:"/ˈsæt.əl.aɪt/",en:"An object sent into orbit around the earth or another planet to collect information or communicate",cn:"卫星",lv:"intermediate",pos:"n",tags:["space", "technology"],phrases:[{phrase:"communication satellite", sent:"Communication satellites allow us to make calls across the globe.", sentCn:"通信卫星使我们能够在全球范围内打电话。"}, {phrase:"launch a satellite", sent:"China has launched many satellites into orbit.", sentCn:"中国已将许多卫星送入轨道。"}, {phrase:"weather satellite", sent:"Weather satellites help forecast storms and floods.", sentCn:"气象卫星有助于预报风暴和洪水。"}],ex:"GPS uses signals from satellites to track locations.",family:{noun:"satellite"},syn:["orbiter"],ant:[]},
+  {word:"sustainable",ph:"/səˈsteɪ.nə.bəl/",en:"Able to be maintained without damaging the environment or using up natural resources",cn:"可持续的；可持续发展的",lv:"advanced",pos:"adj",tags:["environment"],phrases:[{phrase:"sustainable development", sent:"Sustainable development meets today's needs without harming the future.", sentCn:"可持续发展满足当今需求而不损害未来。"}, {phrase:"sustainable energy", sent:"Solar and wind power are examples of sustainable energy.", sentCn:"太阳能和风能是可持续能源的例子。"}, {phrase:"sustainable lifestyle", sent:"Living a sustainable lifestyle helps protect the planet.", sentCn:"过可持续的生活方式有助于保护地球。"}],ex:"Sustainable farming protects soil and reduces waste.",family:{adj:"sustainable", verb:"sustain", noun:"sustainability"},syn:["eco-friendly", "renewable"],ant:["wasteful", "destructive"]},
+  {word:"taikonaut",ph:"/ˈtaɪ.kə.nɔːt/",en:"A Chinese astronaut",cn:"中国航天员；太空人",lv:"advanced",pos:"n",tags:["space"],phrases:[{phrase:"Chinese taikonaut", sent:"A Chinese taikonaut walked in space for the first time.", sentCn:"中国航天员首次进行了太空行走。"}, {phrase:"become a taikonaut", sent:"Becoming a taikonaut requires years of rigorous training.", sentCn:"成为一名航天员需要多年严格训练。"}, {phrase:"taikonaut mission", sent:"The taikonaut mission lasted over 180 days.", sentCn:"此次航天员任务持续了180多天。"}],ex:"China's taikonauts have completed multiple missions on the space station.",family:{noun:"taikonaut"},syn:["astronaut", "cosmonaut"],ant:[]},
+  {word:"telescope",ph:"/ˈtel.ɪ.skəʊp/",en:"An instrument that makes distant objects appear larger and closer",cn:"望远镜",lv:"intermediate",pos:"n",tags:["space", "science"],phrases:[{phrase:"space telescope", sent:"The James Webb Space Telescope can see the earliest galaxies.", sentCn:"詹姆斯·韦伯太空望远镜能看到最早的星系。"}, {phrase:"look through a telescope", sent:"We used a telescope to observe Jupiter at night.", sentCn:"我们用望远镜在夜间观察木星。"}, {phrase:"powerful telescope", sent:"A powerful telescope can reveal details invisible to the eye.", sentCn:"功能强大的望远镜能揭示肉眼看不见的细节。"}],ex:"Galileo improved the telescope and discovered Jupiter's moons.",family:{noun:"telescope", adj:"telescopic"},syn:["optical instrument"],ant:[]},
+  {word:"animal",ph:"/ˈæn.ɪ.məl/",en:"A living organism that feeds and can move",cn:"动物",lv:"basic",pos:"n",tags:["nature"],phrases:[{phrase:"wild animal", sent:"Wild animals should never be kept as pets.", sentCn:"野生动物不应该被当作宠物饲养。"}, {phrase:"endangered animal", sent:"Many endangered animals are protected by law.", sentCn:"许多濒危动物受到法律保护。"}, {phrase:"animal habitat", sent:"Forests are the natural habitat of many animals.", sentCn:"森林是许多动物的天然栖息地。"}],ex:"We must protect animals from extinction.",family:{noun:"animal", adj:"animal"},syn:["creature", "organism"],ant:[]},
+  {word:"application",ph:"/ˌæp.lɪˈkeɪ.ʃən/",en:"A program designed to perform specific tasks on a computer or phone",cn:"应用程序；申请",lv:"intermediate",pos:"n",tags:["technology"],phrases:[{phrase:"mobile application", sent:"Mobile applications have changed the way we communicate.", sentCn:"移动应用改变了我们的交流方式。"}, {phrase:"develop an application", sent:"She learned to develop applications in her coding class.", sentCn:"她在编程课上学会了开发应用程序。"}, {phrase:"useful application", sent:"There are many useful applications for language learning.", sentCn:"有许多有用的语言学习应用程序。"}],ex:"This application uses AI to translate languages instantly.",family:{noun:"application", verb:"apply", adj:"applicable"},syn:["app", "program"],ant:[]},
+  {word:"autonomous",ph:"/ɔːˈtɒn.ə.məs/",en:"Operating independently without human control",cn:"自主的；自动的",lv:"advanced",pos:"adj",tags:["technology"],phrases:[{phrase:"autonomous vehicle", sent:"Autonomous vehicles can drive themselves without a human driver.", sentCn:"自动驾驶汽车无需人类驾驶员即可自动行驶。"}, {phrase:"autonomous system", sent:"The factory uses an autonomous system to manage production.", sentCn:"工厂使用自主系统来管理生产。"}, {phrase:"fully autonomous", sent:"Fully autonomous robots can complete tasks without supervision.", sentCn:"全自主机器人无需监督即可完成任务。"}],ex:"The drone is fully autonomous and needs no pilot.",family:{adj:"autonomous", noun:"autonomy", adv:"autonomously"},syn:["self-governing", "independent"],ant:["controlled", "manual"]},
+  {word:"aware",ph:"/əˈweər/",en:"Having knowledge or consciousness of something",cn:"意识到的；知道的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"be aware of", sent:"Students should be aware of the risks of social media.", sentCn:"学生应该意识到社交媒体的风险。"}, {phrase:"environmentally aware", sent:"Young people today are more environmentally aware than ever.", sentCn:"如今的年轻人比以往任何时候都更有环保意识。"}, {phrase:"make people aware", sent:"The campaign aims to make people aware of climate change.", sentCn:"该活动旨在让人们意识到气候变化。"}],ex:"We need to make students aware of the importance of saving energy.",family:{adj:"aware", noun:"awareness", adv:"awarely"},syn:["conscious", "informed"],ant:["unaware", "ignorant"]},
+  {word:"balance",ph:"/ˈbæl.əns/",en:"A situation in which different elements are equal or in correct proportions",cn:"平衡；均衡",lv:"intermediate",pos:"n/v",tags:["general", "environment"],phrases:[{phrase:"ecological balance", sent:"Removing predators upsets the ecological balance of a region.", sentCn:"移除捕食者会破坏一个地区的生态平衡。"}, {phrase:"work-life balance", sent:"Good work-life balance is important for mental health.", sentCn:"良好的工作与生活平衡对心理健康很重要。"}, {phrase:"maintain balance", sent:"We must maintain balance between development and conservation.", sentCn:"我们必须在发展和保护之间保持平衡。"}],ex:"Nature's balance is fragile and must be protected.",family:{noun:"balance", verb:"balance", adj:"balanced"},syn:["equilibrium", "harmony"],ant:["imbalance", "instability"]},
+  {word:"chip",ph:"/tʃɪp/",en:"A tiny piece of semiconductor material used in electronic devices",cn:"芯片；集成电路",lv:"advanced",pos:"n",tags:["technology"],phrases:[{phrase:"computer chip", sent:"Modern computer chips can process billions of operations per second.", sentCn:"现代计算机芯片每秒能处理数十亿次操作。"}, {phrase:"semiconductor chip", sent:"The global shortage of semiconductor chips affected many industries.", sentCn:"全球半导体芯片短缺影响了许多行业。"}, {phrase:"chip technology", sent:"China is investing heavily in domestic chip technology.", sentCn:"中国正在大力投资国内芯片技术。"}],ex:"The tiny chip inside your phone controls all its functions.",family:{noun:"chip", verb:"chip"},syn:["microchip", "processor"],ant:[]},
+  {word:"code",ph:"/kəʊd/",en:"Instructions written in a programming language for computers to follow",cn:"代码；编码",lv:"intermediate",pos:"n/v",tags:["technology"],phrases:[{phrase:"write code", sent:"Learning to write code is a valuable skill in the digital age.", sentCn:"学习编写代码是数字时代的宝贵技能。"}, {phrase:"computer code", sent:"Computer code tells machines exactly what to do.", sentCn:"计算机代码告诉机器应该做什么。"}, {phrase:"fix code", sent:"The developer spent hours trying to fix the broken code.", sentCn:"开发人员花了几个小时试图修复损坏的代码。"}],ex:"She learned to code at age 10 and built her first app at 12.",family:{noun:"code", verb:"code", adj:"coded"},syn:["program", "script"],ant:[]},
+  {word:"conservation",ph:"/ˌkɒn.səˈveɪ.ʃən/",en:"The protection and preservation of natural resources and wildlife",cn:"保护；保育；自然保护",lv:"intermediate",pos:"n",tags:["environment", "nature"],phrases:[{phrase:"wildlife conservation", sent:"Wildlife conservation protects animals from extinction.", sentCn:"野生动物保护使动物免于灭绝。"}, {phrase:"conservation effort", sent:"Conservation efforts have helped increase tiger populations.", sentCn:"保护工作帮助增加了老虎的种群数量。"}, {phrase:"conservation area", sent:"The valley was declared a conservation area to protect rare birds.", sentCn:"该山谷被划定为保护区以保护珍稀鸟类。"}],ex:"Conservation of rainforests is vital for global biodiversity.",family:{noun:"conservation", verb:"conserve", adj:"conservative"},syn:["preservation", "protection"],ant:["destruction", "exploitation"]},
+  {word:"conserve",ph:"/kənˈsɜːv/",en:"To protect something from harm, loss, or damage",cn:"保护；节约；保存",lv:"intermediate",pos:"v",tags:["environment"],phrases:[{phrase:"conserve energy", sent:"Turn off lights when leaving a room to conserve energy.", sentCn:"离开房间时关灯以节约能源。"}, {phrase:"conserve water", sent:"We should conserve water during droughts.", sentCn:"我们应该在干旱期间节约用水。"}, {phrase:"conserve nature", sent:"It is our duty to conserve nature for future generations.", sentCn:"为子孙后代保护自然是我们的责任。"}],ex:"Recycling helps conserve natural resources.",family:{noun:"conservation", verb:"conserve", adj:"conservative"},syn:["preserve", "protect"],ant:["waste", "destroy"]},
+  {word:"damage",ph:"/ˈdæm.ɪdʒ/",en:"Physical harm that reduces the value or usefulness of something",cn:"损害；破坏；损坏",lv:"intermediate",pos:"n/v",tags:["general", "environment"],phrases:[{phrase:"environmental damage", sent:"Industrial pollution has caused serious environmental damage.", sentCn:"工业污染造成了严重的环境破坏。"}, {phrase:"cause damage", sent:"Hurricanes can cause enormous damage to coastal areas.", sentCn:"飓风会对沿海地区造成巨大破坏。"}, {phrase:"repair damage", sent:"It may take decades to repair the damage done to the reef.", sentCn:"修复对珊瑚礁造成的损害可能需要数十年时间。"}],ex:"UV radiation can damage skin cells and cause health problems.",family:{noun:"damage", verb:"damage", adj:"damaged"},syn:["harm", "destroy"],ant:["repair", "protect"]},
+  {word:"data",ph:"/ˈdeɪ.tə/",en:"Facts and statistics collected for analysis",cn:"数据；资料",lv:"intermediate",pos:"n",tags:["technology"],phrases:[{phrase:"collect data", sent:"Scientists collect data over many years to study climate change.", sentCn:"科学家收集多年的数据来研究气候变化。"}, {phrase:"analyze data", sent:"AI systems can analyze huge amounts of data instantly.", sentCn:"人工智能系统可以即时分析大量数据。"}, {phrase:"data privacy", sent:"Data privacy is an important issue in the digital age.", sentCn:"数据隐私是数字时代的重要问题。"}],ex:"The app collects data about users' habits to improve its service.",family:{noun:"data", adj:"data-driven"},syn:["information", "statistics"],ant:[]},
+  {word:"destroy",ph:"/dɪˈstrɔɪ/",en:"To cause so much damage that something no longer exists or works",cn:"摧毁；破坏；消灭",lv:"intermediate",pos:"v",tags:["general", "environment"],phrases:[{phrase:"destroy the environment", sent:"Illegal mining destroys the environment and harms wildlife.", sentCn:"非法采矿破坏环境并伤害野生动物。"}, {phrase:"destroy habitat", sent:"Urban expansion destroys the habitat of many wild animals.", sentCn:"城市扩张破坏了许多野生动物的栖息地。"}, {phrase:"destroy evidence", sent:"It is illegal to destroy evidence in a legal case.", sentCn:"销毁法律案件中的证据是违法的。"}],ex:"A single oil spill can destroy an entire marine ecosystem.",family:{verb:"destroy", noun:"destruction", adj:"destructive"},syn:["ruin", "demolish"],ant:["build", "protect"]},
+  {word:"device",ph:"/dɪˈvaɪs/",en:"A piece of equipment designed for a particular purpose",cn:"设备；装置；器具",lv:"intermediate",pos:"n",tags:["technology"],phrases:[{phrase:"mobile device", sent:"Students often use mobile devices to study English.", sentCn:"学生经常使用移动设备学习英语。"}, {phrase:"smart device", sent:"Smart devices can be controlled using voice commands.", sentCn:"智能设备可以通过语音指令控制。"}, {phrase:"electronic device", sent:"Electronic devices should be turned off during exams.", sentCn:"考试期间应关闭电子设备。"}],ex:"Wearable devices can track your heart rate and sleep quality.",family:{noun:"device"},syn:["gadget", "instrument"],ant:[]},
+  {word:"digital",ph:"/ˈdɪdʒ.ɪ.təl/",en:"Using or relating to computer technology and the internet",cn:"数字的；数字技术的",lv:"intermediate",pos:"adj",tags:["technology"],phrases:[{phrase:"digital technology", sent:"Digital technology has transformed every area of life.", sentCn:"数字技术改变了生活的每个领域。"}, {phrase:"digital age", sent:"Young people growing up in the digital age are very tech-savvy.", sentCn:"在数字时代成长的年轻人非常懂技术。"}, {phrase:"digital skills", sent:"Good digital skills are essential for most modern jobs.", sentCn:"良好的数字技能对大多数现代工作至关重要。"}],ex:"We live in a digital world where everything is connected online.",family:{adj:"digital", adv:"digitally", verb:"digitize"},syn:["electronic", "online"],ant:["analogue", "physical"]},
+  {word:"disaster",ph:"/dɪˈzɑː.stər/",en:"A sudden event that causes great damage, loss, or suffering",cn:"灾难；灾害；祸患",lv:"intermediate",pos:"n",tags:["environment", "general"],phrases:[{phrase:"natural disaster", sent:"Earthquakes and floods are examples of natural disasters.", sentCn:"地震和洪水是自然灾害的例子。"}, {phrase:"environmental disaster", sent:"The oil spill was one of the worst environmental disasters in history.", sentCn:"这次石油泄漏是历史上最严重的环境灾难之一。"}, {phrase:"prevent disaster", sent:"Early warning systems help prevent disaster and save lives.", sentCn:"预警系统有助于预防灾难和拯救生命。"}],ex:"Climate change increases the frequency of natural disasters.",family:{noun:"disaster", adj:"disastrous", adv:"disastrously"},syn:["catastrophe", "calamity"],ant:["fortune", "success"]},
+  {word:"ecological",ph:"/ˌiː.kəˈlɒdʒ.ɪ.kəl/",en:"Relating to or concerned with the relationship between living things and their environment",cn:"生态的；生态学的",lv:"advanced",pos:"adj",tags:["environment"],phrases:[{phrase:"ecological system", sent:"Humans depend on ecological systems for clean air and water.", sentCn:"人类依赖生态系统获得清洁的空气和水。"}, {phrase:"ecological balance", sent:"Invasive species can destroy the ecological balance of an area.", sentCn:"入侵物种会破坏一个地区的生态平衡。"}, {phrase:"ecological crisis", sent:"We are facing a serious ecological crisis due to human activity.", sentCn:"由于人类活动，我们正面临严重的生态危机。"}],ex:"We must make more ecological choices in our daily lives.",family:{adj:"ecological", noun:"ecology", adv:"ecologically"},syn:["environmental", "natural"],ant:[]},
+  {word:"efficient",ph:"/ɪˈfɪʃ.ənt/",en:"Working well and achieving results without wasting time or energy",cn:"高效的；效率高的",lv:"intermediate",pos:"adj",tags:["general", "technology"],phrases:[{phrase:"energy efficient", sent:"LED lights are much more energy efficient than old bulbs.", sentCn:"LED灯比老式灯泡节能得多。"}, {phrase:"efficient system", sent:"An efficient transport system reduces pollution and saves time.", sentCn:"高效的交通系统减少污染并节省时间。"}, {phrase:"highly efficient", sent:"Solar panels are becoming highly efficient and affordable.", sentCn:"太阳能电池板正变得高效且经济实惠。"}],ex:"Electric cars are more efficient than petrol-powered vehicles.",family:{adj:"efficient", noun:"efficiency", adv:"efficiently"},syn:["effective", "productive"],ant:["inefficient", "wasteful"]},
+  {word:"energy",ph:"/ˈen.ə.dʒi/",en:"Power obtained from physical or chemical resources to provide light, heat, or motion",cn:"能量；能源；精力",lv:"basic",pos:"n",tags:["environment", "science"],phrases:[{phrase:"renewable energy", sent:"Wind and solar are the most popular forms of renewable energy.", sentCn:"风能和太阳能是最受欢迎的可再生能源形式。"}, {phrase:"save energy", sent:"Turning off unused appliances helps save energy.", sentCn:"关闭不使用的电器有助于节省能源。"}, {phrase:"energy source", sent:"Scientists are searching for cleaner energy sources.", sentCn:"科学家正在寻找更清洁的能源。"}],ex:"The world needs to switch to clean energy to fight climate change.",family:{noun:"energy", adj:"energetic", adv:"energetically"},syn:["power", "fuel"],ant:[]},
+  {word:"function",ph:"/ˈfʌŋk.ʃən/",en:"The special purpose or activity of a person or thing",cn:"功能；作用；运作",lv:"intermediate",pos:"n/v",tags:["technology", "general"],phrases:[{phrase:"main function", sent:"The main function of the liver is to filter blood.", sentCn:"肝脏的主要功能是过滤血液。"}, {phrase:"perform a function", sent:"Each part of the machine performs a specific function.", sentCn:"机器的每个部件执行特定的功能。"}, {phrase:"function properly", sent:"The app stopped functioning properly after the update.", sentCn:"更新后该应用程序停止正常运行。"}],ex:"AI can now perform complex functions that once required human intelligence.",family:{noun:"function", verb:"function", adj:"functional"},syn:["purpose", "role"],ant:[]},
+  {word:"global",ph:"/ˈɡləʊ.bəl/",en:"Relating to the whole world; worldwide",cn:"全球的；全球性的",lv:"intermediate",pos:"adj",tags:["general", "environment"],phrases:[{phrase:"global warming", sent:"Global warming is causing ice caps to melt at alarming rates.", sentCn:"全球变暖导致冰盖以惊人的速度融化。"}, {phrase:"global problem", sent:"Pollution is a global problem that requires international cooperation.", sentCn:"污染是一个需要国际合作解决的全球性问题。"}, {phrase:"global community", sent:"The global community must work together to tackle climate change.", sentCn:"全球社区必须共同努力应对气候变化。"}],ex:"The internet has created a truly global marketplace.",family:{adj:"global", adv:"globally", noun:"globalization"},syn:["worldwide", "international"],ant:["local", "national"]},
+  {word:"green",ph:"/ɡriːn/",en:"Relating to or supporting environmentally friendly activities",cn:"绿色的；环保的",lv:"basic",pos:"adj",tags:["environment"],phrases:[{phrase:"green energy", sent:"Investing in green energy reduces dependence on fossil fuels.", sentCn:"投资绿色能源减少了对化石燃料的依赖。"}, {phrase:"go green", sent:"Many companies are trying to go green to reduce their footprint.", sentCn:"许多公司正努力践行环保以减少碳足迹。"}, {phrase:"green technology", sent:"Green technology is essential for a sustainable future.", sentCn:"绿色技术对可持续未来至关重要。"}],ex:"The school launched a green initiative to reduce plastic waste.",family:{adj:"green", verb:"green"},syn:["eco-friendly", "sustainable"],ant:["polluting", "wasteful"]},
+  {word:"hardware",ph:"/ˈhɑːd.weər/",en:"The physical components of a computer or electronic system",cn:"硬件；电脑硬件",lv:"intermediate",pos:"n",tags:["technology"],phrases:[{phrase:"computer hardware", sent:"Computer hardware includes the keyboard, screen, and processor.", sentCn:"计算机硬件包括键盘、屏幕和处理器。"}, {phrase:"hardware upgrade", sent:"A hardware upgrade can significantly improve your computer's speed.", sentCn:"硬件升级可以显著提高电脑速度。"}, {phrase:"hardware problem", sent:"The technician identified a hardware problem with the device.", sentCn:"技术人员发现了设备的硬件问题。"}],ex:"Without the right hardware, software cannot run properly.",family:{noun:"hardware"},syn:["equipment", "components"],ant:["software"]},
+  {word:"harmful",ph:"/ˈhɑːm.fəl/",en:"Causing or likely to cause harm or damage",cn:"有害的；危害的",lv:"intermediate",pos:"adj",tags:["general", "environment"],phrases:[{phrase:"harmful effect", sent:"Smoking has harmful effects on the lungs and heart.", sentCn:"吸烟对肺部和心脏有害。"}, {phrase:"harmful substance", sent:"Some cleaning products contain harmful substances.", sentCn:"一些清洁产品含有有害物质。"}, {phrase:"potentially harmful", sent:"Spending too much time online can be potentially harmful.", sentCn:"花太多时间上网可能是有害的。"}],ex:"Pesticides can be harmful to bees and other pollinators.",family:{adj:"harmful", adv:"harmfully", noun:"harm"},syn:["dangerous", "toxic"],ant:["harmless", "safe"]},
+  {word:"hunt",ph:"/hʌnt/",en:"To chase and kill wild animals for food or sport",cn:"猎杀；狩猎；追捕",lv:"intermediate",pos:"v/n",tags:["nature", "environment"],phrases:[{phrase:"illegally hunt", sent:"Rangers work hard to stop people from illegally hunting elephants.", sentCn:"护林员努力阻止人们非法猎杀大象。"}, {phrase:"hunt for food", sent:"Some indigenous peoples still hunt for food as part of their culture.", sentCn:"一些土著民族仍将狩猎食物作为其文化的一部分。"}, {phrase:"hunting ban", sent:"The government introduced a hunting ban to protect endangered species.", sentCn:"政府颁布了狩猎禁令以保护濒危物种。"}],ex:"Whales were once hunted to the point of near extinction.",family:{verb:"hunt", noun:"hunt", agent:"hunter"},syn:["poach", "chase"],ant:["protect", "conserve"]},
+  {word:"illegal",ph:"/ɪˈliː.ɡəl/",en:"Forbidden by law; not allowed",cn:"非法的；违法的",lv:"intermediate",pos:"adj",tags:["general", "environment"],phrases:[{phrase:"illegal trade", sent:"The illegal trade in rare animals is a serious global problem.", sentCn:"非法的珍稀动物交易是一个严重的全球性问题。"}, {phrase:"illegal dumping", sent:"Illegal dumping of waste poisons soil and water.", sentCn:"非法倾倒废物会毒害土壤和水源。"}, {phrase:"declare illegal", sent:"Many countries have declared certain pesticides illegal.", sentCn:"许多国家已宣布某些农药为非法。"}],ex:"It is illegal to collect rare plants from national parks.",family:{adj:"illegal", adv:"illegally", noun:"illegality"},syn:["unlawful", "criminal"],ant:["legal", "lawful"]},
+  {word:"innovative",ph:"/ˈɪn.ə.veɪ.tɪv/",en:"Featuring new methods or ideas; original and creative",cn:"创新的；革新的",lv:"intermediate",pos:"adj",tags:["technology", "general"],phrases:[{phrase:"innovative solution", sent:"Engineers found an innovative solution to reduce plastic waste.", sentCn:"工程师找到了一个减少塑料垃圾的创新解决方案。"}, {phrase:"innovative technology", sent:"Innovative technology is changing healthcare worldwide.", sentCn:"创新技术正在改变全球医疗保健。"}, {phrase:"innovative approach", sent:"Teachers need to use innovative approaches to engage students.", sentCn:"教师需要使用创新方法来吸引学生。"}],ex:"China's innovative companies are leading the world in electric vehicles.",family:{adj:"innovative", verb:"innovate", noun:"innovation"},syn:["creative", "original"],ant:["traditional", "conventional"]},
+  {word:"machine",ph:"/məˈʃiːn/",en:"A piece of equipment with moving parts that uses power to do work",cn:"机器；机械",lv:"basic",pos:"n",tags:["technology"],phrases:[{phrase:"learning machine", sent:"A learning machine can improve itself through experience.", sentCn:"学习机器可以通过经验来改进自身。"}, {phrase:"washing machine", sent:"Modern washing machines use much less water than old ones.", sentCn:"现代洗衣机比旧款用水少得多。"}, {phrase:"machine error", sent:"The accident was caused by a machine error, not human mistake.", sentCn:"事故是由机器故障引起的，而不是人为错误。"}],ex:"This machine can sort recycled materials automatically.",family:{noun:"machine", adj:"mechanical", verb:"machine"},syn:["device", "equipment"],ant:[]},
+  {word:"measure",ph:"/ˈmeʒ.ər/",en:"A course of action taken to achieve a purpose; to find the size or amount of something",cn:"措施；测量；衡量",lv:"intermediate",pos:"n/v",tags:["general", "environment"],phrases:[{phrase:"take measures", sent:"Governments must take measures to reduce carbon emissions.", sentCn:"政府必须采取措施减少碳排放。"}, {phrase:"environmental measure", sent:"Environmental measures include recycling and using clean energy.", sentCn:"环境措施包括回收和使用清洁能源。"}, {phrase:"effective measure", sent:"An effective measure against pollution is switching to electric cars.", sentCn:"应对污染的有效措施是改用电动汽车。"}],ex:"We need to measure the level of pollution in the river.",family:{noun:"measure", verb:"measure", adj:"measurable"},syn:["action", "step"],ant:[]},
+  {word:"monitor",ph:"/ˈmɒn.ɪ.tər/",en:"To observe and check the progress or quality of something over a period of time",cn:"监测；监控；跟踪",lv:"intermediate",pos:"v/n",tags:["technology", "environment"],phrases:[{phrase:"monitor pollution", sent:"Sensors are used to monitor air pollution levels in cities.", sentCn:"传感器用于监测城市的空气污染水平。"}, {phrase:"monitor health", sent:"Wearable devices can monitor your health in real time.", sentCn:"可穿戴设备可以实时监测你的健康状况。"}, {phrase:"monitor progress", sent:"Teachers monitor students' progress through regular tests.", sentCn:"教师通过定期测试来监测学生的进步。"}],ex:"Scientists use satellites to monitor deforestation from space.",family:{verb:"monitor", noun:"monitor", adj:"monitored"},syn:["observe", "track"],ant:["ignore", "neglect"]},
+  {word:"network",ph:"/ˈnet.wɜːk/",en:"A system of connected things, people, or organizations",cn:"网络；网状系统",lv:"intermediate",pos:"n",tags:["technology"],phrases:[{phrase:"social network", sent:"Social networks have changed how people communicate globally.", sentCn:"社交网络改变了人们全球交流的方式。"}, {phrase:"5G network", sent:"5G networks enable faster data transfer and smarter cities.", sentCn:"5G网络实现了更快的数据传输和更智能的城市。"}, {phrase:"build a network", sent:"Building a strong network helps in finding jobs and opportunities.", sentCn:"建立强大的人际网络有助于找到工作和机会。"}],ex:"The internet is the world's largest digital network.",family:{noun:"network", verb:"network", adj:"networked"},syn:["system", "web"],ant:[]},
+  {word:"online",ph:"/ˈɒn.laɪn/",en:"Connected to or accessible through the internet",cn:"在线的；网上的",lv:"basic",pos:"adj/adv",tags:["technology"],phrases:[{phrase:"online learning", sent:"Online learning became very popular during the pandemic.", sentCn:"网上学习在疫情期间变得非常流行。"}, {phrase:"online shopping", sent:"Online shopping is convenient but can increase packaging waste.", sentCn:"网上购物方便但可能增加包装废物。"}, {phrase:"go online", sent:"More and more services are going online to serve customers better.", sentCn:"越来越多的服务正在上线以更好地服务客户。"}],ex:"You can access millions of books online for free.",family:{adj:"online", adv:"online"},syn:["digital", "virtual"],ant:["offline"]},
+  {word:"planet",ph:"/ˈplæn.ɪt/",en:"A large natural body in space that orbits a star",cn:"行星；地球",lv:"basic",pos:"n",tags:["space", "environment"],phrases:[{phrase:"protect the planet", sent:"Every small action we take can help protect the planet.", sentCn:"我们采取的每一个小行动都有助于保护地球。"}, {phrase:"distant planet", sent:"Astronomers discovered a distant planet outside our solar system.", sentCn:"天文学家在太阳系外发现了一颗遥远的行星。"}, {phrase:"save the planet", sent:"Reducing plastic use is one way to save the planet.", sentCn:"减少塑料使用是拯救地球的一种方式。"}],ex:"Earth is the only known planet with life.",family:{noun:"planet", adj:"planetary"},syn:["world", "celestial body"],ant:[]},
+  {word:"predict",ph:"/prɪˈdɪkt/",en:"To say in advance what you think will happen in the future",cn:"预测；预言",lv:"intermediate",pos:"v",tags:["science", "technology"],phrases:[{phrase:"predict the weather", sent:"Modern computers can predict the weather up to two weeks ahead.", sentCn:"现代计算机可以提前两周预测天气。"}, {phrase:"predict climate change", sent:"Scientists predict that climate change will worsen without action.", sentCn:"科学家预测，如果不采取行动，气候变化将会加剧。"}, {phrase:"accurately predict", sent:"AI can accurately predict equipment failures before they happen.", sentCn:"人工智能能够在设备故障发生前准确预测。"}],ex:"Machine learning helps predict natural disasters more accurately.",family:{verb:"predict", noun:"prediction", adj:"predictable"},syn:["forecast", "foresee"],ant:[]},
+  {word:"preserve",ph:"/prɪˈzɜːv/",en:"To keep something safe from harm or change; to protect",cn:"保护；保存；维护",lv:"intermediate",pos:"v",tags:["environment", "nature"],phrases:[{phrase:"preserve wildlife", sent:"Nature reserves help preserve wildlife in its natural habitat.", sentCn:"自然保护区有助于在其自然栖息地保护野生动物。"}, {phrase:"preserve the environment", sent:"We have a responsibility to preserve the environment for future generations.", sentCn:"我们有责任为子孙后代保护环境。"}, {phrase:"preserve culture", sent:"Museums help preserve culture and history.", sentCn:"博物馆有助于保护文化和历史。"}],ex:"International laws help preserve endangered species from extinction.",family:{verb:"preserve", noun:"preservation", adj:"preserved"},syn:["protect", "conserve"],ant:["destroy", "damage"]},
+  {word:"privacy",ph:"/ˈprɪv.ə.si/",en:"The state of being free from public attention or having personal information protected",cn:"隐私；私密性",lv:"intermediate",pos:"n",tags:["technology", "general"],phrases:[{phrase:"data privacy", sent:"Data privacy laws protect people's personal information online.", sentCn:"数据隐私法律保护人们的网上个人信息。"}, {phrase:"right to privacy", sent:"Everyone has the right to privacy in their personal life.", sentCn:"每个人的私人生活都享有隐私权。"}, {phrase:"protect privacy", sent:"Strong passwords help protect your online privacy.", sentCn:"强密码有助于保护你的网络隐私。"}],ex:"Some apps collect data without respecting users' privacy.",family:{noun:"privacy", adj:"private", adv:"privately"},syn:["confidentiality", "secrecy"],ant:["publicity", "exposure"]},
+  {word:"process",ph:"/ˈprəʊ.ses/",en:"A series of actions or steps taken to achieve a result",cn:"过程；加工；处理",lv:"intermediate",pos:"n/v",tags:["general", "technology"],phrases:[{phrase:"manufacturing process", sent:"Modern manufacturing processes use robots for precision and speed.", sentCn:"现代制造流程使用机器人来实现精确和速度。"}, {phrase:"process data", sent:"Computers process data millions of times faster than humans.", sentCn:"计算机处理数据的速度比人类快数百万倍。"}, {phrase:"complex process", sent:"Recycling is a complex process involving sorting and reprocessing.", sentCn:"回收是一个涉及分类和再加工的复杂过程。"}],ex:"AI can process natural language to understand human speech.",family:{noun:"process", verb:"process", adj:"processed"},syn:["procedure", "method"],ant:[]},
+  {word:"protect",ph:"/prəˈtekt/",en:"To keep someone or something safe from harm or danger",cn:"保护；防护",lv:"basic",pos:"v",tags:["general", "environment"],phrases:[{phrase:"protect the environment", sent:"We all have a duty to protect the environment from pollution.", sentCn:"我们都有责任保护环境免受污染。"}, {phrase:"protect endangered species", sent:"Laws are needed to protect endangered species from poachers.", sentCn:"需要法律来保护濒危物种免遭盗猎。"}, {phrase:"protect data", sent:"Companies must protect users' data from cyber attacks.", sentCn:"公司必须保护用户数据免受网络攻击。"}],ex:"Planting trees helps protect soil from erosion and flooding.",family:{verb:"protect", noun:"protection", adj:"protective"},syn:["guard", "defend"],ant:["harm", "damage"]},
+  {word:"radiation",ph:"/ˌreɪ.diˈeɪ.ʃən/",en:"Energy transmitted as waves or particles, especially in nuclear processes",cn:"辐射；放射",lv:"advanced",pos:"n",tags:["science", "space"],phrases:[{phrase:"solar radiation", sent:"Solar radiation can cause sunburn and increase skin cancer risk.", sentCn:"太阳辐射会导致晒伤并增加皮肤癌风险。"}, {phrase:"radiation exposure", sent:"Astronauts face significant radiation exposure outside Earth's atmosphere.", sentCn:"宇航员在地球大气层外面临显著的辐射暴露。"}, {phrase:"radiation levels", sent:"Satellites measure radiation levels in the upper atmosphere.", sentCn:"卫星测量高层大气中的辐射水平。"}],ex:"Protective equipment shields workers from harmful radiation.",family:{noun:"radiation", verb:"radiate", adj:"radioactive"},syn:["rays", "emission"],ant:[]},
+  {word:"recycle",ph:"/ˌriːˈsaɪ.kəl/",en:"To process used materials so they can be used again",cn:"回收；循环利用",lv:"basic",pos:"v",tags:["environment"],phrases:[{phrase:"recycle waste", sent:"Recycling waste reduces the amount of rubbish sent to landfills.", sentCn:"回收废物减少了送往垃圾填埋场的垃圾量。"}, {phrase:"recycle paper", sent:"Every tonne of recycled paper saves 17 trees.", sentCn:"每回收一吨纸张可以节省17棵树。"}, {phrase:"recycle plastic", sent:"Only a small percentage of plastic is actually recycled globally.", sentCn:"全球实际上只有一小部分塑料被回收。"}],ex:"Recycling aluminium uses 95% less energy than making it from scratch.",family:{verb:"recycle", noun:"recycling", adj:"recycled"},syn:["reuse", "repurpose"],ant:["waste", "discard"]},
+  {word:"reduce",ph:"/rɪˈdjuːs/",en:"To make something smaller in size, amount, or degree",cn:"减少；降低；缩减",lv:"basic",pos:"v",tags:["environment", "general"],phrases:[{phrase:"reduce emissions", sent:"Switching to electric vehicles helps reduce emissions significantly.", sentCn:"改用电动汽车有助于大幅减少排放。"}, {phrase:"reduce waste", sent:"Buying only what you need is a simple way to reduce waste.", sentCn:"只购买你需要的东西是减少浪费的简单方法。"}, {phrase:"reduce carbon footprint", sent:"Eating less meat can help reduce your carbon footprint.", sentCn:"少吃肉可以帮助减少碳足迹。"}],ex:"Using public transport can reduce air pollution in cities.",family:{verb:"reduce", noun:"reduction", adj:"reduced"},syn:["decrease", "cut"],ant:["increase", "expand"]},
+  {word:"replace",ph:"/rɪˈpleɪs/",en:"To take the place of something or someone",cn:"替代；取代；更换",lv:"intermediate",pos:"v",tags:["technology", "general"],phrases:[{phrase:"replace fossil fuels", sent:"Renewable energy could eventually replace fossil fuels completely.", sentCn:"可再生能源最终可能完全取代化石燃料。"}, {phrase:"replace workers", sent:"Some worry that robots will replace human workers in factories.", sentCn:"一些人担心机器人会取代工厂里的工人。"}, {phrase:"replace old methods", sent:"Digital tools are replacing old methods of teaching.", sentCn:"数字工具正在取代旧的教学方法。"}],ex:"AI may soon replace many routine jobs in offices.",family:{verb:"replace", noun:"replacement", adj:"replaceable"},syn:["substitute", "swap"],ant:["keep", "retain"]},
+  {word:"research",ph:"/rɪˈsɜːtʃ/",en:"The careful study of a subject to discover new facts or information",cn:"研究；调查；探索",lv:"intermediate",pos:"n/v",tags:["science", "technology"],phrases:[{phrase:"scientific research", sent:"Scientific research takes years but leads to important discoveries.", sentCn:"科学研究需要数年时间，但会带来重要发现。"}, {phrase:"conduct research", sent:"The team conducted research on ways to reduce plastic pollution.", sentCn:"该团队对减少塑料污染的方法进行了研究。"}, {phrase:"research findings", sent:"Research findings suggest that temperatures are rising faster than expected.", sentCn:"研究结果表明气温上升速度快于预期。"}],ex:"New research shows that AI can help detect cancer earlier.",family:{noun:"research", verb:"research", agent:"researcher"},syn:["study", "investigation"],ant:[]},
+  {word:"resource",ph:"/rɪˈzɔːs/",en:"A stock or supply of something available for use",cn:"资源；资产",lv:"intermediate",pos:"n",tags:["environment", "general"],phrases:[{phrase:"natural resource", sent:"China is rich in natural resources including coal and rare metals.", sentCn:"中国拥有丰富的自然资源，包括煤炭和稀有金属。"}, {phrase:"renewable resource", sent:"Solar energy is an example of a renewable resource.", sentCn:"太阳能是可再生资源的一个例子。"}, {phrase:"conserve resources", sent:"We should conserve resources by reducing unnecessary consumption.", sentCn:"我们应该通过减少不必要的消费来节约资源。"}],ex:"Sharing educational resources online benefits millions of students.",family:{noun:"resource", adj:"resourceful"},syn:["supply", "asset"],ant:["waste"]},
+  {word:"rocket",ph:"/ˈrɒk.ɪt/",en:"A vehicle propelled by engines that burns fuel to travel into space",cn:"火箭",lv:"intermediate",pos:"n",tags:["space"],phrases:[{phrase:"launch a rocket", sent:"China successfully launched a rocket carrying a space station module.", sentCn:"中国成功发射了一枚携带空间站舱段的火箭。"}, {phrase:"rocket engine", sent:"Modern rocket engines are far more efficient than those of the 1960s.", sentCn:"现代火箭发动机比20世纪60年代的效率高得多。"}, {phrase:"reusable rocket", sent:"Reusable rockets have made space travel significantly cheaper.", sentCn:"可重复使用的火箭使太空旅行成本大幅降低。"}],ex:"The Long March rocket has launched China's most important satellites.",family:{noun:"rocket", verb:"rocket"},syn:["spacecraft launcher"],ant:[]},
+  {word:"sensor",ph:"/ˈsen.sər/",en:"A device that detects or measures physical properties and signals",cn:"传感器；感应器",lv:"advanced",pos:"n",tags:["technology"],phrases:[{phrase:"temperature sensor", sent:"Temperature sensors alert the system when machines overheat.", sentCn:"温度传感器在机器过热时向系统发出警报。"}, {phrase:"motion sensor", sent:"Motion sensors turn on lights automatically when someone enters.", sentCn:"运动传感器在有人进入时自动开灯。"}, {phrase:"sensor technology", sent:"Sensor technology is key to the development of autonomous vehicles.", sentCn:"传感器技术是自动驾驶汽车发展的关键。"}],ex:"Modern smartphones contain dozens of sensors.",family:{noun:"sensor", verb:"sense", adj:"sensory"},syn:["detector", "monitor"],ant:[]},
+  {word:"software",ph:"/ˈsɒft.weər/",en:"Programs and operating systems used by a computer",cn:"软件；程序",lv:"intermediate",pos:"n",tags:["technology"],phrases:[{phrase:"software update", sent:"Always install software updates to keep your device secure.", sentCn:"始终安装软件更新以保持设备安全。"}, {phrase:"develop software", sent:"She developed software that helps doctors diagnose diseases faster.", sentCn:"她开发了帮助医生更快诊断疾病的软件。"}, {phrase:"educational software", sent:"Educational software makes learning more interactive and fun.", sentCn:"教育软件使学习更具互动性和趣味性。"}],ex:"AI software can now write code and compose music.",family:{noun:"software"},syn:["program", "application"],ant:["hardware"]},
+  {word:"space",ph:"/speɪs/",en:"The vast area beyond Earth's atmosphere where stars and planets exist",cn:"太空；宇宙空间",lv:"basic",pos:"n",tags:["space"],phrases:[{phrase:"outer space", sent:"Outer space has fascinated humans since ancient times.", sentCn:"外太空自古以来就令人类着迷。"}, {phrase:"space exploration", sent:"Space exploration has led to many technological breakthroughs.", sentCn:"太空探索带来了许多技术突破。"}, {phrase:"space station", sent:"Astronauts live and work on the space station for months.", sentCn:"宇航员在空间站生活和工作数月。"}],ex:"China's space programme has achieved remarkable milestones.",family:{noun:"space", adj:"spatial"},syn:["cosmos", "universe"],ant:[]},
+  {word:"spacecraft",ph:"/ˈspeɪs.krɑːft/",en:"A vehicle designed to travel in outer space",cn:"航天器；宇宙飞船",lv:"intermediate",pos:"n",tags:["space"],phrases:[{phrase:"crewed spacecraft", sent:"China's crewed spacecraft has taken astronauts to the space station.", sentCn:"中国的载人航天器已将宇航员送往空间站。"}, {phrase:"unmanned spacecraft", sent:"An unmanned spacecraft was sent to study Mars.", sentCn:"一艘无人航天器被发射去研究火星。"}, {phrase:"spacecraft design", sent:"Spacecraft design must consider extreme temperatures and radiation.", sentCn:"航天器设计必须考虑极端温度和辐射。"}],ex:"The spacecraft travelled for seven months before reaching Mars.",family:{noun:"spacecraft"},syn:["spaceship", "vessel"],ant:[]},
+  {word:"species",ph:"/ˈspiː.ʃiːz/",en:"A group of living things that share similar features and can breed together",cn:"物种；种类",lv:"intermediate",pos:"n",tags:["nature", "environment"],phrases:[{phrase:"endangered species", sent:"Over 40,000 species are currently classified as endangered.", sentCn:"目前超过40,000个物种被归类为濒危。"}, {phrase:"new species", sent:"Scientists discover dozens of new species each year.", sentCn:"科学家每年发现数十个新物种。"}, {phrase:"protect species", sent:"International agreements help protect species from illegal trade.", sentCn:"国际协议有助于保护物种免受非法贸易。"}],ex:"Climate change threatens thousands of species with extinction.",family:{noun:"species"},syn:["type", "kind"],ant:[]},
+  {word:"survive",ph:"/səˈvaɪv/",en:"To continue to live or exist, especially in difficult conditions",cn:"幸存；存活；生存",lv:"intermediate",pos:"v",tags:["general", "nature"],phrases:[{phrase:"survive in the wild", sent:"Many animals struggle to survive in the wild due to habitat loss.", sentCn:"许多动物因栖息地丧失而难以在野外生存。"}, {phrase:"survive climate change", sent:"Species must adapt quickly to survive climate change.", sentCn:"物种必须快速适应才能在气候变化中存活。"}, {phrase:"barely survive", sent:"Some small islands can barely survive rising sea levels.", sentCn:"一些小岛几乎难以应对上升的海平面。"}],ex:"Only the most adaptable species will survive rapid environmental changes.",family:{verb:"survive", noun:"survival", adj:"surviving"},syn:["live on", "endure"],ant:["perish", "die"]},
+  {word:"system",ph:"/ˈsɪs.təm/",en:"A set of connected things or parts working together as a whole",cn:"系统；体制；制度",lv:"basic",pos:"n",tags:["general", "technology"],phrases:[{phrase:"solar system", sent:"Our solar system contains eight planets orbiting the sun.", sentCn:"我们的太阳系包含八颗围绕太阳运行的行星。"}, {phrase:"transport system", sent:"An efficient transport system reduces pollution and congestion.", sentCn:"高效的交通系统减少污染和拥堵。"}, {phrase:"warning system", sent:"Early warning systems save thousands of lives during disasters.", sentCn:"预警系统在灾害中拯救数千人的生命。"}],ex:"China's high-speed rail system is one of the world's largest.",family:{noun:"system", adj:"systematic", adv:"systematically"},syn:["network", "structure"],ant:[]},
+  {word:"technology",ph:"/tekˈnɒl.ə.dʒi/",en:"The application of scientific knowledge for practical purposes",cn:"技术；科技",lv:"basic",pos:"n",tags:["technology"],phrases:[{phrase:"advanced technology", sent:"Advanced technology has transformed how we live and work.", sentCn:"先进技术改变了我们的生活和工作方式。"}, {phrase:"clean technology", sent:"Clean technology helps reduce pollution and carbon emissions.", sentCn:"清洁技术有助于减少污染和碳排放。"}, {phrase:"cutting-edge technology", sent:"China invests heavily in cutting-edge technology research.", sentCn:"中国在尖端技术研究上投入大量资金。"}],ex:"Technology is advancing faster than ever before in history.",family:{noun:"technology", adj:"technological", adv:"technologically"},syn:["innovation", "science"],ant:[]},
+  {word:"threat",ph:"/θret/",en:"A person or thing that is likely to cause damage or danger",cn:"威胁；危险",lv:"intermediate",pos:"n",tags:["general", "environment"],phrases:[{phrase:"pose a threat", sent:"Climate change poses a serious threat to global biodiversity.", sentCn:"气候变化对全球生物多样性构成严重威胁。"}, {phrase:"environmental threat", sent:"Plastic pollution is a major environmental threat to oceans.", sentCn:"塑料污染是海洋面临的主要环境威胁。"}, {phrase:"greatest threat", sent:"Scientists say habitat loss is the greatest threat to wildlife.", sentCn:"科学家表示，栖息地丧失是野生动物面临的最大威胁。"}],ex:"Invasive species are a growing threat to native wildlife.",family:{noun:"threat", verb:"threaten", adj:"threatening"},syn:["danger", "risk"],ant:["safety", "protection"]},
+  {word:"universe",ph:"/ˈjuː.nɪ.vɜːs/",en:"All existing matter, energy, and space considered as a whole",cn:"宇宙；世界",lv:"intermediate",pos:"n",tags:["space", "science"],phrases:[{phrase:"explore the universe", sent:"Humans have always wanted to explore the universe beyond Earth.", sentCn:"人类一直渴望探索地球以外的宇宙。"}, {phrase:"origin of the universe", sent:"Scientists study the origin of the universe through light from distant stars.", sentCn:"科学家通过遥远星星的光来研究宇宙的起源。"}, {phrase:"expand the universe", sent:"Evidence shows the universe has been expanding since the Big Bang.", sentCn:"证据表明宇宙自大爆炸以来一直在膨胀。"}],ex:"The universe is estimated to be about 13.8 billion years old.",family:{noun:"universe", adj:"universal", adv:"universally"},syn:["cosmos", "space"],ant:[]},
+  {word:"update",ph:"/ˈʌp.deɪt/",en:"To make something more modern or add new information to it",cn:"更新；升级",lv:"basic",pos:"v/n",tags:["technology"],phrases:[{phrase:"software update", sent:"Installing the latest software update fixes security problems.", sentCn:"安装最新的软件更新可以修复安全问题。"}, {phrase:"regular update", sent:"Regular updates keep your device working at its best.", sentCn:"定期更新使你的设备保持最佳运行状态。"}, {phrase:"update information", sent:"Always update your information when you move to a new address.", sentCn:"当你搬到新地址时，请务必更新你的信息。"}],ex:"The app updates automatically every week with new features.",family:{verb:"update", noun:"update", adj:"updated"},syn:["upgrade", "refresh"],ant:["downgrade", "delete"]},
+  {word:"virtual",ph:"/ˈvɜː.tʃu.əl/",en:"Not physically existing but created by software to appear real",cn:"虚拟的；模拟的",lv:"intermediate",pos:"adj",tags:["technology"],phrases:[{phrase:"virtual reality", sent:"Virtual reality headsets let you experience places without leaving home.", sentCn:"虚拟现实头盔让你无需离家就能体验各地。"}, {phrase:"virtual class", sent:"During the pandemic, students attended virtual classes from home.", sentCn:"疫情期间，学生在家参加线上课程。"}, {phrase:"virtual world", sent:"Many young people spend hours in virtual worlds playing games.", sentCn:"许多年轻人每天花数小时在虚拟世界里玩游戏。"}],ex:"Virtual assistants like Siri can answer questions and set reminders.",family:{adj:"virtual", adv:"virtually", noun:"virtuality"},syn:["simulated", "digital"],ant:["real", "physical"]},
+  {word:"waste",ph:"/weɪst/",en:"Materials that are no longer needed and are discarded; to use carelessly",cn:"废物；浪费；垃圾",lv:"basic",pos:"n/v",tags:["environment", "general"],phrases:[{phrase:"reduce waste", sent:"Choosing products with less packaging helps reduce waste.", sentCn:"选择包装较少的产品有助于减少废物。"}, {phrase:"electronic waste", sent:"Electronic waste contains toxic materials that harm the environment.", sentCn:"电子废物含有危害环境的有毒物质。"}, {phrase:"waste management", sent:"Good waste management is essential for clean cities.", sentCn:"良好的废物管理对整洁的城市至关重要。"}],ex:"Food waste is a major problem in wealthy countries.",family:{noun:"waste", verb:"waste", adj:"wasteful"},syn:["rubbish", "garbage"],ant:["resource", "reuse"]}
+,
+  {word:"admit",ph:"/ədˈmɪt/",en:"to confess or acknowledge; to allow entry",cn:"承认；允许进入",lv:"basic",pos:"v",tags:["general"],phrases:[{phrase:"admit to", sent:"He finally admitted to making the mistake.", sentCn:"他最终承认犯了这个错误。"},{phrase:"admit defeat", sent:"The team had to admit defeat after losing 5-0.", sentCn:"这支队伍在0-5败北后不得不认输。"},{phrase:"be admitted to", sent:"She was admitted to Harvard University.", sentCn:"她被哈佛大学录取了。"}],ex:"I admit that I was wrong about this issue.",family:{noun:"admission",verb:"admit",adj:"admissible",adv:"admissibly"},syn:["confess","acknowledge"],ant:["deny","refuse"],collocation:{correct:["admit guilt","admit responsibility","admit students"],distractors:["admit crime","admit error"],example_sent:"The suspect refused to admit guilt during the trial."},fill_blank:{sentence:"The hospital will only ___ patients with serious conditions.",sentence_cn:"医院只接收病情严重的患者。",options:["admit","accept","receive","welcome"]},synonym_match:{synonyms:["confess","acknowledge"]},error_fix:{wrong:"He admitted his crime.",right:"He admitted to his crime.",hint:"admit后接具体事物时通常需要介词to"}},
+  {word:"agency",ph:"/ˈeɪdʒənsi/",en:"an organization providing services; the capacity to act",cn:"机构；代理处；能动性",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"travel agency", sent:"We booked our vacation through a travel agency.", sentCn:"我们通过旅行社预订了假期。"},{phrase:"government agency", sent:"The EPA is a government agency that protects the environment.", sentCn:"环保署是保护环境的政府机构。"},{phrase:"advertising agency", sent:"The advertising agency created a brilliant campaign for the product.", sentCn:"广告公司为这个产品制作了精彩的宣传活动。"}],ex:"She works for a real estate agency in downtown.",family:{noun:"agency"},syn:["organization","bureau"],ant:[],collocation:{correct:["news agency","employment agency","federal agency"],distractors:["agency company","agency organization"],example_sent:"Reuters is a famous international news agency."},fill_blank:{sentence:"The detective ___ is investigating the mysterious case.",sentence_cn:"侦探社正在调查这起神秘案件。",options:["agency","company","office","department"]},synonym_match:{synonyms:["organization","bureau"]},error_fix:{wrong:"I work in an agency company.",right:"I work for an agency.",hint:"agency本身就表示机构，不需要再加company"}},
+  {word:"aid",ph:"/eɪd/",en:"help or assistance; to help someone",cn:"帮助；援助",lv:"basic",pos:"n/v",tags:["general"],phrases:[{phrase:"first aid", sent:"She learned first aid techniques in the training course.", sentCn:"她在培训课程中学习了急救技术。"},{phrase:"financial aid", sent:"Many students rely on financial aid to pay for college.", sentCn:"许多学生依靠经济援助来支付大学费用。"},{phrase:"aid in", sent:"Technology can aid in solving complex problems.", sentCn:"技术可以帮助解决复杂问题。"}],ex:"The government provided aid to the earthquake victims.",family:{noun:"aid",verb:"aid"},syn:["help","assist"],ant:["hinder","obstruct"],collocation:{correct:["humanitarian aid","medical aid","foreign aid"],distractors:["aid help","aid assistance"],example_sent:"The UN sent humanitarian aid to the disaster-stricken area."},fill_blank:{sentence:"The new software will ___ teachers in managing their classes more effectively.",sentence_cn:"新软件将帮助教师更有效地管理班级。",options:["aid","support","guide","lead"]},synonym_match:{synonyms:["help","assist"]},error_fix:{wrong:"Can you aid help me with this problem?",right:"Can you aid me with this problem?",hint:"aid和help意思相同，不能连用"}},
+  {word:"annual",ph:"/ˈænjuəl/",en:"happening once every year",cn:"每年的；年度的",lv:"basic",pos:"adj",tags:["general"],phrases:[{phrase:"annual report", sent:"The company published its annual report last week.", sentCn:"公司上周发布了年度报告。"},{phrase:"annual meeting", sent:"Shareholders will attend the annual meeting next month.", sentCn:"股东们将参加下个月的年度会议。"},{phrase:"annual income", sent:"His annual income has increased by 10% this year.", sentCn:"他的年收入今年增长了10%。"}],ex:"The school holds an annual sports festival in spring.",family:{adj:"annual",adv:"annually"},syn:["yearly","yearly"],ant:["daily","monthly"],collocation:{correct:["annual salary","annual festival","annual conference"],distractors:["annual year","every annual"],example_sent:"Her annual salary is quite competitive in the industry."},fill_blank:{sentence:"The company's ___ revenue reached a record high this year.",sentence_cn:"公司的年收入今年达到了历史新高。",options:["annual","monthly","weekly","daily"]},synonym_match:{synonyms:["yearly","per year"]},error_fix:{wrong:"This is an every annual event.",right:"This is an annual event.",hint:"annual本身就表示每年的，不需要加every"}},
+  {word:"appeal",ph:"/əˈpiːl/",en:"to make a serious request; to be attractive or interesting",cn:"呼吁；上诉；吸引",lv:"intermediate",pos:"v/n",tags:["general"],phrases:[{phrase:"appeal to", sent:"The movie appeals to teenagers and young adults.", sentCn:"这部电影吸引青少年和年轻成年人。"},{phrase:"appeal for", sent:"The charity appealed for donations to help flood victims.", sentCn:"慈善机构呼吁捐款帮助洪水受害者。"},{phrase:"court of appeal", sent:"The case will be heard in the court of appeal next month.", sentCn:"这个案件将于下个月在上诉法院审理。"}],ex:"The candidate's message appeals to many young voters.",family:{noun:"appeal",verb:"appeal",adj:"appealing",adv:"appealingly"},syn:["attract","request"],ant:["repel","reject"],collocation:{correct:["strong appeal","broad appeal","emotional appeal"],distractors:["appeal attraction","make appeal"],example_sent:"The product has strong appeal among consumers."},fill_blank:{sentence:"The lawyer decided to ___ the court's decision to a higher authority.",sentence_cn:"律师决定向更高的权威机构对法庭的决定提出上诉。",options:["appeal","apply","request","demand"]},synonym_match:{synonyms:["attract","request"]},error_fix:{wrong:"I want to make an appeal to the court.",right:"I want to appeal to the court.",hint:"作为动词时，appeal不需要和make搭配"}},
+  {word:"apply",ph:"/əˈplaɪ/",en:"to make a formal request; to put to use",cn:"申请；应用；适用",lv:"basic",pos:"v",tags:["general"],phrases:[{phrase:"apply for", sent:"She decided to apply for the scholarship program.", sentCn:"她决定申请奖学金项目。"},{phrase:"apply to", sent:"This rule applies to all students in the school.", sentCn:"这个规定适用于学校里的所有学生。"},{phrase:"apply oneself", sent:"If you apply yourself to your studies, you will succeed.", sentCn:"如果你专心学习，你就会成功。"}],ex:"I plan to apply to several universities next year.",family:{noun:"application",verb:"apply",adj:"applicable",adv:"applicably"},syn:["request","use"],ant:["withdraw","remove"],collocation:{correct:["apply pressure","apply knowledge","apply rules"],distractors:["apply application","apply request"],example_sent:"The teacher showed us how to apply pressure to stop the bleeding."},fill_blank:{sentence:"Students must ___ these theories to real-world situations.",sentence_cn:"学生必须将这些理论应用到现实情况中。",options:["apply","use","practice","study"]},synonym_match:{synonyms:["request","use"]},error_fix:{wrong:"I will apply my application tomorrow.",right:"I will submit my application tomorrow.",hint:"apply是动词，application是名词，不能说apply application"}},
+  {word:"approach",ph:"/əˈproʊtʃ/",en:"to come near; a way of dealing with something",cn:"接近；方法；途径",lv:"intermediate",pos:"v/n",tags:["general"],phrases:[{phrase:"approach to", sent:"We need a new approach to solving this problem.", sentCn:"我们需要一种解决这个问题的新方法。"},{phrase:"teaching approach", sent:"The teacher uses an interactive teaching approach.", sentCn:"这位老师采用互动式教学方法。"},{phrase:"approach someone", sent:"She was nervous about approaching her boss for a raise.", sentCn:"她对向老板要求加薪感到紧张。"}],ex:"As we approached the city, the traffic became heavier.",family:{noun:"approach",verb:"approach",adj:"approachable"},syn:["method","near"],ant:["retreat","avoid"],collocation:{correct:["systematic approach","fresh approach","traditional approach"],distractors:["approach method","approach way"],example_sent:"The company adopted a systematic approach to quality control."},fill_blank:{sentence:"Winter is ___ and the days are getting shorter.",sentence_cn:"冬天即将来临，白天变得越来越短。",options:["approaching","coming","arriving","reaching"]},synonym_match:{synonyms:["method","near"]},error_fix:{wrong:"We need an approach method for this problem.",right:"We need an approach to this problem.",hint:"approach本身就表示方法，不需要再加method"}},
+  {word:"architect",ph:"/ˈɑːrkɪtekt/",en:"a person who designs buildings",cn:"建筑师；设计师",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"chief architect", sent:"He was the chief architect of the new shopping mall.", sentCn:"他是新购物中心的首席建筑师。"},{phrase:"landscape architect", sent:"The landscape architect designed a beautiful garden for the hotel.", sentCn:"景观建筑师为酒店设计了一个美丽的花园。"},{phrase:"architect of", sent:"She is considered the architect of the company's success.", sentCn:"她被认为是公司成功的缔造者。"}],ex:"The famous architect designed many iconic buildings in the city.",family:{noun:"architect",adj:"architectural",adv:"architecturally"},syn:["designer","planner"],ant:[],collocation:{correct:["famous architect","professional architect","talented architect"],distractors:["architect designer","architect builder"],example_sent:"The famous architect won several international awards for his innovative designs."},fill_blank:{sentence:"The ___ spent months designing the new museum to blend with the surrounding environment.",sentence_cn:"建筑师花了几个月时间设计新博物馆，使其与周围环境融为一体。",options:["architect","engineer","designer","builder"]},synonym_match:{synonyms:["designer","planner"]},error_fix:{wrong:"He is an architect designer of buildings.",right:"He is an architect who designs buildings.",hint:"architect本身就包含设计师的含义，不需要再加designer"}},
+  {word:"artificial",ph:"/ˌɑːrtɪˈfɪʃl/",en:"made by humans rather than occurring naturally",cn:"人工的；人造的；虚假的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"artificial intelligence", sent:"Artificial intelligence is transforming many industries.", sentCn:"人工智能正在改变许多行业。"},{phrase:"artificial flowers", sent:"She decorated the room with artificial flowers.", sentCn:"她用人造花装饰房间。"},{phrase:"artificial light", sent:"Plants can grow under artificial light.", sentCn:"植物可以在人造光下生长。"}],ex:"The artificial sweetener has no calories.",family:{noun:"artificiality",adv:"artificially"},syn:["synthetic","fake"],ant:["natural","genuine"],collocation:{correct:["artificial intelligence","artificial light","artificial sweetener"],distractors:["artificial price","artificial study"],example_sent:"Artificial intelligence will change our future."},fill_blank:{sentence:"The doctor inserted an ___ heart to save the patient's life.",sentence_cn:"医生植入了一颗人工心脏来挽救病人的生命。",options:["artificial","natural","original","real"]},synonym_match:{synonyms:["synthetic","man-made"]},error_fix:{wrong:"This is an artificial price.",right:"This is an unreasonable price.",hint:"artificial不用来修饰价格，应该用unreasonable"}},
+  {word:"aspect",ph:"/ˈæspekt/",en:"a particular part or feature of something",cn:"方面；层面；外观",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"every aspect of", sent:"We need to consider every aspect of the problem.", sentCn:"我们需要考虑问题的每个方面。"},{phrase:"different aspects", sent:"The book covers different aspects of Chinese culture.", sentCn:"这本书涵盖了中国文化的不同方面。"},{phrase:"important aspect", sent:"Safety is an important aspect of driving.", sentCn:"安全是驾驶的一个重要方面。"}],ex:"We discussed various aspects of the new policy.",family:{},syn:["feature","element"],ant:[],collocation:{correct:["important aspect","different aspects","every aspect"],distractors:["aspect problem","make aspect"],example_sent:"Safety is an important aspect of our work."},fill_blank:{sentence:"The teacher explained every ___ of the math problem clearly.",sentence_cn:"老师清楚地解释了数学题的每个方面。",options:["aspect","answer","question","method"]},synonym_match:{synonyms:["feature","side"]},error_fix:{wrong:"We should aspect this problem carefully.",right:"We should examine this problem carefully.",hint:"aspect是名词，不能作动词使用"}},
+  {word:"assume",ph:"/əˈsuːm/",en:"to think that something is true without having proof",cn:"假设；认为；承担",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"assume responsibility", sent:"He decided to assume responsibility for the mistake.", sentCn:"他决定为这个错误承担责任。"},{phrase:"assume that", sent:"I assume that you have finished your homework.", sentCn:"我认为你已经完成了作业。"},{phrase:"let's assume", sent:"Let's assume the weather will be good tomorrow.", sentCn:"让我们假设明天天气会很好。"}],ex:"Don't assume everyone agrees with you.",family:{noun:"assumption",adj:"assumed"},syn:["suppose","presume"],ant:[],collocation:{correct:["assume responsibility","assume that","safely assume"],distractors:["assume knowledge","assume study"],example_sent:"The manager will assume responsibility for the project."},fill_blank:{sentence:"You shouldn't ___ that everyone knows the answer.",sentence_cn:"你不应该假设每个人都知道答案。",options:["assume","ensure","insure","consume"]},synonym_match:{synonyms:["suppose","presume"]},error_fix:{wrong:"I assume to go there tomorrow.",right:"I plan to go there tomorrow.",hint:"assume后面不能接不定式表示计划，应该用plan"}},
+  {word:"attendance",ph:"/əˈtendəns/",en:"the action of being present at an event or the number of people present",cn:"出席；参加；出席人数",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"attendance record", sent:"Her attendance record at school is excellent.", sentCn:"她在学校的出勤记录很好。"},{phrase:"take attendance", sent:"The teacher takes attendance every morning.", sentCn:"老师每天早上点名。"},{phrase:"poor attendance", sent:"His poor attendance affected his grades.", sentCn:"他糟糕的出勤率影响了成绩。"}],ex:"The concert had a large attendance of 5,000 people.",family:{verb:"attend",adj:"attendant"},syn:["presence","participation"],ant:["absence"],collocation:{correct:["take attendance","attendance record","poor attendance"],distractors:["make attendance","do attendance"],example_sent:"The teacher will take attendance at the beginning of class."},fill_blank:{sentence:"The school requires regular ___ from all students.",sentence_cn:"学校要求所有学生定期出席。",options:["attendance","attention","attitude","attempt"]},synonym_match:{synonyms:["presence","participation"]},error_fix:{wrong:"The teacher made attendance this morning.",right:"The teacher took attendance this morning.",hint:"点名用take attendance，不是make attendance"}},
+  {word:"bacteria",ph:"/bækˈtɪəriə/",en:"microscopic living organisms, some of which cause disease",cn:"细菌",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"harmful bacteria", sent:"Washing hands removes harmful bacteria.", sentCn:"洗手可以清除有害细菌。"},{phrase:"bacteria growth", sent:"High temperature prevents bacteria growth.", sentCn:"高温可以阻止细菌生长。"},{phrase:"kill bacteria", sent:"This soap can kill 99% of bacteria.", sentCn:"这种肥皂可以杀死99%的细菌。"}],ex:"Some bacteria can cause serious infections.",family:{adj:"bacterial"},syn:["germs","microbes"],ant:[],collocation:{correct:["harmful bacteria","kill bacteria","bacteria growth"],distractors:["bacteria study","make bacteria"],example_sent:"This medicine can kill harmful bacteria in your body."},fill_blank:{sentence:"The doctor said the infection was caused by ___ in the water.",sentence_cn:"医生说感染是由水中的细菌引起的。",options:["bacteria","vitamins","minerals","proteins"]},synonym_match:{synonyms:["germs","microbes"]},error_fix:{wrong:"There are many bacterias in dirty water.",right:"There are many bacteria in dirty water.",hint:"bacteria本身就是复数形式，单数是bacterium"}},
+  {word:"basis",ph:"/ˈbeɪsɪs/",en:"the underlying support or foundation for something",cn:"基础；根据；基准",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"on the basis of", sent:"We made the decision on the basis of careful research.", sentCn:"我们基于仔细研究做出了决定。"},{phrase:"regular basis", sent:"She exercises on a regular basis.", sentCn:"她定期锻炼。"},{phrase:"daily basis", sent:"He reads newspapers on a daily basis.", sentCn:"他每天都看报纸。"}],ex:"Trust is the basis of a good friendship.",family:{adj:"basic",adv:"basically"},syn:["foundation","ground"],ant:[],collocation:{correct:["on the basis of","regular basis","daily basis"],distractors:["in the basis of","basis on"],example_sent:"We meet on the basis of mutual respect."},fill_blank:{sentence:"Hard work is the ___ of success in any field.",sentence_cn:"努力工作是任何领域成功的基础。",options:["basis","business","process","purpose"]},synonym_match:{synonyms:["foundation","ground"]},error_fix:{wrong:"We decided in the basis of his advice.",right:"We decided on the basis of his advice.",hint:"固定搭配是on the basis of，不是in the basis of"}},
+  {word:"belong",ph:"/bɪˈlɔːŋ/",en:"to be the property of someone or to be a member of a group",cn:"属于；归属于",lv:"basic",pos:"v",tags:["general"],phrases:[{phrase:"belong to", sent:"This book belongs to my sister.", sentCn:"这本书属于我妹妹。"},{phrase:"sense of belonging", sent:"Everyone needs a sense of belonging.", sentCn:"每个人都需要归属感。"},{phrase:"belong together", sent:"These two pieces belong together.", sentCn:"这两件东西应该放在一起。"}],ex:"Where do these keys belong?",family:{noun:"belonging"},syn:["own"],ant:[],collocation:{correct:["belong to","belong together","belong here"],distractors:["belong with","belong at"],example_sent:"This car belongs to my father."},fill_blank:{sentence:"These books ___ to the school library.",sentence_cn:"这些书属于学校图书馆。",options:["belong","belongs","belonging","belonged"]},synonym_match:{synonyms:["own","possess"]},error_fix:{wrong:"This book is belonging to me.",right:"This book belongs to me.",hint:"belong不用进行时，表示状态用一般现在时"}},
+  {word:"biography",ph:"/baɪˈɑːɡrəfi/",en:"an account of someone's life written by someone else",cn:"传记；生平",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"write a biography", sent:"She decided to write a biography of the famous scientist.", sentCn:"她决定为这位著名科学家写传记。"},{phrase:"read someone's biography", sent:"I'm reading Einstein's biography.", sentCn:"我在读爱因斯坦的传记。"},{phrase:"detailed biography", sent:"The book contains a detailed biography of the author.", sentCn:"这本书包含了作者的详细传记。"}],ex:"His biography reveals many interesting facts about his life.",family:{adj:"biographical",noun:"biographer"},syn:["life story"],ant:[],collocation:{correct:["write a biography","read a biography","detailed biography"],distractors:["make a biography","do a biography"],example_sent:"The author spent five years to write a biography of Shakespeare."},fill_blank:{sentence:"The ___ of Martin Luther King Jr. inspired many people.",sentence_cn:"马丁·路德·金的传记鼓舞了许多人。",options:["biography","geography","photography","bibliography"]},synonym_match:{synonyms:["life story","memoir"]},error_fix:{wrong:"I made a biography about my grandfather.",right:"I wrote a biography about my grandfather.",hint:"写传记用write a biography，不是make a biography"}},
+  {word:"biology",ph:"/baɪˈɒlədʒi/",en:"the scientific study of living things",cn:"生物学",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"marine biology", sent:"She is studying marine biology at the university.", sentCn:"她在大学学习海洋生物学。"},{phrase:"molecular biology", sent:"Molecular biology helps us understand genes better.", sentCn:"分子生物学帮助我们更好地理解基因。"},{phrase:"biology class", sent:"We have biology class every Tuesday morning.", sentCn:"我们每周二上午有生物课。"}],ex:"Biology is one of my favorite subjects at school.",family:{noun:"biology",adj:"biological"},syn:["life science"],ant:[],collocation:{correct:["study biology","biology teacher","biology textbook"],distractors:["learn biology knowledge","biology science"],example_sent:"I want to study biology in college."},fill_blank:{sentence:"The ___ laboratory is well-equipped with modern instruments.",sentence_cn:"生物实验室配备了现代化的仪器。",options:["biology","biological","biologist","biografy"]},synonym_match:{synonyms:["life science","biological science"]},error_fix:{wrong:"I like studying the biology very much.",right:"I like studying biology very much.",hint:"学科名词前通常不加定冠词the"}},
+  {word:"boast",ph:"/bəʊst/",en:"to talk proudly about something you have or can do",cn:"吹嘘；夸耀；以...为荣",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"boast about", sent:"He always boasts about his expensive car.", sentCn:"他总是炫耀自己昂贵的汽车。"},{phrase:"boast of", sent:"She boasts of her high test scores.", sentCn:"她夸耀自己的高考试分数。"},{phrase:"without boasting", sent:"Without boasting, I can say I'm good at math.", sentCn:"不是自夸，我可以说我数学很好。"}],ex:"He likes to boast about his achievements.",family:{noun:"boast",verb:"boast",adj:"boastful"},syn:["brag","show off"],ant:["humble"],collocation:{correct:["boast about achievements","boast of success","empty boast"],distractors:["boast for something","boast to others"],example_sent:"Don't boast about achievements that aren't yours."},fill_blank:{sentence:"It's not polite to ___ about your wealth in front of poor people.",sentence_cn:"在穷人面前炫耀财富是不礼貌的。",options:["boast","boost","coast","roast"]},synonym_match:{synonyms:["brag","show off"]},error_fix:{wrong:"He boasts for his new phone.",right:"He boasts about his new phone.",hint:"boast后面应该用about或of，不用for"}},
+  {word:"bounce",ph:"/baʊns/",en:"to move up and down repeatedly or spring back after hitting something",cn:"弹跳；反弹；蹦跳",lv:"basic",pos:"v",tags:["general"],phrases:[{phrase:"bounce back", sent:"The economy will bounce back after the crisis.", sentCn:"危机过后经济会反弹。"},{phrase:"bounce off", sent:"The ball bounced off the wall.", sentCn:"球从墙上弹了回来。"},{phrase:"bounce up and down", sent:"The children were bouncing up and down on the bed.", sentCn:"孩子们在床上蹦上蹦下。"}],ex:"The ball bounced three times before stopping.",family:{noun:"bounce",verb:"bounce",adj:"bouncy"},syn:["spring","rebound"],ant:[],collocation:{correct:["bounce a ball","bounce back","bounce off"],distractors:["bounce the ball up","bounce with energy"],example_sent:"Children love to bounce a ball in the playground."},fill_blank:{sentence:"The rubber ball will ___ when you drop it on the floor.",sentence_cn:"当你把橡胶球扔到地上时，它会弹起来。",options:["bounce","pounce","announce","renounce"]},synonym_match:{synonyms:["spring","rebound"]},error_fix:{wrong:"The ball bounced to the wall.",right:"The ball bounced off the wall.",hint:"bounce off表示从某物表面弹回，不用to"}},
+  {word:"boycott",ph:"/ˈbɔɪkɒt/",en:"to refuse to buy, use, or participate in something as a protest",cn:"抵制；拒绝购买",lv:"advanced",pos:"v",tags:["general"],phrases:[{phrase:"boycott products", sent:"Many people decided to boycott products from that company.", sentCn:"许多人决定抵制那家公司的产品。"},{phrase:"call for a boycott", sent:"The organization called for a boycott of the election.", sentCn:"该组织呼吁抵制选举。"},{phrase:"consumer boycott", sent:"The consumer boycott lasted for three months.", sentCn:"消费者抵制活动持续了三个月。"}],ex:"Students decided to boycott the unfair examination.",family:{noun:"boycott",verb:"boycott"},syn:["shun","avoid"],ant:["support"],collocation:{correct:["boycott products","boycott a company","organize boycott"],distractors:["boycott against products","boycott to company"],example_sent:"Consumers decided to boycott products made by child labor."},fill_blank:{sentence:"Environmental groups urged people to ___ companies that pollute rivers.",sentence_cn:"环保组织敦促人们抵制污染河流的公司。",options:["boycott","support","promote","encourage"]},synonym_match:{synonyms:["shun","avoid"]},error_fix:{wrong:"They boycott against the unfair policy.",right:"They boycott the unfair policy.",hint:"boycott是及物动词，直接跟宾语，不需要against"}},
+  {word:"budget",ph:"/ˈbʌdʒɪt/",en:"a plan for spending money or the amount of money available",cn:"预算；预算案",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"on a budget", sent:"We're traveling on a tight budget this year.", sentCn:"今年我们的旅行预算很紧张。"},{phrase:"budget for", sent:"We need to budget for unexpected expenses.", sentCn:"我们需要为意外开支做预算。"},{phrase:"annual budget", sent:"The company's annual budget was approved yesterday.", sentCn:"公司的年度预算昨天获得了批准。"}],ex:"The government announced its budget for next year.",family:{noun:"budget",verb:"budget",adj:"budgetary"},syn:["plan","allocation"],ant:[],collocation:{correct:["prepare budget","tight budget","budget deficit"],distractors:["make budget plan","budget money plan"],example_sent:"The family needs to prepare budget for the new house."},fill_blank:{sentence:"College students often live on a very tight ___.",sentence_cn:"大学生通常靠非常紧张的预算生活。",options:["budget","budget","target","schedule"]},synonym_match:{synonyms:["plan","allocation"]},error_fix:{wrong:"I will make a budget plan for next month.",right:"I will make a budget for next month.",hint:"budget本身就包含计划的含义，不需要再加plan"}},
+  {word:"character",ph:"/ˈkærəktə(r)/",en:"the qualities that make someone or something what they are",cn:"性格；品格；角色；字符",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"main character", sent:"Harry Potter is the main character of the story.", sentCn:"哈利·波特是故事的主角。"},{phrase:"build character", sent:"Sports can help build character in young people.", sentCn:"体育运动可以帮助年轻人塑造品格。"},{phrase:"out of character", sent:"It was out of character for him to be so rude.", sentCn:"对他来说如此粗鲁是不符合性格的。"}],ex:"She has a very friendly character.",family:{noun:"character",adj:"characteristic",adv:"characteristically"},syn:["personality","nature"],ant:[],collocation:{correct:["strong character","fictional character","character development"],distractors:["character personality","good character person"],example_sent:"The hero showed strong character during the crisis."},fill_blank:{sentence:"The novel's main ___ is a brave young girl.",sentence_cn:"小说的主角是一个勇敢的小女孩。",options:["character","characteristic","charter","chapter"]},synonym_match:{synonyms:["personality","nature"]},error_fix:{wrong:"He is a person with good character personality.",right:"He is a person with good character.",hint:"character和personality意思相近，不需要同时使用"}},
+  {word:"charge",ph:"/tʃɑːdʒ/",en:"to ask for money as a price; to accuse; to rush forward",cn:"收费；指控；充电；冲锋",lv:"basic",pos:"v",tags:["general"],phrases:[{phrase:"in charge of", sent:"She is in charge of the marketing department.", sentCn:"她负责市场部。"},{phrase:"charge for", sent:"The hotel charges extra for room service.", sentCn:"酒店的客房服务要额外收费。"},{phrase:"free of charge", sent:"The museum entrance is free of charge on Sundays.", sentCn:"博物馆周日免费入场。"}],ex:"How much do you charge for this service?",family:{noun:"charge",verb:"charge",adj:"chargeable"},syn:["fee","cost"],ant:["free"],collocation:{correct:["charge money","phone charge","take charge"],distractors:["charge price","charge fee money"],example_sent:"The shop will charge money for plastic bags."},fill_blank:{sentence:"The restaurant doesn't ___ for bread and water.",sentence_cn:"这家餐厅的面包和水是免费的。",options:["charge","change","chase","choose"]},synonym_match:{synonyms:["fee","cost"]},error_fix:{wrong:"Who is the charge of this project?",right:"Who is in charge of this project?",hint:"负责某事要用in charge of，不能省略in"}},
+  {word:"chemical",ph:"/ˈkemɪkl/",en:"relating to chemistry or made by chemistry",cn:"化学的；化学制品",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"chemical reaction", sent:"The chemical reaction produced a lot of heat.", sentCn:"化学反应产生了大量的热量。"},{phrase:"chemical element", sent:"Oxygen is an important chemical element.", sentCn:"氧气是一个重要的化学元素。"},{phrase:"chemical industry", sent:"The chemical industry plays a key role in the economy.", sentCn:"化学工业在经济中起着关键作用。"}],ex:"The factory produces various chemical products.",family:{noun:"chemical",adj:"chemical",adv:"chemically"},syn:["synthetic","artificial"],ant:["natural","organic"],collocation:{correct:["chemical formula","chemical process","chemical compound"],distractors:["chemical chemistry","chemistry chemical"],example_sent:"Students need to memorize the chemical formula for water."},fill_blank:{sentence:"The ___ composition of this medicine is very complex.",sentence_cn:"这种药物的化学成分非常复杂。",options:["chemical","chemistry","chemist","chemicals"]},synonym_match:{synonyms:["synthetic","artificial"]},error_fix:{wrong:"I don't like chemistry food.",right:"I don't like chemical food.",hint:"chemistry是名词，修饰名词要用形容词chemical"}},
+  {word:"chief",ph:"/tʃiːf/",en:"most important; the person in charge of an organization",cn:"主要的，首要的；首领，负责人",lv:"intermediate",pos:"adj/n",tags:["general"],phrases:[{phrase:"chief executive", sent:"The chief executive announced the new company policy.", sentCn:"首席执行官宣布了新的公司政策。"},{phrase:"chief concern", sent:"Safety is our chief concern in this project.", sentCn:"安全是我们在这个项目中的主要关切。"},{phrase:"police chief", sent:"The police chief held a press conference yesterday.", sentCn:"警察局长昨天举行了记者招待会。"}],ex:"The chief reason for the failure was lack of preparation.",family:{noun:"chief",adj:"chief",adv:"chiefly"},syn:["main","primary"],ant:["minor","secondary"],collocation:{correct:["chief executive","chief concern","chief responsibility"],distractors:["chief student","chief homework"],example_sent:"The chief executive will address the shareholders tomorrow."},fill_blank:{sentence:"The ___ advantage of this method is its simplicity.",sentence_cn:"这种方法的主要优点是简单。",options:["chief","cheap","choose","chance"]},synonym_match:{synonyms:["main","primary"]},error_fix:{wrong:"He is the chief of our class.",right:"He is the monitor of our class.",hint:"chief通常指正式组织的负责人，班级用monitor"}},
+  {word:"classical",ph:"/ˈklæsɪkl/",en:"relating to ancient Greece and Rome; traditional and established",cn:"古典的；经典的；传统的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"classical music", sent:"She enjoys listening to classical music by Mozart.", sentCn:"她喜欢听莫扎特的古典音乐。"},{phrase:"classical literature", sent:"Students should read more classical literature.", sentCn:"学生应该多读古典文学。"},{phrase:"classical education", sent:"He received a classical education in Latin and Greek.", sentCn:"他接受了拉丁语和希腊语的古典教育。"}],ex:"The building shows classical Greek architectural style.",family:{noun:"classic",adj:"classical",adv:"classically"},syn:["traditional","ancient"],ant:["modern","contemporary"],collocation:{correct:["classical music","classical literature","classical style"],distractors:["classical movie","classical food"],example_sent:"The concert featured beautiful classical music from the 18th century."},fill_blank:{sentence:"The orchestra performed ___ compositions by Beethoven.",sentence_cn:"管弦乐团演奏了贝多芬的古典作品。",options:["classical","class","classify","classroom"]},synonym_match:{synonyms:["traditional","ancient"]},error_fix:{wrong:"I like classical movies.",right:"I like classic movies.",hint:"电影用classic，classical主要指古希腊罗马文化或音乐文学"}},
+  {word:"classification",ph:"/ˌklæsɪfɪˈkeɪʃn/",en:"the action of arranging things into groups or categories",cn:"分类；分级；归类",lv:"advanced",pos:"n",tags:["general"],phrases:[{phrase:"classification system", sent:"The library uses a modern classification system.", sentCn:"图书馆使用现代分类系统。"},{phrase:"biological classification", sent:"Students learned about biological classification in science class.", sentCn:"学生们在科学课上学习了生物分类。"},{phrase:"security classification", sent:"The document has a high security classification.", sentCn:"这份文件有很高的保密级别。"}],ex:"The classification of plants requires detailed knowledge of botany.",family:{noun:"classification",verb:"classify",adj:"classified"},syn:["categorization","arrangement"],ant:[],collocation:{correct:["classification system","classification method","classification criteria"],distractors:["classification homework","classification student"],example_sent:"The new classification system makes it easier to find books."},fill_blank:{sentence:"The ___ of animals into species helps scientists study them.",sentence_cn:"将动物分类成物种有助于科学家研究它们。",options:["classification","classroom","classical","clarification"]},synonym_match:{synonyms:["categorization","arrangement"]},error_fix:{wrong:"We need to make a classification about this problem.",right:"We need to make a clarification about this problem.",hint:"澄清问题用clarification，classification指分类"}},
+  {word:"clinical",ph:"/ˈklɪnɪkl/",en:"relating to medical treatment; very objective and unemotional",cn:"临床的；客观冷静的",lv:"advanced",pos:"adj",tags:["general"],phrases:[{phrase:"clinical trial", sent:"The new drug is undergoing clinical trials.", sentCn:"新药正在进行临床试验。"},{phrase:"clinical experience", sent:"Medical students need clinical experience before graduation.", sentCn:"医学生毕业前需要临床经验。"},{phrase:"clinical psychology", sent:"She specializes in clinical psychology.", sentCn:"她专攻临床心理学。"}],ex:"The doctor maintained a clinical approach to the patient's condition.",family:{noun:"clinic",adj:"clinical",adv:"clinically"},syn:["medical","objective"],ant:["emotional","subjective"],collocation:{correct:["clinical trial","clinical practice","clinical research"],distractors:["clinical homework","clinical student"],example_sent:"The clinical trial showed promising results for the new treatment."},fill_blank:{sentence:"The medicine must pass ___ tests before being sold to the public.",sentence_cn:"药物在向公众销售前必须通过临床测试。",options:["clinical","classical","typical","critical"]},synonym_match:{synonyms:["medical","objective"]},error_fix:{wrong:"I went to the clinical yesterday.",right:"I went to the clinic yesterday.",hint:"诊所是clinic（名词），clinical是形容词"}},
+  {word:"colleague",ph:"/ˈkɒliːɡ/",en:"a person you work with in a profession or business",cn:"同事；同僚",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"work colleague", sent:"I discussed the project with my work colleagues.", sentCn:"我和工作同事讨论了这个项目。"},{phrase:"former colleague", sent:"I met a former colleague at the conference.", sentCn:"我在会议上遇到了一位前同事。"},{phrase:"close colleague", sent:"She is a close colleague and good friend.", sentCn:"她是亲密的同事也是好朋友。"}],ex:"My colleagues and I often have lunch together.",family:{noun:"colleague"},syn:["coworker","associate"],ant:[],collocation:{correct:["work colleague","office colleague","professional colleague"],distractors:["study colleague","school colleague"],example_sent:"My work colleague helped me finish the report on time."},fill_blank:{sentence:"I enjoy working with my ___ on this important project.",sentence_cn:"我喜欢和同事一起做这个重要项目。",options:["colleagues","classmates","customers","competitors"]},synonym_match:{synonyms:["coworker","associate"]},error_fix:{wrong:"My colleagues in school are very friendly.",right:"My classmates in school are very friendly.",hint:"学校里的是classmates，colleague指工作中的同事"}},
+  {word:"combination",ph:"/ˌkɒmbɪˈneɪʃn/",en:"a joining or merging of different parts or qualities",cn:"结合；组合；联合",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"perfect combination", sent:"The dish is a perfect combination of sweet and sour.", sentCn:"这道菜是酸甜的完美结合。"},{phrase:"combination of factors", sent:"Success results from a combination of factors.", sentCn:"成功源于多种因素的结合。"},{phrase:"color combination", sent:"The color combination in the painting is beautiful.", sentCn:"这幅画的色彩搭配很美。"}],ex:"The treatment uses a combination of medicine and exercise.",family:{noun:"combination",verb:"combine"},syn:["mixture","blend"],ant:["separation","division"],collocation:{correct:["perfect combination","unique combination","powerful combination"],distractors:["combination study","combination homework"],example_sent:"This recipe creates a perfect combination of flavors."},fill_blank:{sentence:"The success of the project was due to a ___ of hard work and luck.",sentence_cn:"项目的成功是努力工作和运气结合的结果。",options:["combination","competition","communication","composition"]},synonym_match:{synonyms:["mixture","blend"]},error_fix:{wrong:"I like the combine of music and dance.",right:"I like the combination of music and dance.",hint:"combine是动词，表示结合用名词combination"}},
+  {word:"commercial",ph:"/kəˈmɜːʃl/",en:"relating to buying and selling; intended to make profit",cn:"商业的；商用的；广告",lv:"intermediate",pos:"adj/n",tags:["general"],phrases:[{phrase:"commercial activity", sent:"The area is full of commercial activity.", sentCn:"这个地区充满了商业活动。"},{phrase:"commercial success", sent:"The movie was a huge commercial success.", sentCn:"这部电影在商业上非常成功。"},{phrase:"television commercial", sent:"The television commercial was very creative.", sentCn:"这个电视广告很有创意。"}],ex:"The new shopping center will bring more commercial development to the area.",family:{noun:"commerce",adj:"commercial",adv:"commercially"},syn:["business","trade"],ant:["non-commercial","private"],collocation:{correct:["commercial success","commercial activity","commercial purpose"],distractors:["commercial homework","commercial student"],example_sent:"The product achieved great commercial success in its first year."},fill_blank:{sentence:"The building is used for ___ purposes, not residential.",sentence_cn:"这座建筑用于商业目的，不是住宅。",options:["commercial","comfortable","communication","competition"]},synonym_match:{synonyms:["business","trade"]},error_fix:{wrong:"I study in a commercial school.",right:"I study in a business school.",hint:"商学院用business school，commercial school不常用"}},
+  {word:"common",ph:"/ˈkɒmən/",en:"happening often; shared by all; ordinary",cn:"常见的；普通的；共同的",lv:"basic",pos:"adj",tags:["general"],phrases:[{phrase:"common sense", sent:"It's just common sense to wear a seatbelt.", sentCn:"系安全带只是常识。"},{phrase:"have in common", sent:"The two friends have a lot in common.", sentCn:"这两个朋友有很多共同点。"},{phrase:"common problem", sent:"Traffic jam is a common problem in big cities.", sentCn:"交通堵塞是大城市的常见问题。"}],ex:"It's common for students to feel nervous before exams.",family:{noun:"commonness",adj:"common",adv:"commonly"},syn:["ordinary","usual"],ant:["rare","unusual"],collocation:{correct:["common sense","common problem","common knowledge"],distractors:["common homework","common student"],example_sent:"Using common sense can help you avoid many problems."},fill_blank:{sentence:"Colds are very ___ during winter months.",sentence_cn:"感冒在冬季很常见。",options:["common","complex","complete","compare"]},synonym_match:{synonyms:["ordinary","usual"]},error_fix:{wrong:"This is a very common book.",right:"This is a very popular book.",hint:"书受欢迎用popular，common指普通平凡"}},
+  {word:"complex",ph:"/ˈkɒmpleks/",en:"having many parts that are difficult to understand",cn:"复杂的；复合的；综合体",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"complex problem", sent:"This is a complex problem that requires careful analysis.", sentCn:"这是一个需要仔细分析的复杂问题。"},{phrase:"complex structure", sent:"The building has a complex structure with many interconnected parts.", sentCn:"这座建筑有着复杂的结构，有许多相互连接的部分。"},{phrase:"shopping complex", sent:"They built a new shopping complex in the city center.", sentCn:"他们在市中心建了一个新的购物中心。"}],ex:"The human brain is incredibly complex.",family:{noun:"complexity",adj:"complex"},syn:["complicated","intricate"],ant:["simple","basic"],collocation:{correct:["complex problem","complex system","complex issue"],distractors:["complex easy","very complex much"],example_sent:"We need to solve this complex problem step by step."},fill_blank:{sentence:"The math equation was too ___ for me to understand.",sentence_cn:"这个数学方程对我来说太复杂了，理解不了。",options:["complex","simple","easy","clear"]},synonym_match:{synonyms:["complicated","intricate"]},error_fix:{wrong:"This question is very complex difficult.",right:"This question is very complex.",hint:"complex本身就表示复杂，不需要再加difficult"}},
+  {word:"component",ph:"/kəmˈpəʊnənt/",en:"one of several parts that together make up a whole",cn:"组成部分；部件；成分",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"key component", sent:"Trust is a key component of any successful relationship.", sentCn:"信任是任何成功关系的关键组成部分。"},{phrase:"main component", sent:"Water is the main component of the human body.", sentCn:"水是人体的主要组成部分。"},{phrase:"electronic component", sent:"The technician replaced the damaged electronic component.", sentCn:"技术员更换了损坏的电子元件。"}],ex:"Each component of the machine serves a specific purpose.",family:{noun:"component"},syn:["part","element"],ant:["whole","entirety"],collocation:{correct:["key component","main component","essential component"],distractors:["component part","component of piece"],example_sent:"Teamwork is a key component of our success."},fill_blank:{sentence:"The computer stopped working because one ___ was broken.",sentence_cn:"电脑停止工作了，因为有一个部件坏了。",options:["component","whole","system","program"]},synonym_match:{synonyms:["part","element"]},error_fix:{wrong:"This is an important component part of the project.",right:"This is an important component of the project.",hint:"component已经表示部分，不需要再加part"}},
+  {word:"confirm",ph:"/kənˈfɜːm/",en:"to state or show that something is true or correct",cn:"确认；证实；批准",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"confirm the appointment", sent:"Please call to confirm the appointment tomorrow.", sentCn:"请打电话确认明天的预约。"},{phrase:"confirm the news", sent:"The police refused to confirm the news about the accident.", sentCn:"警方拒绝证实有关事故的消息。"},{phrase:"confirm that", sent:"Can you confirm that you received my email?", sentCn:"你能确认收到我的邮件了吗？"}],ex:"The test results confirm our suspicions.",family:{noun:"confirmation",verb:"confirm",adj:"confirmed"},syn:["verify","validate"],ant:["deny","refute"],collocation:{correct:["confirm receipt","confirm attendance","confirm booking"],distractors:["confirm sure","confirm certain"],example_sent:"Please confirm receipt of this message."},fill_blank:{sentence:"I need to ___ my flight reservation before traveling.",sentence_cn:"我需要在旅行前确认我的航班预订。",options:["confirm","cancel","ignore","forget"]},synonym_match:{synonyms:["verify","validate"]},error_fix:{wrong:"Please confirm me the time of meeting.",right:"Please confirm the time of meeting with me.",hint:"confirm后面不能直接跟人，需要用confirm...with sb的结构"}},
+  {word:"congress",ph:"/ˈkɒŋɡres/",en:"a formal meeting of representatives to discuss important matters",cn:"国会；代表大会；会议",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"US Congress", sent:"The US Congress passed a new law yesterday.", sentCn:"美国国会昨天通过了一项新法律。"},{phrase:"medical congress", sent:"She attended the international medical congress in Paris.", sentCn:"她参加了在巴黎举行的国际医学大会。"},{phrase:"congress member", sent:"The congress member spoke about education reform.", sentCn:"这位国会议员谈论了教育改革。"}],ex:"The World Congress on Climate Change begins next week.",family:{noun:"congress",adj:"congressional"},syn:["assembly","parliament"],ant:[],collocation:{correct:["attend congress","congress session","congress member"],distractors:["go congress","congress meeting"],example_sent:"She will attend congress next month as a delegate."},fill_blank:{sentence:"The ___ voted on the new healthcare bill.",sentence_cn:"国会对新的医疗保健法案进行了投票。",options:["Congress","school","hospital","company"]},synonym_match:{synonyms:["assembly","parliament"]},error_fix:{wrong:"He works in the congress building.",right:"He works in the Congress building.",hint:"指具体的美国国会时，Congress首字母要大写"}},
+  {word:"conscious",ph:"/ˈkɒnʃəs/",en:"awake and aware of what is happening around you",cn:"有意识的；清醒的；故意的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"conscious decision", sent:"She made a conscious decision to change her career.", sentCn:"她有意识地决定改变自己的职业。"},{phrase:"conscious effort", sent:"He made a conscious effort to improve his English.", sentCn:"他有意识地努力提高自己的英语。"},{phrase:"environmentally conscious", sent:"Young people today are more environmentally conscious.", sentCn:"今天的年轻人更有环保意识。"}],ex:"The patient remained conscious throughout the surgery.",family:{noun:"consciousness",adj:"conscious",adv:"consciously"},syn:["aware","alert"],ant:["unconscious","unaware"],collocation:{correct:["conscious effort","conscious decision","conscious choice"],distractors:["conscious about","very conscious much"],example_sent:"Making a conscious effort to exercise daily improved her health."},fill_blank:{sentence:"She was still ___ when the ambulance arrived.",sentence_cn:"救护车到达时她仍然是清醒的。",options:["conscious","sleeping","tired","confused"]},synonym_match:{synonyms:["aware","alert"]},error_fix:{wrong:"I am conscious about my weight.",right:"I am conscious of my weight.",hint:"conscious与介词搭配时用of，不用about"}},
+  {word:"construct",ph:"/kənˈstrʌkt/",en:"to build something by putting parts together",cn:"建造；构建；建筑物",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"construct a building", sent:"The company will construct a new office building downtown.", sentCn:"公司将在市中心建造一座新的办公楼。"},{phrase:"construct a theory", sent:"Scientists construct theories based on experimental data.", sentCn:"科学家根据实验数据构建理论。"},{phrase:"construct a sentence", sent:"Students learn how to construct complex sentences.", sentCn:"学生学习如何构造复杂句子。"}],ex:"They plan to construct a new bridge across the river.",family:{noun:"construction",verb:"construct",adj:"constructive",adv:"constructively"},syn:["build","create"],ant:["destroy","demolish"],collocation:{correct:["construct building","construct bridge","construct theory"],distractors:["construct make","construct create"],example_sent:"The workers will construct building next month."},fill_blank:{sentence:"The workers will ___ a new school in our neighborhood.",sentence_cn:"工人们将在我们社区建造一所新学校。",options:["construct","destroy","ignore","avoid"]},synonym_match:{synonyms:["build","create"]},error_fix:{wrong:"They construct building the house last year.",right:"They constructed the house last year.",hint:"construct是动词，不需要再加building作动词"}},
+  {word:"consume",ph:"/kənˈsjuːm/",en:"to use up or eat something",cn:"消费；消耗；吃喝",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"consume energy", sent:"Air conditioners consume a lot of energy in summer.", sentCn:"空调在夏天消耗大量能源。"},{phrase:"consume alcohol", sent:"It is illegal for minors to consume alcohol.", sentCn:"未成年人饮酒是违法的。"},{phrase:"consume resources", sent:"Modern lifestyle tends to consume more natural resources.", sentCn:"现代生活方式往往消耗更多的自然资源。"}],ex:"This car consumes too much fuel.",family:{noun:"consumption",verb:"consume"},syn:["use","devour"],ant:["produce","create"],collocation:{correct:["consume energy","consume food","consume resources"],distractors:["consume eat","consume use up"],example_sent:"The factory will consume energy more efficiently with new equipment."},fill_blank:{sentence:"People ___ more water during hot weather.",sentence_cn:"人们在炎热天气时消耗更多的水。",options:["consume","save","waste","ignore"]},synonym_match:{synonyms:["use","devour"]},error_fix:{wrong:"He consumes eat too much sugar.",right:"He consumes too much sugar.",hint:"consume本身就表示吃喝消耗，不需要再加eat"}},
+  {word:"consumer",ph:"/kənˈsjuːmə(r)/",en:"a person who buys goods or services",cn:"消费者；顾客",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"consumer goods", sent:"The store specializes in consumer goods like electronics.", sentCn:"这家商店专营电子产品等消费品。"},{phrase:"consumer rights", sent:"The organization fights for consumer rights and fair pricing.", sentCn:"该组织为消费者权益和公平定价而斗争。"},{phrase:"consumer behavior", sent:"Companies study consumer behavior to improve their products.", sentCn:"公司研究消费者行为以改进他们的产品。"}],ex:"Smart consumers always compare prices before buying.",family:{noun:"consumer",verb:"consume"},syn:["customer","buyer"],ant:["producer","seller"],collocation:{correct:["consumer rights","consumer goods","consumer market"],distractors:["consumer person","consumer buyer"],example_sent:"The government protects consumer rights through new regulations."},fill_blank:{sentence:"Every ___ has the right to return defective products.",sentence_cn:"每个消费者都有权退回有缺陷的产品。",options:["consumer","seller","producer","manager"]},synonym_match:{synonyms:["customer","buyer"]},error_fix:{wrong:"The consumer people are not satisfied with the service.",right:"The consumers are not satisfied with the service.",hint:"consumer本身就指消费者，不需要再加people"}},
+  {word:"distribute",ph:"/dɪˈstrɪbjuːt/",en:"to give or supply something to several people or places",cn:"分发；分配；分布",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"distribute evenly", sent:"Please distribute the books evenly among all students.", sentCn:"请把书平均分给所有学生。"},{phrase:"distribute information", sent:"The company will distribute information about the new policy.", sentCn:"公司将分发有关新政策的信息。"},{phrase:"distribute resources", sent:"We need to distribute resources fairly across all departments.", sentCn:"我们需要在所有部门之间公平分配资源。"}],ex:"The teacher distributed exam papers to all students.",family:{noun:"distribution",verb:"distribute",adj:"distributive"},syn:["allocate","share"],ant:["collect","gather"],collocation:{correct:["distribute fairly","distribute widely","distribute free"],distractors:["distribute hardly","distribute expensive"],example_sent:"The charity will distribute food fairly to all families in need."},fill_blank:{sentence:"The company decided to ___ free samples to customers.",sentence_cn:"公司决定向顾客分发免费样品。",options:["distribute","contribute","attribute","substitute"]},synonym_match:{synonyms:["allocate","share"]},error_fix:{wrong:"The books are distributed to students hardly.",right:"The books are distributed to students fairly.",hint:"distribute后面应该用fairly（公平地）而不是hardly（几乎不）"}},
+  {word:"diverse",ph:"/daɪˈvɜːs/",en:"showing a great deal of variety; very different",cn:"多样的；不同的；多元化的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"diverse backgrounds", sent:"Our team members come from diverse backgrounds.", sentCn:"我们的团队成员来自不同的背景。"},{phrase:"diverse opinions", sent:"The discussion included diverse opinions on the topic.", sentCn:"讨论包含了对这个话题的各种不同观点。"},{phrase:"diverse cultures", sent:"The city is known for its diverse cultures.", sentCn:"这座城市以其多元文化而闻名。"}],ex:"The school has a diverse student population from many countries.",family:{noun:"diversity",verb:"diversify",adj:"diverse",adv:"diversely"},syn:["varied","different"],ant:["uniform","similar"],collocation:{correct:["culturally diverse","ethnically diverse","highly diverse"],distractors:["diverse hardly","diverse expensive"],example_sent:"The neighborhood is culturally diverse with people from many countries."},fill_blank:{sentence:"The company values having a ___ workforce with different skills.",sentence_cn:"公司重视拥有具有不同技能的多元化员工队伍。",options:["diverse","adverse","reverse","universe"]},synonym_match:{synonyms:["varied","different"]},error_fix:{wrong:"The group is diversity in many ways.",right:"The group is diverse in many ways.",hint:"这里需要形容词diverse，不是名词diversity"}},
+  {word:"donor",ph:"/ˈdoʊnər/",en:"a person who gives money or goods to help others",cn:"捐赠者；供体；献血者",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"blood donor", sent:"She became a regular blood donor to help save lives.", sentCn:"她成为了一名定期献血者来帮助拯救生命。"},{phrase:"organ donor", sent:"He signed up to be an organ donor on his driver's license.", sentCn:"他在驾驶证上签名成为器官捐献者。"},{phrase:"major donor", sent:"The university thanked its major donors at the ceremony.", sentCn:"大学在仪式上感谢了主要捐赠者。"}],ex:"The charity received a large donation from an anonymous donor.",family:{noun:"donor",verb:"donate"},syn:["contributor","giver"],ant:["recipient","receiver"],collocation:{correct:["generous donor","anonymous donor","potential donor"],distractors:["donor person","make donor"],example_sent:"The museum received support from a generous donor who loves art."},fill_blank:{sentence:"The hospital is looking for a kidney ___ for the patient.",sentence_cn:"医院正在为病人寻找肾脏供体。",options:["donor","owner","honor","corner"]},synonym_match:{synonyms:["contributor","giver"]},error_fix:{wrong:"He wants to donate as a donor.",right:"He wants to become a donor.",hint:"donor是名词，不能用donate as搭配，应该用become"}},
+  {word:"engage",ph:"/ɪnˈɡeɪdʒ/",en:"to participate or become involved in an activity",cn:"参与；从事；吸引；订婚",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"engage in", sent:"Students should engage in extracurricular activities.", sentCn:"学生们应该参与课外活动。"},{phrase:"engage with", sent:"Teachers try to engage with students in meaningful discussions.", sentCn:"老师们努力与学生进行有意义的讨论。"},{phrase:"engage attention", sent:"The speaker used humor to engage the audience's attention.", sentCn:"演讲者用幽默来吸引观众的注意力。"}],ex:"The interactive game helps engage students in learning.",family:{noun:"engagement",verb:"engage",adj:"engaging"},syn:["involve","participate"],ant:["disengage","withdraw"],collocation:{correct:["actively engage","fully engage","engage directly"],distractors:["engage hardly","engage expensive"],example_sent:"Students should actively engage in classroom discussions."},fill_blank:{sentence:"The teacher used games to ___ students in the lesson.",sentence_cn:"老师用游戏来吸引学生参与课程。",options:["engage","cage","rage","age"]},synonym_match:{synonyms:["involve","participate"]},error_fix:{wrong:"She engages to the project actively.",right:"She engages in the project actively.",hint:"engage后面应该用介词in，不是to"}},
+  {word:"entrance",ph:"/ˈentrəns/",en:"a way in; the act of entering",cn:"入口；进入；入学",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"entrance exam", sent:"She passed the university entrance exam with high scores.", sentCn:"她以高分通过了大学入学考试。"},{phrase:"main entrance", sent:"Please use the main entrance to enter the building.", sentCn:"请使用正门进入大楼。"},{phrase:"entrance fee", sent:"The museum charges a small entrance fee for visitors.", sentCn:"博物馆向游客收取少量入场费。"}],ex:"The entrance to the school is decorated with beautiful flowers.",family:{noun:"entrance",verb:"enter"},syn:["entry","gateway"],ant:["exit","outlet"],collocation:{correct:["school entrance","back entrance","grand entrance"],distractors:["entrance hardly","entrance expensive"],example_sent:"The school entrance is always busy in the morning."},fill_blank:{sentence:"Students gathered at the ___ of the examination hall.",sentence_cn:"学生们聚集在考试大厅的入口处。",options:["entrance","trance","dance","chance"]},synonym_match:{synonyms:["entry","gateway"]},error_fix:{wrong:"I will meet you at the enter of the building.",right:"I will meet you at the entrance of the building.",hint:"应该用名词entrance而不是动词enter"}},
+  {word:"error",ph:"/ˈerər/",en:"a mistake; something that is incorrect",cn:"错误；误差；过错",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"spelling error", sent:"The teacher found several spelling errors in the essay.", sentCn:"老师在文章中发现了几个拼写错误。"},{phrase:"human error", sent:"The accident was caused by human error, not machine failure.", sentCn:"事故是由人为错误而不是机器故障造成的。"},{phrase:"trial and error", sent:"He learned to cook through trial and error.", sentCn:"他通过反复试验学会了烹饪。"}],ex:"Please check your work carefully to avoid any errors.",family:{noun:"error",verb:"err",adj:"erroneous",adv:"erroneously"},syn:["mistake","fault"],ant:["accuracy","correctness"],collocation:{correct:["common error","serious error","minor error"],distractors:["error hardly","error expensive"],example_sent:"Making grammar mistakes is a common error among language learners."},fill_blank:{sentence:"The computer program has an ___ that needs to be fixed.",sentence_cn:"这个计算机程序有一个需要修复的错误。",options:["error","arrow","horror","mirror"]},synonym_match:{synonyms:["mistake","fault"]},error_fix:{wrong:"I made an error mistake in the test.",right:"I made an error in the test.",hint:"error和mistake意思相同，不需要重复使用"}},
+  {word:"exist",ph:"/ɪɡˈzɪst/",en:"to be real; to live or be present",cn:"存在；生存；生活",lv:"basic",pos:"v",tags:["general"],phrases:[{phrase:"exist in", sent:"Such problems exist in many schools around the world.", sentCn:"这样的问题存在于世界各地的许多学校中。"},{phrase:"continue to exist", sent:"The ancient tradition continues to exist in this village.", sentCn:"这个古老的传统在这个村子里继续存在。"},{phrase:"cease to exist", sent:"Many species may cease to exist due to climate change.", sentCn:"由于气候变化，许多物种可能会消失。"}],ex:"Do you believe that life exists on other planets?",family:{noun:"existence",verb:"exist",adj:"existing"},syn:["live","survive"],ant:["disappear","vanish"],collocation:{correct:["actually exist","still exist","already exist"],distractors:["exist hardly","exist expensive"],example_sent:"Some people believe that ghosts actually exist."},fill_blank:{sentence:"Scientists wonder if intelligent life can ___ in outer space.",sentence_cn:"科学家们想知道外太空是否能存在智慧生命。",options:["exist","insist","resist","assist"]},synonym_match:{synonyms:["live","survive"]},error_fix:{wrong:"The problem is existed in our society.",right:"The problem exists in our society.",hint:"exist是不及物动词，不能用被动语态"}},
+  {word:"expense",ph:"/ɪkˈspens/",en:"the cost or money spent on something",cn:"费用；开支；代价",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"at the expense of", sent:"He achieved success at the expense of his health.", sentCn:"他以健康为代价获得了成功。"},{phrase:"travel expenses", sent:"The company will cover all your travel expenses.", sentCn:"公司将承担你的所有差旅费用。"},{phrase:"spare no expense", sent:"They spared no expense to make the wedding perfect.", sentCn:"他们不惜代价让婚礼完美无缺。"}],ex:"The expense of living in the city is quite high.",family:{noun:"expense",adj:"expensive",adv:"expensively"},syn:["cost","expenditure"],ant:["income","profit"],collocation:{correct:["medical expenses","living expenses","unexpected expenses"],distractors:["expense hardly","make expense"],example_sent:"Students need to budget for their living expenses carefully."},fill_blank:{sentence:"The family had to cut down on ___ after losing their job.",sentence_cn:"失业后，这家人不得不削减开支。",options:["expenses","defenses","licenses","senses"]},synonym_match:{synonyms:["cost","expenditure"]},error_fix:{wrong:"The expensive of the trip was too high.",right:"The expense of the trip was too high.",hint:"这里需要名词expense（费用），不是形容词expensive（昂贵的）"}},
+  {word:"explore",ph:"/ɪkˈsplɔːr/",en:"to search and discover; to investigate thoroughly",cn:"探索；探险；调查研究",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"explore possibilities", sent:"We need to explore all possibilities before making a decision.", sentCn:"在做决定之前，我们需要探索所有的可能性。"},{phrase:"explore new territories", sent:"The company is exploring new territories for expansion.", sentCn:"公司正在探索扩张的新领域。"},{phrase:"explore in depth", sent:"The research team will explore this topic in depth.", sentCn:"研究团队将深入探索这个话题。"}],ex:"Scientists are exploring ways to reduce pollution.",family:{noun:"exploration",verb:"explore",adj:"exploratory"},syn:["investigate","examine"],ant:["ignore"],collocation:{correct:["explore opportunities","explore options","explore ideas"],distractors:["explore chances","explore occasions"],example_sent:"Students should explore opportunities to study abroad."},fill_blank:{sentence:"The astronauts will ___ the surface of Mars next year.",sentence_cn:"宇航员们将在明年探索火星表面。",options:["explore","explain","expose","express"]},synonym_match:{synonyms:["investigate","examine"]},error_fix:{wrong:"I want to explore about this city.",right:"I want to explore this city.",hint:"explore是及物动词，后面直接跟宾语，不需要介词about"}},
+  {word:"extension",ph:"/ɪkˈstenʃn/",en:"the action of extending; a part that is added to make something larger",cn:"延伸；扩展；分机号码",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"file extension", sent:"The file extension .pdf indicates a PDF document.", sentCn:"文件扩展名.pdf表示这是一个PDF文档。"},{phrase:"extension cord", sent:"We need an extension cord to reach the outlet.", sentCn:"我们需要一根延长线来够到插座。"},{phrase:"by extension", sent:"He studies language and, by extension, human communication.", sentCn:"他研究语言，进而研究人类交流。"}],ex:"The deadline has been given a two-week extension.",family:{noun:"extension",verb:"extend",adj:"extensive",adv:"extensively"},syn:["expansion","enlargement"],ant:["reduction","contraction"],collocation:{correct:["deadline extension","phone extension","hair extension"],distractors:["time extension","period extension"],example_sent:"The professor granted a deadline extension for the final project."},fill_blank:{sentence:"Please call me at ___ 205 if you need any help.",sentence_cn:"如果你需要任何帮助，请打分机205找我。",options:["extension","expansion","expression","explanation"]},synonym_match:{synonyms:["expansion","enlargement"]},error_fix:{wrong:"I need an extension of time.",right:"I need a time extension.",hint:"extension作为名词使用时，通常说time extension而不是extension of time"}},
+  {word:"fashionable",ph:"/ˈfæʃnəbl/",en:"popular or in style at a particular time",cn:"时尚的；流行的",lv:"basic",pos:"adj",tags:["general"],phrases:[{phrase:"fashionable clothes", sent:"She always wears fashionable clothes to work.", sentCn:"她总是穿时尚的衣服上班。"},{phrase:"fashionable district", sent:"They opened their store in a fashionable district.", sentCn:"他们在一个时尚街区开了店。"},{phrase:"become fashionable", sent:"Yoga has become fashionable among young people.", sentCn:"瑜伽在年轻人中变得流行起来。"}],ex:"It's fashionable to wear vintage clothing these days.",family:{noun:"fashion",verb:"fashion",adj:"fashionable",adv:"fashionably"},syn:["trendy","stylish"],ant:["unfashionable","outdated"],collocation:{correct:["fashionable style","fashionable trend","fashionable brand"],distractors:["fashionable mode","fashionable way"],example_sent:"This fashionable style is popular among teenagers."},fill_blank:{sentence:"Eating organic food has become very ___ in recent years.",sentence_cn:"近年来，吃有机食品变得非常流行。",options:["fashionable","reasonable","comfortable","suitable"]},synonym_match:{synonyms:["trendy","stylish"]},error_fix:{wrong:"This dress is very fashion.",right:"This dress is very fashionable.",hint:"fashion是名词，作形容词应该用fashionable"}},
+  {word:"force",ph:"/fɔːrs/",en:"physical strength or power; to make someone do something against their will",cn:"力量；武力；强迫",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"by force", sent:"The door was opened by force.", sentCn:"门被强行打开了。"},{phrase:"police force", sent:"The police force is investigating the case.", sentCn:"警察部队正在调查这个案件。"},{phrase:"driving force", sent:"Curiosity is the driving force behind scientific discovery.", sentCn:"好奇心是科学发现背后的驱动力。"}],ex:"The wind was so strong that it had enough force to knock down trees.",family:{noun:"force",verb:"force",adj:"forceful",adv:"forcefully"},syn:["power","strength"],ant:["weakness"],collocation:{correct:["armed forces","natural force","physical force"],distractors:["strong force","big force"],example_sent:"The country's armed forces are well-trained and equipped."},fill_blank:{sentence:"Nobody can ___ you to make that decision.",sentence_cn:"没有人能强迫你做那个决定。",options:["force","focus","form","face"]},synonym_match:{synonyms:["power","strength"]},error_fix:{wrong:"He used his force to open the jar.",right:"He used force to open the jar.",hint:"表示使用力量时，通常说use force，不需要物主代词"}},
+  {word:"foster",ph:"/ˈfɔːstər/",en:"to encourage the development of something; to care for a child temporarily",cn:"培养；促进；收养",lv:"advanced",pos:"v",tags:["general"],phrases:[{phrase:"foster care", sent:"The child was placed in foster care after the accident.", sentCn:"事故发生后，这个孩子被安置在寄养家庭。"},{phrase:"foster growth", sent:"Good education can foster growth in children's creativity.", sentCn:"良好的教育能够促进儿童创造力的发展。"},{phrase:"foster relationship", sent:"The program aims to foster relationships between students and teachers.", sentCn:"这个项目旨在促进学生和老师之间的关系。"}],ex:"The company tries to foster innovation among its employees.",family:{noun:"foster",verb:"foster"},syn:["promote","encourage"],ant:["discourage","hinder"],collocation:{correct:["foster development","foster understanding","foster cooperation"],distractors:["foster improvement","foster progress"],example_sent:"International exchange programs foster development of global perspectives."},fill_blank:{sentence:"The school aims to ___ creativity in its students.",sentence_cn:"学校旨在培养学生的创造力。",options:["foster","forest","former","format"]},synonym_match:{synonyms:["promote","encourage"]},error_fix:{wrong:"We should foster up our children well.",right:"We should foster our children well.",hint:"foster本身就有培养的意思，不需要加up"}},
+  {word:"household",ph:"/ˈhaʊshoʊld/",en:"all the people living together in a house; relating to a house and family",cn:"家庭；一户人家；家用的",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"household items", sent:"The store sells various household items like dishes and towels.", sentCn:"这家商店出售各种家用物品，如餐具和毛巾。"},{phrase:"household income", sent:"The average household income has increased this year.", sentCn:"今年平均家庭收入有所增加。"},{phrase:"household name", sent:"The actor became a household name after the movie.", sentCn:"这位演员在电影上映后成了家喻户晓的人物。"}],ex:"Our household consists of five people including my grandparents.",family:{noun:"household",adj:"household"},syn:["family","home"],ant:[],collocation:{correct:["household chores","household expenses","household products"],distractors:["household works","household costs"],example_sent:"Children should help with household chores like cleaning and cooking."},fill_blank:{sentence:"Every ___ should have a first aid kit for emergencies.",sentence_cn:"每个家庭都应该有急救包以备紧急情况。",options:["household","housework","housing","housekeeper"]},synonym_match:{synonyms:["family","home"]},error_fix:{wrong:"My household has four peoples.",right:"My household has four people.",hint:"people是复数名词，不能加s"}},
+  {word:"indicate",ph:"/ˈɪndɪkeɪt/",en:"to point out or show; to be a sign or symptom of",cn:"表明；指出；显示",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"indicate that", sent:"The survey results indicate that most people support the new policy.", sentCn:"调查结果表明大多数人支持这项新政策。"},{phrase:"clearly indicate", sent:"The symptoms clearly indicate a viral infection.", sentCn:"这些症状清楚地表明是病毒感染。"},{phrase:"indicate direction", sent:"The road signs indicate the direction to the airport.", sentCn:"路标指示去机场的方向。"}],ex:"Dark clouds indicate that it might rain soon.",family:{noun:"indication",verb:"indicate",adj:"indicative"},syn:["show","suggest"],ant:["conceal","hide"],collocation:{correct:["indicate progress","indicate changes","indicate problems"],distractors:["indicate situations","indicate conditions"],example_sent:"The test scores indicate progress in the students' learning."},fill_blank:{sentence:"The red light on the machine will ___ when it needs repair.",sentence_cn:"机器上的红灯会显示它何时需要维修。",options:["indicate","imitate","illustrate","investigate"]},synonym_match:{synonyms:["show","suggest"]},error_fix:{wrong:"The results indicate for a positive trend.",right:"The results indicate a positive trend.",hint:"indicate是及物动词，后面直接跟宾语，不需要介词for"}},
+  {word:"individual",ph:"/ˌɪndɪˈvɪdʒuəl/",en:"single person considered separately; belonging to one person only",cn:"个人；个体的；单独的",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"individual differences", sent:"Teachers should consider individual differences when planning lessons.", sentCn:"老师在备课时应该考虑个体差异。"},{phrase:"individual rights", sent:"The constitution protects individual rights and freedoms.", sentCn:"宪法保护个人权利和自由。"},{phrase:"on an individual basis", sent:"Students will be evaluated on an individual basis.", sentCn:"学生将被逐一评估。"}],ex:"Each individual has their own unique talents and abilities.",family:{noun:"individual",verb:"individualize",adj:"individual",adv:"individually"},syn:["person","single"],ant:["group","collective"],collocation:{correct:["individual attention","individual needs","individual performance"],distractors:["individual focuses","individual requirements"],example_sent:"Small class sizes allow for more individual attention to students."},fill_blank:{sentence:"Each ___ is responsible for their own actions.",sentence_cn:"每个人都要为自己的行为负责。",options:["individual","industry","influence","interview"]},synonym_match:{synonyms:["person","single"]},error_fix:{wrong:"Every individual are unique.",right:"Every individual is unique.",hint:"individual是单数名词，与every搭配时谓语动词用单数is"}},
+  {word:"instructor",ph:"/ɪnˈstrʌktər/",en:"a person who teaches a skill or subject",cn:"教练；指导员；讲师",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"driving instructor", sent:"My driving instructor taught me how to parallel park.", sentCn:"我的驾驶教练教我如何平行停车。"},{phrase:"fitness instructor", sent:"The fitness instructor showed us the correct form for squats.", sentCn:"健身教练向我们展示了深蹲的正确姿势。"},{phrase:"flight instructor", sent:"The flight instructor guided the student through takeoff procedures.", sentCn:"飞行教练指导学生完成起飞程序。"}],ex:"The swimming instructor taught children basic water safety skills.",family:{noun:"instructor",verb:"instruct",adj:"instructive"},syn:["teacher","trainer"],ant:["student"],collocation:{correct:["qualified instructor","experienced instructor","certified instructor"],distractors:["instructor person","instructor teacher"],example_sent:"We need a qualified instructor to teach the advanced course."},fill_blank:{sentence:"The yoga ___ demonstrated the difficult pose to her students.",sentence_cn:"瑜伽教练向学生们演示了这个高难度姿势。",options:["instructor","constructor","destructor","conductor"]},synonym_match:{synonyms:["teacher","trainer"]},error_fix:{wrong:"The instructor person is very kind",right:"The instructor is very kind",hint:"instructor本身就是指人的名词，不需要再加person"}},
+  {word:"instrument",ph:"/ˈɪnstrəmənt/",en:"a tool or device used for a particular purpose, especially for scientific or musical use",cn:"器械；乐器；仪器",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"musical instrument", sent:"She learned to play three different musical instruments.", sentCn:"她学会了演奏三种不同的乐器。"},{phrase:"scientific instrument", sent:"The laboratory was equipped with advanced scientific instruments.", sentCn:"实验室配备了先进的科学仪器。"},{phrase:"measuring instrument", sent:"We need a precise measuring instrument for this experiment.", sentCn:"我们需要一个精确的测量仪器来做这个实验。"}],ex:"The doctor used a special instrument to examine the patient's throat.",family:{noun:"instrument",adj:"instrumental",adv:"instrumentally"},syn:["tool","device"],ant:[],collocation:{correct:["precision instrument","surgical instrument","optical instrument"],distractors:["instrument tool","play instrument"],example_sent:"The surgeon carefully sterilized each precision instrument before the operation."},fill_blank:{sentence:"The violin is her favorite musical ___.",sentence_cn:"小提琴是她最喜欢的乐器。",options:["instrument","equipment","machinery","apparatus"]},synonym_match:{synonyms:["tool","device"]},error_fix:{wrong:"She can play instrument very well",right:"She can play the instrument very well",hint:"乐器前面通常需要加定冠词the"}},
+  {word:"interaction",ph:"/ˌɪntərˈækʃn/",en:"the act of communicating or working together",cn:"互动；相互作用；交流",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"social interaction", sent:"Children develop language skills through social interaction.", sentCn:"孩子们通过社交互动发展语言技能。"},{phrase:"human interaction", sent:"Online learning lacks face-to-face human interaction.", sentCn:"在线学习缺乏面对面的人际交流。"},{phrase:"drug interaction", sent:"The doctor warned about possible drug interactions.", sentCn:"医生警告可能出现的药物相互作用。"}],ex:"The teacher encouraged more interaction between students during group work.",family:{noun:"interaction",verb:"interact",adj:"interactive",adv:"interactively"},syn:["communication","exchange"],ant:["isolation"],collocation:{correct:["direct interaction","meaningful interaction","positive interaction"],distractors:["interaction between each other","make interaction"],example_sent:"Direct interaction with customers helps improve our service quality."},fill_blank:{sentence:"The new software allows better ___ between team members.",sentence_cn:"新软件让团队成员之间有更好的互动。",options:["interaction","invention","intervention","intersection"]},synonym_match:{synonyms:["communication","exchange"]},error_fix:{wrong:"We need more interaction between each other",right:"We need more interaction with each other",hint:"interaction后面应该用with而不是between when referring to mutual communication"}},
+  {word:"intimate",ph:"/ˈɪntɪmət/",en:"very close and personal; private and personal",cn:"亲密的；私人的；详细的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"intimate friend", sent:"She shared her secret only with her most intimate friends.", sentCn:"她只和最亲密的朋友分享了她的秘密。"},{phrase:"intimate knowledge", sent:"He has intimate knowledge of the local culture.", sentCn:"他对当地文化有详细的了解。"},{phrase:"intimate relationship", sent:"They developed an intimate relationship over many years.", sentCn:"他们多年来建立了亲密的关系。"}],ex:"The small restaurant provides an intimate atmosphere for couples.",family:{noun:"intimacy",verb:"intimate",adj:"intimate",adv:"intimately"},syn:["close","personal"],ant:["distant","formal"],collocation:{correct:["intimate details","intimate setting","intimate conversation"],distractors:["very intimate","intimate together"],example_sent:"She refused to discuss the intimate details of her marriage."},fill_blank:{sentence:"The couple enjoyed an ___ dinner at the quiet restaurant.",sentence_cn:"这对夫妇在安静的餐厅享受了一顿私密的晚餐。",options:["intimate","immediate","ultimate","estimate"]},synonym_match:{synonyms:["close","personal"]},error_fix:{wrong:"They are very intimate together",right:"They are very intimate",hint:"intimate作形容词时不需要加together，因为它本身就含有亲密关系的意思"}},
+  {word:"isolated",ph:"/ˈaɪsəleɪtɪd/",en:"alone and apart from others; single and separate",cn:"孤立的；隔离的；偏僻的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"isolated area", sent:"The village is located in an isolated area of the mountains.", sentCn:"这个村庄位于山区的偏僻地带。"},{phrase:"feel isolated", sent:"New students often feel isolated during their first week.", sentCn:"新学生在第一周经常感到孤立。"},{phrase:"isolated incident", sent:"The manager assured us it was just an isolated incident.", sentCn:"经理向我们保证这只是一个孤立事件。"}],ex:"The old castle stands isolated on top of the hill.",family:{noun:"isolation",verb:"isolate",adj:"isolated"},syn:["alone","separated"],ant:["connected","integrated"],collocation:{correct:["completely isolated","relatively isolated","increasingly isolated"],distractors:["isolated lonely","very isolated alone"],example_sent:"The research station is completely isolated from the outside world."},fill_blank:{sentence:"The patient was ___ to prevent the spread of infection.",sentence_cn:"病人被隔离以防止感染传播。",options:["isolated","calculated","decorated","elevated"]},synonym_match:{synonyms:["alone","separated"]},error_fix:{wrong:"He lives very isolated alone",right:"He lives in isolation",hint:"isolated是形容词，表达独自生活应该用live in isolation或live alone"}},
+  {word:"laboratory",ph:"/ˈlæbrətɔːri/",en:"a room or building equipped for scientific research or teaching",cn:"实验室；研究室",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"science laboratory", sent:"Students conduct experiments in the science laboratory.", sentCn:"学生们在科学实验室进行实验。"},{phrase:"computer laboratory", sent:"The school built a new computer laboratory last year.", sentCn:"学校去年建了一个新的计算机实验室。"},{phrase:"research laboratory", sent:"The research laboratory is working on cancer treatments.", sentCn:"研究实验室正在研究癌症治疗方法。"}],ex:"The chemistry laboratory is equipped with modern safety equipment.",family:{noun:"laboratory"},syn:["lab"],ant:[],collocation:{correct:["modern laboratory","medical laboratory","well-equipped laboratory"],distractors:["laboratory room","experiment laboratory"],example_sent:"The university invested millions in a modern laboratory facility."},fill_blank:{sentence:"The students will perform the chemistry experiment in the ___.",sentence_cn:"学生们将在实验室进行化学实验。",options:["laboratory","library","factory","gallery"]},synonym_match:{synonyms:["lab"]},error_fix:{wrong:"We did experiments in experiment laboratory",right:"We did experiments in the laboratory",hint:"laboratory本身就是做实验的地方，不需要再加experiment"}},
+  {word:"liquid",ph:"/ˈlɪkwɪd/",en:"a substance that flows freely and has no fixed shape",cn:"液体；液态的",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"liquid form", sent:"Water exists in liquid form at room temperature.", sentCn:"水在室温下以液体形式存在。"},{phrase:"liquid nitrogen", sent:"Scientists use liquid nitrogen to preserve biological samples.", sentCn:"科学家使用液氮保存生物样本。"},{phrase:"clear liquid", sent:"The doctor asked the patient to drink only clear liquids.", sentCn:"医生要求病人只喝透明的液体。"}],ex:"Oil is a thick liquid that doesn't mix with water.",family:{noun:"liquid",verb:"liquefy",adj:"liquid"},syn:["fluid"],ant:["solid","gas"],collocation:{correct:["hot liquid","toxic liquid","colorless liquid"],distractors:["liquid water","very liquid"],example_sent:"Be careful when handling hot liquid to avoid burns."},fill_blank:{sentence:"The medicine comes in both pill and ___ forms.",sentence_cn:"这种药有药片和液体两种形式。",options:["liquid","solid","powder","crystal"]},synonym_match:{synonyms:["fluid"]},error_fix:{wrong:"This liquid water is very hot",right:"This liquid is very hot",hint:"liquid作名词时已经包含了液体的概念，不需要再加water"}},
+  {word:"local",ph:"/ˈloʊkl/",en:"belonging to or existing in a particular area or place nearby",cn:"当地的；本地的；局部的",lv:"basic",pos:"adj",tags:["general"],phrases:[{phrase:"local people", sent:"The local people welcomed the tourists warmly.", sentCn:"当地人热情地欢迎游客。"},{phrase:"local government", sent:"The local government decided to build a new park.", sentCn:"当地政府决定建一个新公园。"},{phrase:"local time", sent:"The plane will arrive at 3 PM local time.", sentCn:"飞机将在当地时间下午3点到达。"}],ex:"We prefer to buy vegetables from the local market.",family:{noun:"locality",verb:"localize",adj:"local",adv:"locally"},syn:["nearby","regional"],ant:["foreign","distant"],collocation:{correct:["local community","local business","local area"],distractors:["local place","very local"],example_sent:"Supporting local community projects helps strengthen neighborhood bonds."},fill_blank:{sentence:"The restaurant serves dishes made with ___ ingredients.",sentence_cn:"这家餐厅供应用当地食材制作的菜肴。",options:["local","global","national","international"]},synonym_match:{synonyms:["nearby","regional"]},error_fix:{wrong:"This is a very local place",right:"This is a local place",hint:"local本身就表示地方性的概念，通常不用very来修饰"}},
+  {word:"market",ph:"/ˈmɑːrkɪt/",en:"a place where goods are bought and sold; the business of buying and selling",cn:"市场；集市；商业买卖",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"stock market", sent:"The stock market crashed last week.", sentCn:"股市上周崩盘了。"},{phrase:"market research", sent:"We need to do market research before launching the product.", sentCn:"我们需要在产品上市前做市场调研。"},{phrase:"on the market", sent:"Their house has been on the market for six months.", sentCn:"他们的房子已经在市场上出售六个月了。"}],ex:"The local market sells fresh vegetables every morning.",family:{noun:"market",verb:"market"},syn:["marketplace","bazaar"],ant:[],collocation:{correct:["enter the market","market share","market leader"],distractors:["make market","market place"],example_sent:"Our company plans to enter the market next year."},fill_blank:{sentence:"The company has a 30% share of the smartphone ___.",sentence_cn:"这家公司占有智能手机市场30%的份额。",options:["market","store","shop","business"]},synonym_match:{synonyms:["marketplace","bazaar"]},error_fix:{wrong:"I bought it in the market place",right:"I bought it at the market",hint:"在市场购物用介词at，而且market是一个单词"}},
+  {word:"material",ph:"/məˈtɪriəl/",en:"the matter from which things are made; information or ideas for use in creating something",cn:"材料；物质；素材",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"raw material", sent:"Steel is made from raw materials like iron ore.", sentCn:"钢铁是由铁矿石等原材料制成的。"},{phrase:"teaching material", sent:"The teacher prepared new teaching materials for the class.", sentCn:"老师为班级准备了新的教学材料。"},{phrase:"building material", sent:"Wood is a common building material.", sentCn:"木材是常用的建筑材料。"}],ex:"This jacket is made of waterproof material.",family:{noun:"material",verb:"materialize",adj:"material",adv:"materially"},syn:["substance","matter"],ant:[],collocation:{correct:["study materials","quality material","recyclable material"],distractors:["material things","hard material"],example_sent:"Students need proper study materials to succeed."},fill_blank:{sentence:"The company uses eco-friendly ___ in all its products.",sentence_cn:"公司在所有产品中都使用环保材料。",options:["material","substance","element","component"]},synonym_match:{synonyms:["substance","matter"]},error_fix:{wrong:"I need some materials to study",right:"I need some study materials",hint:"材料前面需要加具体的限定词来说明用途"}},
+  {word:"membership",ph:"/ˈmembərʃɪp/",en:"the state of belonging to a group or organization",cn:"会员身份；会员资格；成员",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"membership card", sent:"Please show your membership card at the entrance.", sentCn:"请在入口处出示您的会员卡。"},{phrase:"membership fee", sent:"The annual membership fee is $50.", sentCn:"年费是50美元。"},{phrase:"apply for membership", sent:"I want to apply for membership in the tennis club.", sentCn:"我想申请网球俱乐部的会员资格。"}],ex:"Club membership includes access to all facilities.",family:{noun:"membership"},syn:["enrollment","registration"],ant:[],collocation:{correct:["membership benefits","lifetime membership","membership renewal"],distractors:["membership application","member fee"],example_sent:"The gym offers excellent membership benefits."},fill_blank:{sentence:"His ___ in the organization expired last month.",sentence_cn:"他在该组织的会员资格上个月到期了。",options:["membership","registration","subscription","enrollment"]},synonym_match:{synonyms:["enrollment","registration"]},error_fix:{wrong:"I have a member of this club",right:"I have membership of this club",hint:"表示会员身份用membership，不是member"}},
+  {word:"mineral",ph:"/ˈmɪnərəl/",en:"a solid substance that occurs naturally in rocks or in the earth",cn:"矿物；矿物质",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"mineral water", sent:"I prefer mineral water to tap water.", sentCn:"我更喜欢矿泉水而不是自来水。"},{phrase:"mineral deposit", sent:"Geologists discovered a large mineral deposit in the mountain.", sentCn:"地质学家在山中发现了大量矿藏。"},{phrase:"essential minerals", sent:"Our body needs essential minerals like iron and calcium.", sentCn:"我们的身体需要铁和钙等必需矿物质。"}],ex:"Coal is an important mineral resource.",family:{noun:"mineral",verb:"mineralize",adj:"mineral"},syn:["ore","crystal"],ant:[],collocation:{correct:["mineral resources","mineral content","mineral extraction"],distractors:["mineral stone","mineral material"],example_sent:"The country is rich in mineral resources."},fill_blank:{sentence:"This region is famous for its rich ___ deposits.",sentence_cn:"这个地区以丰富的矿藏而闻名。",options:["mineral","metal","stone","rock"]},synonym_match:{synonyms:["ore","crystal"]},error_fix:{wrong:"This water contains many minerals substance",right:"This water contains many mineral substances",hint:"mineral作形容词修饰名词时，名词要用复数形式"}},
+  {word:"model",ph:"/ˈmɑːdl/",en:"a small copy of something; a person who poses for art or displays clothes",cn:"模型；模特；典型",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"role model", sent:"Teachers should be positive role models for students.", sentCn:"老师应该成为学生的积极榜样。"},{phrase:"business model", sent:"The company needs to change its business model.", sentCn:"公司需要改变其商业模式。"},{phrase:"scale model", sent:"He built a scale model of the airplane.", sentCn:"他制作了一个飞机的比例模型。"}],ex:"She works as a fashion model in Paris.",family:{noun:"model",verb:"model",adj:"model"},syn:["example","pattern"],ant:[],collocation:{correct:["model student","latest model","working model"],distractors:["model person","model example"],example_sent:"She is a model student in our class."},fill_blank:{sentence:"The new car ___ will be released next month.",sentence_cn:"新车型将于下个月发布。",options:["model","type","kind","brand"]},synonym_match:{synonyms:["example","pattern"]},error_fix:{wrong:"He is a model of student",right:"He is a model student",hint:"model作形容词直接修饰名词，不需要用of连接"}},
+  {word:"museum",ph:"/mjuˈziəm/",en:"a building where objects of historical, scientific, or cultural interest are displayed",cn:"博物馆",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"art museum", sent:"We visited the art museum yesterday.", sentCn:"我们昨天参观了艺术博物馆。"},{phrase:"natural history museum", sent:"The natural history museum has many dinosaur fossils.", sentCn:"自然历史博物馆有很多恐龙化石。"},{phrase:"museum piece", sent:"That old car is practically a museum piece.", sentCn:"那辆旧车简直就是博物馆藏品。"}],ex:"The museum displays ancient artifacts from Egypt.",family:{noun:"museum"},syn:["gallery","exhibition"],ant:[],collocation:{correct:["visit museum","museum collection","museum guide"],distractors:["go museum","museum trip"],example_sent:"Thousands of people visit the museum every year."},fill_blank:{sentence:"The local ___ has a wonderful collection of paintings.",sentence_cn:"当地博物馆有精彩的绘画收藏。",options:["museum","gallery","library","theater"]},synonym_match:{synonyms:["gallery","exhibition"]},error_fix:{wrong:"We went to museum yesterday",right:"We went to the museum yesterday",hint:"museum前面通常需要加定冠词the"}},
+  {word:"musical",ph:"/ˈmjuːzɪkl/",en:"relating to music; a play or movie with songs and dancing",cn:"音乐的；音乐剧",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"musical instrument", sent:"The piano is my favorite musical instrument.", sentCn:"钢琴是我最喜欢的乐器。"},{phrase:"musical theater", sent:"She studies musical theater at the university.", sentCn:"她在大学学习音乐剧。"},{phrase:"musical talent", sent:"He showed great musical talent from an early age.", sentCn:"他从小就表现出很高的音乐天赋。"}],ex:"The musical was performed on Broadway.",family:{noun:"music",adj:"musical",adv:"musically"},syn:["melodic","harmonic"],ant:[],collocation:{correct:["musical performance","musical education","musical score"],distractors:["musical song","music instrument"],example_sent:"The school offers excellent musical education programs."},fill_blank:{sentence:"She has a beautiful ___ voice that everyone loves.",sentence_cn:"她有一副人人喜爱的美妙嗓音。",options:["musical","music","melody","song"]},synonym_match:{synonyms:["melodic","harmonic"]},error_fix:{wrong:"I like music movies very much",right:"I like musical movies very much",hint:"修饰名词时用形容词musical，不是名词music"}},
+  {word:"navigation",ph:"/ˌnævɪˈɡeɪʃn/",en:"the process of planning and controlling the movement of a vehicle or vessel",cn:"导航；航行；导航系统",lv:"advanced",pos:"n",tags:["general"],phrases:[{phrase:"GPS navigation", sent:"GPS navigation helps drivers find their way.", sentCn:"GPS导航帮助司机找路。"},{phrase:"navigation system", sent:"The ship's navigation system was damaged in the storm.", sentCn:"船的导航系统在暴风雨中受损。"},{phrase:"satellite navigation", sent:"Modern cars use satellite navigation technology.", sentCn:"现代汽车使用卫星导航技术。"}],ex:"The pilot relied on navigation instruments during the flight.",family:{noun:"navigation",verb:"navigate",adj:"navigational"},syn:["guidance","direction"],ant:[],collocation:{correct:["navigation bar","navigation tools","navigation skills"],distractors:["navigation way","navigate system"],example_sent:"Click on the navigation bar to access different pages."},fill_blank:{sentence:"The website's ___ menu makes it easy to find information.",sentence_cn:"网站的导航菜单使查找信息变得容易。",options:["navigation","direction","guidance","instruction"]},synonym_match:{synonyms:["guidance","direction"]},error_fix:{wrong:"I use navigate to find my way",right:"I use navigation to find my way",hint:"作名词使用时应该用navigation，不是动词navigate"}},
+  {word:"nest",ph:"/nest/",en:"a structure built by birds or other animals for laying eggs or living in",cn:"鸟巢；窝；安乐窝",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"bird's nest", sent:"The bird built its nest in the old oak tree.", sentCn:"这只鸟在老橡树上筑了巢。"},{phrase:"nest egg", sent:"She saved money as a nest egg for retirement.", sentCn:"她存钱作为退休后的积蓄。"},{phrase:"empty nest", sent:"After their children left home, they felt the empty nest syndrome.", sentCn:"孩子们离家后，他们感到了空巢综合征。"}],ex:"The robin built a cozy nest in the apple tree.",family:{noun:"nest",verb:"nest"},syn:["home","shelter"],ant:[],collocation:{correct:["build a nest","bird's nest","nest egg"],distractors:["make a nest","create a nest"],example_sent:"The birds build a nest every spring."},fill_blank:{sentence:"The eagle built its ___ on top of the cliff.",sentence_cn:"老鹰在悬崖顶上筑了巢。",options:["nest","house","shelter","cave"]},synonym_match:{synonyms:["home","shelter"]},error_fix:{wrong:"The bird made a nest in the tree.",right:"The bird built a nest in the tree.",hint:"筑巢用build而不是make"}},
+  {word:"nutritious",ph:"/njuːˈtrɪʃəs/",en:"containing substances that your body needs to stay healthy",cn:"有营养的；营养丰富的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"nutritious food", sent:"Vegetables and fruits are nutritious food for children.", sentCn:"蔬菜和水果对孩子来说是有营养的食物。"},{phrase:"nutritious meal", sent:"The school provides nutritious meals for all students.", sentCn:"学校为所有学生提供营养餐。"},{phrase:"highly nutritious", sent:"Fish is highly nutritious and good for brain development.", sentCn:"鱼类营养价值很高，有利于大脑发育。"}],ex:"Spinach is very nutritious and contains lots of vitamins.",family:{noun:"nutrition",adj:"nutritious",adv:"nutritiously"},syn:["healthy","nourishing"],ant:["unhealthy"],collocation:{correct:["nutritious food","nutritious meal","highly nutritious"],distractors:["nutrition food","nutritious diet"],example_sent:"Children need nutritious food to grow properly."},fill_blank:{sentence:"Doctors recommend eating ___ foods to maintain good health.",sentence_cn:"医生建议吃有营养的食物来保持健康。",options:["nutritious","delicious","expensive","foreign"]},synonym_match:{synonyms:["healthy","nourishing"]},error_fix:{wrong:"This is a nutrition meal.",right:"This is a nutritious meal.",hint:"nutrition是名词，nutritious是形容词"}},
+  {word:"object",ph:"/ˈɒbdʒɪkt/",en:"a thing that you can see or touch; to disagree with or oppose something",cn:"物体；目标；反对",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"physical object", sent:"A chair is a physical object you can touch.", sentCn:"椅子是你能触摸到的实物。"},{phrase:"object to", sent:"Many parents object to their children playing too many video games.", sentCn:"许多父母反对孩子玩太多电子游戏。"},{phrase:"main object", sent:"The main object of this meeting is to discuss the budget.", sentCn:"这次会议的主要目的是讨论预算。"}],ex:"I found a strange object in the garden yesterday.",family:{noun:"object",verb:"object",adj:"objective"},syn:["item","thing"],ant:["subject"],collocation:{correct:["physical object","object to","main object"],distractors:["object with","object for"],example_sent:"Scientists study every physical object in the laboratory."},fill_blank:{sentence:"What is that round ___ on the table?",sentence_cn:"桌子上那个圆形的东西是什么？",options:["object","subject","project","reject"]},synonym_match:{synonyms:["item","thing"]},error_fix:{wrong:"I object with this plan.",right:"I object to this plan.",hint:"object作动词时后面接介词to"}},
+  {word:"occasion",ph:"/əˈkeɪʒən/",en:"a particular time when something happens; a special event or ceremony",cn:"场合；时机；特殊场合",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"on occasion", sent:"On occasion, he would visit his old friends in the countryside.", sentCn:"偶尔，他会去乡下拜访老朋友。"},{phrase:"special occasion", sent:"Birthdays are always special occasions for our family.", sentCn:"生日对我们家来说总是特殊的场合。"},{phrase:"on this occasion", sent:"On this occasion, I want to thank everyone for their support.", sentCn:"在这个场合，我想感谢大家的支持。"}],ex:"The wedding was a joyful occasion for the whole family.",family:{noun:"occasion",adj:"occasional",adv:"occasionally"},syn:["event","opportunity"],ant:[],collocation:{correct:["special occasion","on occasion","formal occasion"],distractors:["in occasion","at occasion"],example_sent:"Christmas is a special occasion for family gatherings."},fill_blank:{sentence:"The graduation ceremony was a memorable ___ for all students.",sentence_cn:"毕业典礼对所有学生来说都是一个难忘的场合。",options:["occasion","location","vacation","education"]},synonym_match:{synonyms:["event","opportunity"]},error_fix:{wrong:"In this occasion, we should dress formally.",right:"On this occasion, we should dress formally.",hint:"occasion前面用介词on而不是in"}},
+  {word:"offer",ph:"/ˈɒfə(r)/",en:"to ask someone if they would like something or if they would like you to do something",cn:"提供；出价；主动提出",lv:"basic",pos:"v",tags:["general"],phrases:[{phrase:"offer help", sent:"She always offers help to students who are struggling.", sentCn:"她总是向有困难的学生提供帮助。"},{phrase:"job offer", sent:"He received a job offer from a famous company.", sentCn:"他收到了一家知名公司的工作邀请。"},{phrase:"offer to do", sent:"My neighbor offered to walk my dog while I was away.", sentCn:"我不在的时候，邻居主动提出帮我遛狗。"}],ex:"The company offered him a position as marketing manager.",family:{noun:"offer",verb:"offer"},syn:["provide","give"],ant:["refuse","decline"],collocation:{correct:["offer help","job offer","offer advice"],distractors:["offer to help","offer for help"],example_sent:"Teachers often offer help to struggling students."},fill_blank:{sentence:"The restaurant ___ free Wi-Fi to all customers.",sentence_cn:"这家餐厅为所有顾客提供免费Wi-Fi。",options:["offers","orders","opens","owns"]},synonym_match:{synonyms:["provide","give"]},error_fix:{wrong:"He offered me to help.",right:"He offered to help me.",hint:"offer后接to do sth，不是offer sb to do"}},
+  {word:"openness",ph:"/ˈəʊpənnəs/",en:"the quality of being honest and not hiding information or feelings",cn:"开放；坦率；开明",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"openness to", sent:"Her openness to new ideas made her a great leader.", sentCn:"她对新想法的开放态度使她成为了一位优秀的领导者。"},{phrase:"cultural openness", sent:"Cultural openness helps people understand each other better.", sentCn:"文化开放性有助于人们更好地相互理解。"},{phrase:"with openness", sent:"She shared her experiences with complete openness.", sentCn:"她完全坦率地分享了自己的经历。"}],ex:"The teacher's openness created a comfortable learning environment.",family:{noun:"openness",verb:"open",adj:"open",adv:"openly"},syn:["honesty","frankness"],ant:["secrecy"],collocation:{correct:["openness to","cultural openness","with openness"],distractors:["openness for","openness about"],example_sent:"Students appreciate teachers' openness to different viewpoints."},fill_blank:{sentence:"The company's ___ about its policies impressed the employees.",sentence_cn:"公司对政策的坦率态度给员工留下了深刻印象。",options:["openness","business","darkness","closeness"]},synonym_match:{synonyms:["honesty","frankness"]},error_fix:{wrong:"He showed openness for new suggestions.",right:"He showed openness to new suggestions.",hint:"openness后面通常接介词to"}},
+  {word:"opposite",ph:"/ˈɒpəzɪt/",en:"completely different from something else; facing something else",cn:"相反的；对面的；相对的",lv:"basic",pos:"adj",tags:["general"],phrases:[{phrase:"opposite direction", sent:"The two cars were traveling in opposite directions.", sentCn:"两辆车朝相反的方向行驶。"},{phrase:"opposite side", sent:"My friend lives on the opposite side of the street.", sentCn:"我朋友住在街道的对面。"},{phrase:"quite the opposite", sent:"I thought he was angry, but it was quite the opposite.", sentCn:"我以为他生气了，但情况恰恰相反。"}],ex:"Hot and cold are opposite in meaning.",family:{noun:"opposite",adj:"opposite",adv:"oppositely"},syn:["contrary","reverse"],ant:["same","similar"],collocation:{correct:["opposite direction","opposite side","quite the opposite"],distractors:["opposite with","opposite from"],example_sent:"They walked in opposite directions after the meeting."},fill_blank:{sentence:"Black and white are ___ colors.",sentence_cn:"黑色和白色是相反的颜色。",options:["opposite","similar","beautiful","popular"]},synonym_match:{synonyms:["contrary","reverse"]},error_fix:{wrong:"This is opposite with my opinion.",right:"This is opposite to my opinion.",hint:"opposite作形容词时后面接介词to"}},
+  {word:"original",ph:"/əˈrɪdʒənl/",en:"existing from the beginning; new and creative; not copied",cn:"最初的；原创的；独创的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"original idea", sent:"She came up with an original idea for the school project.", sentCn:"她为学校项目想出了一个独创的想法。"},{phrase:"original version", sent:"I prefer the original version of this song to the remake.", sentCn:"比起翻唱版，我更喜欢这首歌的原版。"},{phrase:"original plan", sent:"We had to change our original plan due to bad weather.", sentCn:"由于天气恶劣，我们不得不改变原来的计划。"}],ex:"This painting is an original work by a famous artist.",family:{noun:"original",verb:"originate",adj:"original",adv:"originally"},syn:["initial","creative"],ant:["copied","final"],collocation:{correct:["original idea","original version","original plan"],distractors:["original thinking","original work"],example_sent:"Scientists need original ideas to make breakthroughs."},fill_blank:{sentence:"The movie was based on an ___ story by the director.",sentence_cn:"这部电影改编自导演的原创故事。",options:["original","ordinary","official","optional"]},synonym_match:{synonyms:["initial","creative"]},error_fix:{wrong:"This is the originated version of the book.",right:"This is the original version of the book.",hint:"用original作形容词，而不是originated"}},
+  {word:"outcome",ph:"/ˈaʊtkʌm/",en:"the final result of a process or action",cn:"结果；结局；成果",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"positive outcome", sent:"The team worked hard to achieve a positive outcome.", sentCn:"团队努力工作以取得积极的结果。"},{phrase:"final outcome", sent:"We won't know the final outcome until next week.", sentCn:"我们要到下周才能知道最终结果。"},{phrase:"unexpected outcome", sent:"The experiment had an unexpected outcome that surprised everyone.", sentCn:"实验产生了意想不到的结果，令所有人都很惊讶。"}],ex:"The outcome of the election was announced at midnight.",family:{},syn:["result","consequence"],ant:["cause","origin"],collocation:{correct:["positive outcome","final outcome","expected outcome"],distractors:["outcome success","make outcome"],example_sent:"The doctor was pleased with the positive outcome of the surgery."},fill_blank:{sentence:"The ___ of the negotiations will determine our future plans.",sentence_cn:"谈判的结果将决定我们未来的计划。",options:["outcome","income","welcome","overcome"]},synonym_match:{synonyms:["result","consequence"]},error_fix:{wrong:"What's the outcome about this project?",right:"What's the outcome of this project?",hint:"outcome后面应该用介词of而不是about"}},
+  {word:"pattern",ph:"/ˈpætərn/",en:"a regular arrangement or sequence; a model to follow",cn:"模式；图案；模型",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"behavior pattern", sent:"Scientists studied the behavior pattern of the animals.", sentCn:"科学家们研究了这些动物的行为模式。"},{phrase:"follow a pattern", sent:"Her daily routine follows the same pattern every day.", sentCn:"她的日常生活每天都遵循相同的模式。"},{phrase:"weather pattern", sent:"The weather pattern has changed dramatically this year.", sentCn:"今年的天气模式发生了巨大变化。"}],ex:"The dress has a beautiful floral pattern on it.",family:{verb:"pattern",adj:"patterned"},syn:["design","model"],ant:["chaos","disorder"],collocation:{correct:["behavior pattern","dress pattern","speech pattern"],distractors:["pattern style","make pattern"],example_sent:"The psychologist analyzed his behavior pattern carefully."},fill_blank:{sentence:"The wallpaper has a lovely floral ___ that matches the curtains.",sentence_cn:"壁纸上有美丽的花卉图案，与窗帘很配。",options:["pattern","patent","parent","patient"]},synonym_match:{synonyms:["design","model"]},error_fix:{wrong:"I like the pattern from this shirt.",right:"I like the pattern on this shirt.",hint:"表示物体表面的图案应该用介词on而不是from"}},
+  {word:"pause",ph:"/pɔːz/",en:"to stop temporarily; a temporary stop",cn:"暂停；停顿",lv:"basic",pos:"v",tags:["general"],phrases:[{phrase:"pause for thought", sent:"Let me pause for thought before I answer your question.", sentCn:"让我想一想再回答你的问题。"},{phrase:"without pause", sent:"He spoke for an hour without pause.", sentCn:"他不停顿地讲了一个小时。"},{phrase:"brief pause", sent:"After a brief pause, she continued her speech.", sentCn:"短暂停顿后，她继续演讲。"}],ex:"She paused to catch her breath before climbing the stairs.",family:{noun:"pause"},syn:["stop","halt"],ant:["continue","proceed"],collocation:{correct:["pause briefly","pause for thought","long pause"],distractors:["pause deeply","make pause"],example_sent:"The speaker paused briefly to look at his notes."},fill_blank:{sentence:"The teacher asked the class to ___ and think about the question.",sentence_cn:"老师要求全班同学停下来思考这个问题。",options:["pause","cause","clause","praise"]},synonym_match:{synonyms:["stop","halt"]},error_fix:{wrong:"Can you pause the music down?",right:"Can you pause the music?",hint:"pause是暂停的意思，不需要加down；调小音量用turn down"}},
+  {word:"pilot",ph:"/ˈpaɪlət/",en:"a person who flies an aircraft; to test or guide something",cn:"飞行员；试验；引导",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"airline pilot", sent:"My dream is to become an airline pilot.", sentCn:"我的梦想是成为一名航空公司飞行员。"},{phrase:"pilot program", sent:"The school launched a pilot program for online learning.", sentCn:"学校启动了在线学习试点项目。"},{phrase:"test pilot", sent:"The test pilot flew the new aircraft for the first time.", sentCn:"试飞员第一次驾驶这架新飞机。"}],ex:"The pilot announced that we would land in ten minutes.",family:{verb:"pilot"},syn:["aviator","flyer"],ant:[],collocation:{correct:["airline pilot","pilot project","experienced pilot"],distractors:["pilot person","drive pilot"],example_sent:"The airline pilot has over 20 years of flying experience."},fill_blank:{sentence:"The experienced ___ safely landed the plane in bad weather.",sentence_cn:"经验丰富的飞行员在恶劣天气中安全着陆。",options:["pilot","pirate","planet","plant"]},synonym_match:{synonyms:["aviator","flyer"]},error_fix:{wrong:"He works as a pilot of airplane.",right:"He works as a pilot.",hint:"pilot本身就包含了驾驶飞机的含义，不需要加of airplane"}},
+  {word:"politician",ph:"/ˌpɒləˈtɪʃən/",en:"a person involved in politics, especially as a career",cn:"政治家；政客",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"professional politician", sent:"He became a professional politician after graduating from law school.", sentCn:"他从法学院毕业后成为了职业政治家。"},{phrase:"local politician", sent:"The local politician promised to improve the schools.", sentCn:"当地政治家承诺改善学校条件。"},{phrase:"corrupt politician", sent:"The corrupt politician was arrested for taking bribes.", sentCn:"这名腐败的政治家因受贿被逮捕。"}],ex:"The politician gave a speech about education reform.",family:{adj:"political",adv:"politically"},syn:["statesman","lawmaker"],ant:[],collocation:{correct:["professional politician","local politician","senior politician"],distractors:["politician person","do politician"],example_sent:"The professional politician has served in government for 15 years."},fill_blank:{sentence:"The young ___ promised to fight corruption in the government.",sentence_cn:"这位年轻的政治家承诺要打击政府腐败。",options:["politician","magician","technician","musician"]},synonym_match:{synonyms:["statesman","lawmaker"]},error_fix:{wrong:"He is a politician of the government.",right:"He is a politician in the government.",hint:"表示政治家在政府中工作用介词in，而不是of"}},
+  {word:"potentially",ph:"/pəˈtenʃəli/",en:"possibly; having the capacity to develop into something",cn:"潜在地；可能地",lv:"intermediate",pos:"adv",tags:["general"],phrases:[{phrase:"potentially dangerous", sent:"This chemical is potentially dangerous if not handled properly.", sentCn:"如果处理不当，这种化学品有潜在危险。"},{phrase:"potentially useful", sent:"The research findings are potentially useful for future studies.", sentCn:"研究结果对未来的研究具有潜在用处。"},{phrase:"potentially harmful", sent:"Smoking is potentially harmful to your health.", sentCn:"吸烟对你的健康有潜在危害。"}],ex:"This new technology could potentially change our lives.",family:{adj:"potential",noun:"potential"},syn:["possibly","conceivably"],ant:["definitely","certainly"],collocation:{correct:["potentially dangerous","potentially useful","potentially harmful"],distractors:["potentially maybe","very potentially"],example_sent:"The new drug is potentially dangerous without proper testing."},fill_blank:{sentence:"This investment is ___ very profitable, but also risky.",sentence_cn:"这项投资可能非常有利可图，但也有风险。",options:["potentially","essentially","currently","recently"]},synonym_match:{synonyms:["possibly","conceivably"]},error_fix:{wrong:"This is a potentially very good idea.",right:"This is potentially a very good idea.",hint:"potentially应该放在不定冠词a之前，修饰整个名词短语"}},
+  {word:"practice",ph:"/ˈpræktɪs/",en:"repeated exercise to improve skill; to do something regularly",cn:"练习；实践；从事",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"put into practice", sent:"It's time to put our plan into practice.", sentCn:"是时候把我们的计划付诸实践了。"},{phrase:"common practice", sent:"It's common practice to shake hands when meeting someone.", sentCn:"见面时握手是常见做法。"},{phrase:"practice makes perfect", sent:"Keep trying - practice makes perfect!", sentCn:"继续努力——熟能生巧！"}],ex:"She needs more practice to improve her piano playing.",family:{verb:"practice",adj:"practical",adv:"practically"},syn:["exercise","training"],ant:["theory","neglect"],collocation:{correct:["daily practice","common practice","medical practice"],distractors:["practice work","make practice"],example_sent:"Daily practice is essential for learning a musical instrument."},fill_blank:{sentence:"The doctor has been in ___ for over twenty years.",sentence_cn:"这位医生已经行医二十多年了。",options:["practice","practical","practise","process"]},synonym_match:{synonyms:["exercise","training"]},error_fix:{wrong:"I need to practice for English every day.",right:"I need to practice English every day.",hint:"practice作动词时是及物动词，直接跟宾语，不需要介词for"}},
+  {word:"preparation",ph:"/ˌprepəˈreɪʃən/",en:"the action of making something ready for use",cn:"准备；预备工作",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"exam preparation", sent:"She spent months on exam preparation.", sentCn:"她花了几个月时间准备考试。"},{phrase:"in preparation for", sent:"The team trained hard in preparation for the match.", sentCn:"团队刻苦训练为比赛做准备。"},{phrase:"careful preparation", sent:"The success of the event required careful preparation.", sentCn:"活动的成功需要精心准备。"}],ex:"The preparation for the wedding took several months.",family:{verb:"prepare",adj:"preparatory"},syn:["planning","arrangement"],ant:["improvisation","spontaneity"],collocation:{correct:["careful preparation","exam preparation","thorough preparation"],distractors:["preparation work","make preparation"],example_sent:"Careful preparation is the key to success in any project."},fill_blank:{sentence:"The chef's ___ for the dinner party began early in the morning.",sentence_cn:"厨师为晚宴的准备工作从清晨就开始了。",options:["preparation","presentation","preservation","prevention"]},synonym_match:{synonyms:["planning","arrangement"]},error_fix:{wrong:"I'm doing preparation to the exam.",right:"I'm doing preparation for the exam.",hint:"preparation后面应该用介词for而不是to"}},
+  {word:"previous",ph:"/ˈpriːviəs/",en:"existing or occurring before something else in time or order",cn:"以前的；先前的；之前的",lv:"basic",pos:"adj",tags:["general"],phrases:[{phrase:"previous experience", sent:"The job requires previous experience in sales.", sentCn:"这份工作需要之前的销售经验。"},{phrase:"previous year", sent:"Sales increased by 20% compared to the previous year.", sentCn:"与前一年相比，销售额增长了20%。"},{phrase:"previous owner", sent:"The previous owner of the house left some furniture.", sentCn:"房子的前任主人留下了一些家具。"}],ex:"I had met him on a previous occasion.",family:{adv:"previously"},syn:["former","earlier"],ant:["next","following"],collocation:{correct:["previous experience","previous day","previous chapter"],distractors:["previous ago","before previous"],example_sent:"She drew on her previous experience to solve the problem."},fill_blank:{sentence:"The ___ meeting was cancelled due to bad weather.",sentence_cn:"由于天气不好，之前的会议被取消了。",options:["previous","precious","present","primary"]},synonym_match:{synonyms:["former","earlier"]},error_fix:{wrong:"I have been there in previous",right:"I have been there previously",hint:"previous是形容词，需要用副词previously修饰动词"}},
+  {word:"private",ph:"/ˈpraɪvət/",en:"belonging to or for the use of one particular person or group only",cn:"私人的；私有的；隐私的",lv:"basic",pos:"adj",tags:["general"],phrases:[{phrase:"private property", sent:"This is private property, no trespassing allowed.", sentCn:"这是私人财产，禁止擅自进入。"},{phrase:"private school", sent:"She attends a private school in the city center.", sentCn:"她在市中心的一所私立学校上学。"},{phrase:"in private", sent:"Can we talk about this matter in private?", sentCn:"我们能私下谈论这件事吗？"}],ex:"He keeps his personal life very private.",family:{noun:"privacy",adv:"privately"},syn:["personal","confidential"],ant:["public","open"],collocation:{correct:["private conversation","private information","private life"],distractors:["private personal","very private"],example_sent:"They had a private conversation about the business deal."},fill_blank:{sentence:"Please keep this information ___, don't share it with others.",sentence_cn:"请保密这个信息，不要与他人分享。",options:["private","primary","precise","proper"]},synonym_match:{synonyms:["personal","confidential"]},error_fix:{wrong:"This is my private's room",right:"This is my private room",hint:"private是形容词，不需要加's"}},
+  {word:"program",ph:"/ˈprəʊɡræm/",en:"a set of related measures or activities with a particular long-term aim",cn:"计划；程序；节目",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"training program", sent:"The company offers a comprehensive training program for new employees.", sentCn:"公司为新员工提供全面的培训计划。"},{phrase:"computer program", sent:"He wrote a computer program to solve mathematical equations.", sentCn:"他编写了一个计算机程序来解数学方程。"},{phrase:"TV program", sent:"What's your favorite TV program?", sentCn:"你最喜欢的电视节目是什么？"}],ex:"The government launched a new education program.",family:{verb:"program",adj:"programmatic"},syn:["plan","schedule"],ant:[],collocation:{correct:["educational program","exercise program","research program"],distractors:["program plan","make program"],example_sent:"The school introduced a new educational program this semester."},fill_blank:{sentence:"The fitness ___ includes both cardio and strength training.",sentence_cn:"这个健身计划包括有氧运动和力量训练。",options:["program","problem","progress","promise"]},synonym_match:{synonyms:["plan","schedule"]},error_fix:{wrong:"I need to make a program for study",right:"I need to make a plan for study",hint:"program通常指正式的、系统的计划，日常学习计划用plan更合适"}},
+  {word:"promote",ph:"/prəˈməʊt/",en:"to support or actively encourage; to raise to a higher position or rank",cn:"促进；提升；推广",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"promote health", sent:"Regular exercise helps promote good health.", sentCn:"定期锻炼有助于促进健康。"},{phrase:"get promoted", sent:"She got promoted to manager after five years of hard work.", sentCn:"经过五年的努力工作，她被提升为经理。"},{phrase:"promote products", sent:"The company uses social media to promote their products.", sentCn:"公司使用社交媒体推广他们的产品。"}],ex:"The campaign aims to promote environmental awareness.",family:{noun:"promotion",adj:"promotional"},syn:["advance","encourage"],ant:["demote","discourage"],collocation:{correct:["promote cooperation","promote development","promote understanding"],distractors:["promote up","promote forward"],example_sent:"International exchanges promote cooperation between countries."},fill_blank:{sentence:"The new policy will help ___ economic growth in rural areas.",sentence_cn:"新政策将有助于促进农村地区的经济增长。",options:["promote","promise","protect","provide"]},synonym_match:{synonyms:["advance","encourage"]},error_fix:{wrong:"He was promoted as manager",right:"He was promoted to manager",hint:"promote to表示提升到某个职位，不用as"}},
+  {word:"protection",ph:"/prəˈtekʃn/",en:"the action of protecting someone or something, or the state of being protected",cn:"保护；防护",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"environmental protection", sent:"Environmental protection is everyone's responsibility.", sentCn:"环境保护是每个人的责任。"},{phrase:"under protection", sent:"The witness is under police protection.", sentCn:"证人受到警方保护。"},{phrase:"sun protection", sent:"Don't forget to use sun protection when you go to the beach.", sentCn:"去海滩时别忘了使用防晒保护。"}],ex:"The new law offers better protection for consumers.",family:{verb:"protect",adj:"protective"},syn:["defense","security"],ant:["exposure","danger"],collocation:{correct:["legal protection","fire protection","data protection"],distractors:["protection against","make protection"],example_sent:"The company provides legal protection for its employees."},fill_blank:{sentence:"Workers must wear helmets for ___ against falling objects.",sentence_cn:"工人必须佩戴头盔以防坠落物体。",options:["protection","production","promotion","proportion"]},synonym_match:{synonyms:["defense","security"]},error_fix:{wrong:"We need protection from the rain",right:"We need protection against the rain",hint:"protection后通常用against表示防护某事物"}},
+  {word:"provide",ph:"/prəˈvaɪd/",en:"to make available for use; to supply or furnish",cn:"提供；供应；规定",lv:"basic",pos:"v",tags:["general"],phrases:[{phrase:"provide with", sent:"The school provides students with free textbooks.", sentCn:"学校为学生提供免费教科书。"},{phrase:"provide for", sent:"He works hard to provide for his family.", sentCn:"他努力工作养家糊口。"},{phrase:"provide information", sent:"Could you provide more information about the course?", sentCn:"你能提供更多关于这门课程的信息吗？"}],ex:"The hotel provides excellent service to its guests.",family:{noun:"provision",adj:"provisional"},syn:["supply","offer"],ant:["withhold","deny"],collocation:{correct:["provide assistance","provide evidence","provide support"],distractors:["provide to","provide give"],example_sent:"The organization provides assistance to homeless people."},fill_blank:{sentence:"The government will ___ financial aid to flood victims.",sentence_cn:"政府将向洪水灾民提供经济援助。",options:["provide","produce","protect","promise"]},synonym_match:{synonyms:["supply","offer"]},error_fix:{wrong:"Please provide me the answer",right:"Please provide me with the answer",hint:"provide sb with sth是正确搭配，不能省略with"}},
+  {word:"rate",ph:"/reɪt/",en:"a measure, quantity, or frequency per unit of time",cn:"比率；速度；价格",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"interest rate", sent:"The bank raised the interest rate by 0.5%.", sentCn:"银行将利率提高了0.5%。"},{phrase:"at this rate", sent:"At this rate, we'll finish the project by Friday.", sentCn:"照这个速度，我们将在周五完成项目。"},{phrase:"unemployment rate", sent:"The unemployment rate has decreased this year.", sentCn:"今年失业率有所下降。"}],ex:"The success rate of the treatment is quite high.",family:{verb:"rate",noun:"rating"},syn:["speed","pace"],ant:[],collocation:{correct:["growth rate","crime rate","exchange rate"],distractors:["rate speed","high rate fast"],example_sent:"The country's economic growth rate exceeded expectations."},fill_blank:{sentence:"The heart ___ increases during exercise.",sentence_cn:"运动时心率会增加。",options:["rate","rank","race","range"]},synonym_match:{synonyms:["speed","pace"]},error_fix:{wrong:"The rate of students is very high",right:"The number of students is very high",hint:"rate指比率或速度，学生人数应该用number"}},
+  {word:"recognition",ph:"/ˌrekəɡˈnɪʃn/",en:"acknowledgment of the existence, validity, or legality of something",cn:"认识；承认；表彰",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"gain recognition", sent:"Her work finally gained recognition from the international community.", sentCn:"她的工作终于获得了国际社会的认可。"},{phrase:"in recognition of", sent:"He received an award in recognition of his outstanding service.", sentCn:"他因杰出的服务而获得奖项。"},{phrase:"face recognition", sent:"The new phone has advanced face recognition technology.", sentCn:"新手机有先进的面部识别技术。"}],ex:"The company seeks recognition as a leader in innovation.",family:{verb:"recognize",adj:"recognizable"},syn:["acknowledgment","appreciation"],ant:["ignorance","denial"],collocation:{correct:["international recognition","public recognition","official recognition"],distractors:["recognition award","get recognition"],example_sent:"The university seeks international recognition for its research programs."},fill_blank:{sentence:"The artist received widespread ___ for her innovative paintings.",sentence_cn:"这位艺术家因其创新的绘画作品而获得广泛认可。",options:["recognition","reaction","reflection","recreation"]},synonym_match:{synonyms:["acknowledgment","appreciation"]},error_fix:{wrong:"He got a recognition for his hard work",right:"He received recognition for his hard work",hint:"recognition是不可数名词，不用a，通常用receive recognition"}},
+  {word:"recipe",ph:"/ˈresɪpi/",en:"a set of instructions for preparing a dish or achieving something",cn:"食谱；方法；秘诀",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"follow a recipe", sent:"She carefully followed the recipe to make the cake.", sentCn:"她仔细按照食谱做蛋糕。"},{phrase:"recipe for success", sent:"Hard work and determination are a recipe for success.", sentCn:"努力工作和决心是成功的秘诀。"},{phrase:"family recipe", sent:"This is my grandmother's secret family recipe.", sentCn:"这是我祖母秘传的家族食谱。"}],ex:"I found a delicious recipe for chocolate cookies online.",family:{noun:"recipe"},syn:["formula","method"],ant:[],collocation:{correct:["follow a recipe","secret recipe","traditional recipe"],distractors:["make a recipe","do a recipe"],example_sent:"You should follow a recipe when cooking for the first time."},fill_blank:{sentence:"My mother shared her favorite ___ for apple pie with me.",sentence_cn:"我妈妈和我分享了她最喜欢的苹果派食谱。",options:["recipe","receipt","respond","rescue"]},synonym_match:{synonyms:["formula","method"]},error_fix:{wrong:"I will make a new recipe today",right:"I will try a new recipe today",hint:"recipe是食谱，要用try或follow，不能用make"}},
+  {word:"regain",ph:"/rɪˈɡeɪn/",en:"to get back something that was lost or taken away",cn:"重新获得；恢复",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"regain consciousness", sent:"The patient regained consciousness after the surgery.", sentCn:"病人术后恢复了意识。"},{phrase:"regain strength", sent:"It took months for him to regain his strength after the illness.", sentCn:"生病后他花了几个月时间才恢复体力。"},{phrase:"regain control", sent:"The government struggled to regain control of the situation.", sentCn:"政府努力重新控制局势。"}],ex:"She hopes to regain her confidence after the failure.",family:{verb:"regain",noun:"regaining"},syn:["recover","retrieve"],ant:["lose","forfeit"],collocation:{correct:["regain consciousness","regain control","regain confidence"],distractors:["regain back","regain again"],example_sent:"The driver regained consciousness in the hospital."},fill_blank:{sentence:"After months of practice, she was able to ___ her ability to play piano.",sentence_cn:"经过几个月的练习，她重新获得了弹钢琴的能力。",options:["regain","remain","retain","restrain"]},synonym_match:{synonyms:["recover","retrieve"]},error_fix:{wrong:"He regained back his memory",right:"He regained his memory",hint:"regain本身就有'重新获得'的意思，不需要再加back"}},
+  {word:"relate",ph:"/rɪˈleɪt/",en:"to show or make a connection between things; to tell a story",cn:"联系；叙述；理解",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"relate to", sent:"I can really relate to your problems with studying.", sentCn:"我真的能理解你在学习上的问题。"},{phrase:"be related to", sent:"His illness is related to stress at work.", sentCn:"他的疾病与工作压力有关。"},{phrase:"relate something to", sent:"She related the story to her childhood experiences.", sentCn:"她把这个故事与童年经历联系起来。"}],ex:"Can you relate your theory to real-life examples?",family:{verb:"relate",noun:"relation",adj:"related",adv:"relatively"},syn:["connect","associate"],ant:["separate","disconnect"],collocation:{correct:["relate to something","closely related","directly relate"],distractors:["relate with something","relate about"],example_sent:"Many students can relate to the stress of exams."},fill_blank:{sentence:"This new research doesn't ___ to our current project at all.",sentence_cn:"这项新研究与我们目前的项目完全没有关系。",options:["relate","reply","repeat","repair"]},synonym_match:{synonyms:["connect","associate"]},error_fix:{wrong:"I can't relate with this music",right:"I can't relate to this music",hint:"relate表示'理解，产生共鸣'时用relate to，不用relate with"}},
+  {word:"remain",ph:"/rɪˈmeɪn/",en:"to stay in the same place or condition; to continue to exist",cn:"保持；剩余；仍然是",lv:"basic",pos:"v",tags:["general"],phrases:[{phrase:"remain calm", sent:"Please remain calm during the emergency.", sentCn:"紧急情况下请保持冷静。"},{phrase:"remain unchanged", sent:"The policy will remain unchanged for now.", sentCn:"该政策目前将保持不变。"},{phrase:"remain to be seen", sent:"Whether the plan will work remains to be seen.", sentCn:"这个计划是否有效还有待观察。"}],ex:"Only a few tickets remain for tonight's show.",family:{verb:"remain",noun:"remains",adj:"remaining"},syn:["stay","continue"],ant:["leave","depart"],collocation:{correct:["remain calm","remain silent","remain unchanged"],distractors:["remain as calm","keep remain"],example_sent:"You should remain calm in difficult situations."},fill_blank:{sentence:"Despite the criticism, she chose to ___ silent about the incident.",sentence_cn:"尽管受到批评，她选择对这件事保持沉默。",options:["remain","retain","regain","refrain"]},synonym_match:{synonyms:["stay","continue"]},error_fix:{wrong:"The door remains opened",right:"The door remains open",hint:"remain后接形容词作表语，用open而不是opened"}},
+  {word:"rental",ph:"/ˈrentl/",en:"the act of renting or something that is rented",cn:"租赁；租金；出租的",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"car rental", sent:"We booked a car rental for our vacation.", sentCn:"我们为度假预订了租车。"},{phrase:"rental fee", sent:"The rental fee includes insurance and gas.", sentCn:"租金包括保险和汽油费。"},{phrase:"rental property", sent:"He owns several rental properties in the city.", sentCn:"他在城里拥有几处出租房产。"}],ex:"The bike rental shop is open until 6 PM.",family:{noun:"rental",verb:"rent"},syn:["lease","hire"],ant:["purchase","ownership"],collocation:{correct:["car rental","rental agreement","rental property"],distractors:["rental price","rental cost"],example_sent:"The car rental company offers good deals for students."},fill_blank:{sentence:"The ___ agreement clearly states the terms and conditions.",sentence_cn:"租赁协议清楚地说明了条款和条件。",options:["rental","mental","dental","central"]},synonym_match:{synonyms:["lease","hire"]},error_fix:{wrong:"I need to pay the rent fee",right:"I need to pay the rental fee",hint:"租金费用要说rental fee，不是rent fee"}},
+  {word:"reply",ph:"/rɪˈplaɪ/",en:"to answer or respond to something",cn:"回复；回答；答复",lv:"basic",pos:"v",tags:["general"],phrases:[{phrase:"reply to", sent:"Please reply to my email as soon as possible.", sentCn:"请尽快回复我的邮件。"},{phrase:"in reply to", sent:"I'm writing in reply to your advertisement.", sentCn:"我写信回应您的广告。"},{phrase:"reply immediately", sent:"She didn't reply immediately to his question.", sentCn:"她没有立即回答他的问题。"}],ex:"He didn't reply to my message yesterday.",family:{verb:"reply",noun:"reply"},syn:["answer","respond"],ant:["ignore","neglect"],collocation:{correct:["reply to something","quick reply","no reply"],distractors:["reply for something","reply about"],example_sent:"I need to reply to this email before leaving."},fill_blank:{sentence:"She waited all day for him to ___ to her text message.",sentence_cn:"她等了一整天等他回复她的短信。",options:["reply","apply","supply","comply"]},synonym_match:{synonyms:["answer","respond"]},error_fix:{wrong:"Please reply me soon",right:"Please reply to me soon",hint:"reply是不及物动词，要用reply to sb，不能直接接宾语"}},
+  {word:"request",ph:"/rɪˈkwest/",en:"to ask for something politely or formally",cn:"请求；要求；申请",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"make a request", sent:"I'd like to make a request for more information.", sentCn:"我想要求获得更多信息。"},{phrase:"request for", sent:"His request for a promotion was approved.", sentCn:"他的升职要求获得了批准。"},{phrase:"upon request", sent:"Additional materials are available upon request.", sentCn:"如有需要可提供额外材料。"}],ex:"I request that you arrive on time for the meeting.",family:{verb:"request",noun:"request"},syn:["ask","demand"],ant:["refuse","deny"],collocation:{correct:["make a request","formal request","request information"],distractors:["do a request","give a request"],example_sent:"Students can make a request for additional study materials."},fill_blank:{sentence:"The teacher will ___ that all students submit their assignments on time.",sentence_cn:"老师将要求所有学生按时提交作业。",options:["request","require","acquire","inquire"]},synonym_match:{synonyms:["ask","demand"]},error_fix:{wrong:"I request you to help me",right:"I request that you help me",hint:"request后接宾语从句时用that从句，不用不定式"}},
+  {word:"researcher",ph:"/rɪˈsɜːrtʃər/",en:"a person who conducts research or scientific investigation",cn:"研究员；调研员",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"medical researcher", sent:"The medical researcher published important findings about cancer.", sentCn:"这位医学研究员发表了关于癌症的重要发现。"},{phrase:"lead researcher", sent:"Dr. Smith is the lead researcher on this project.", sentCn:"史密斯博士是这个项目的首席研究员。"},{phrase:"independent researcher", sent:"She works as an independent researcher in linguistics.", sentCn:"她是语言学领域的独立研究员。"}],ex:"The researcher spent years studying climate change.",family:{noun:"research",verb:"research"},syn:["scientist","investigator"],ant:[],collocation:{correct:["medical researcher","lead researcher","research team"],distractors:["research person","study researcher"],example_sent:"The medical researcher discovered a new treatment method."},fill_blank:{sentence:"The ___ collected data from over 1000 participants in the study.",sentence_cn:"研究员从研究中的1000多名参与者那里收集了数据。",options:["researcher","searcher","teacher","preacher"]},synonym_match:{synonyms:["scientist","investigator"]},error_fix:{wrong:"He is a research worker",right:"He is a researcher",hint:"从事研究工作的人称为researcher，不说research worker"}},
+  {word:"reserve",ph:"/rɪˈzɜːv/",en:"to keep something for future use; to book in advance",cn:"预订；保留；储备",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"reserve a table", sent:"I'd like to reserve a table for four people tonight.", sentCn:"我想为今晚预订一张四人桌。"},{phrase:"nature reserve", sent:"The government established a nature reserve to protect endangered species.", sentCn:"政府建立了自然保护区来保护濒危物种。"},{phrase:"in reserve", sent:"We keep some money in reserve for emergencies.", sentCn:"我们留一些钱作为应急储备。"}],ex:"Please reserve two seats for tomorrow's concert.",family:{noun:"reserve/reservation",verb:"reserve",adj:"reserved"},syn:["book","save"],ant:["cancel","waste"],collocation:{correct:["reserve a seat","reserve the right","cash reserve"],distractors:["reserve money","reserve time"],example_sent:"You should reserve a seat on the train in advance."},fill_blank:{sentence:"We need to ___ a hotel room for our trip next week.",sentence_cn:"我们需要为下周的旅行预订一个酒店房间。",options:["reserve","preserve","deserve","observe"]},synonym_match:{synonyms:["book","keep"]},error_fix:{wrong:"I want to reserve some time to study.",right:"I want to set aside some time to study.",hint:"reserve不用于时间，应该用set aside表示留出时间"}},
+  {word:"restaurant",ph:"/ˈrestrɒnt/",en:"a place where people pay to sit and eat meals",cn:"餐厅；饭店",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"fast food restaurant", sent:"There's a fast food restaurant on every corner in this city.", sentCn:"这个城市的每个街角都有快餐店。"},{phrase:"Chinese restaurant", sent:"We went to a Chinese restaurant for dinner last night.", sentCn:"昨晚我们去中餐厅吃晚饭。"},{phrase:"restaurant owner", sent:"The restaurant owner greets customers personally every evening.", sentCn:"餐厅老板每晚都亲自迎接客人。"}],ex:"This Italian restaurant serves the best pasta in town.",family:{noun:"restaurant"},syn:["cafe","eatery"],ant:[],collocation:{correct:["fancy restaurant","restaurant menu","restaurant business"],distractors:["restaurant store","restaurant shop"],example_sent:"We celebrated our anniversary at a fancy restaurant downtown."},fill_blank:{sentence:"The new ___ downtown serves excellent seafood dishes.",sentence_cn:"市中心的新餐厅提供极好的海鲜菜肴。",options:["restaurant","library","hospital","factory"]},synonym_match:{synonyms:["cafe","diner"]},error_fix:{wrong:"I work in a restaurant store.",right:"I work in a restaurant.",hint:"restaurant本身就是名词，不需要加store"}},
+  {word:"review",ph:"/rɪˈvjuː/",en:"to examine or study again; a critical assessment",cn:"复习；评论；检查",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"book review", sent:"She wrote a book review for the local newspaper.", sentCn:"她为当地报纸写了一篇书评。"},{phrase:"review lessons", sent:"Students should review lessons before exams.", sentCn:"学生应该在考试前复习功课。"},{phrase:"under review", sent:"The company's policy is currently under review.", sentCn:"公司政策目前正在审查中。"}],ex:"I need to review my notes before the test tomorrow.",family:{noun:"review",verb:"review"},syn:["examine","assess"],ant:["ignore","neglect"],collocation:{correct:["review progress","movie review","peer review"],distractors:["review study","review learn"],example_sent:"The teacher will review progress with each student individually."},fill_blank:{sentence:"Please ___ the document carefully before signing it.",sentence_cn:"请在签字前仔细检查这份文件。",options:["review","preview","interview","overview"]},synonym_match:{synonyms:["examine","check"]},error_fix:{wrong:"I need to review study for the exam.",right:"I need to review for the exam.",hint:"review作动词时直接用，不需要加study"}},
+  {word:"reward",ph:"/rɪˈwɔːd/",en:"something given in return for good behavior or achievement",cn:"奖励；报酬；回报",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"cash reward", sent:"The police offered a cash reward for information about the crime.", sentCn:"警方悬赏征集有关犯罪的信息。"},{phrase:"reward system", sent:"The school introduced a reward system to motivate students.", sentCn:"学校引入了奖励制度来激励学生。"},{phrase:"hard work pays reward", sent:"Her promotion shows that hard work pays reward.", sentCn:"她的晋升表明努力工作会得到回报。"}],ex:"Good grades are the reward for studying hard.",family:{noun:"reward",verb:"reward",adj:"rewarding"},syn:["prize","bonus"],ant:["punishment","penalty"],collocation:{correct:["financial reward","reward points","deserve reward"],distractors:["reward money","get reward"],example_sent:"Employees receive financial reward for excellent performance."},fill_blank:{sentence:"The company will ___ employees who work overtime with extra pay.",sentence_cn:"公司将给加班的员工额外报酬作为奖励。",options:["reward","award","toward","forward"]},synonym_match:{synonyms:["prize","compensation"]},error_fix:{wrong:"I want to get reward from my hard work.",right:"I want to receive reward for my hard work.",hint:"reward常用receive/earn/deserve等动词，get太口语化"}},
+  {word:"schedule",ph:"/ˈʃedjuːl/",en:"a plan showing when events will happen; to arrange timing",cn:"时间表；计划；安排",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"daily schedule", sent:"My daily schedule includes three hours of study time.", sentCn:"我的日程安排包括三小时的学习时间。"},{phrase:"behind schedule", sent:"The construction project is running behind schedule.", sentCn:"建筑项目进度落后于计划。"},{phrase:"on schedule", sent:"The train arrived exactly on schedule.", sentCn:"火车准时到达。"}],ex:"Please check your class schedule for tomorrow.",family:{noun:"schedule",verb:"schedule",adj:"scheduled"},syn:["timetable","agenda"],ant:["chaos","disorder"],collocation:{correct:["tight schedule","flexible schedule","work schedule"],distractors:["schedule time","schedule plan"],example_sent:"I have a very tight schedule this week with many meetings."},fill_blank:{sentence:"The meeting is ___ for 3 PM tomorrow afternoon.",sentence_cn:"会议安排在明天下午3点。",options:["scheduled","planned","arranged","organized"]},synonym_match:{synonyms:["timetable","plan"]},error_fix:{wrong:"I need to make a schedule time for study.",right:"I need to schedule time for study.",hint:"schedule作动词时直接用，不用make a schedule time"}},
+  {word:"separate",ph:"/ˈsepərət/",en:"to divide or move apart; existing independently",cn:"分开；单独的；分离",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"separate from", sent:"Children should learn to separate right from wrong.", sentCn:"孩子们应该学会分辨是非。"},{phrase:"separate rooms", sent:"The twins prefer to have separate rooms.", sentCn:"双胞胎更喜欢有各自的房间。"},{phrase:"go separate ways", sent:"After graduation, we all went our separate ways.", sentCn:"毕业后，我们都各奔东西了。"}],ex:"Please separate the white clothes from the colored ones.",family:{noun:"separation",verb:"separate",adj:"separate",adv:"separately"},syn:["divide","split"],ant:["unite","combine"],collocation:{correct:["separate issue","separate entrance","completely separate"],distractors:["separate apart","separate away"],example_sent:"This is a completely separate issue from what we discussed yesterday."},fill_blank:{sentence:"The teacher asked students to ___ into small groups for discussion.",sentence_cn:"老师要求学生分成小组进行讨论。",options:["separate","compare","prepare","operate"]},synonym_match:{synonyms:["divide","isolate"]},error_fix:{wrong:"We need to separate apart the books.",right:"We need to separate the books.",hint:"separate本身就含有分开的意思，不需要加apart"}},
+  {word:"session",ph:"/ˈseʃn/",en:"a period of time devoted to a particular activity",cn:"会议；时段；学期",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"training session", sent:"All employees must attend the training session next week.", sentCn:"所有员工必须参加下周的培训课程。"},{phrase:"study session", sent:"We organized a study session before the final exam.", sentCn:"期末考试前我们组织了一次学习小组。"},{phrase:"recording session", sent:"The band booked a recording session at the studio.", sentCn:"乐队在录音室预订了录音时段。"}],ex:"The therapy session lasted for one hour.",family:{noun:"session"},syn:["meeting","period"],ant:[],collocation:{correct:["therapy session","question session","photo session"],distractors:["session time","session period"],example_sent:"The therapy session helped her deal with stress."},fill_blank:{sentence:"The Q&A ___ will begin after the presentation ends.",sentence_cn:"问答环节将在演示结束后开始。",options:["session","lesson","section","version"]},synonym_match:{synonyms:["meeting","class"]},error_fix:{wrong:"We had a two-hour session time today.",right:"We had a two-hour session today.",hint:"session本身就表示时段，不需要加time"}},
+  {word:"settle",ph:"/ˈsetl/",en:"to resolve a problem; to make a home in a new place",cn:"解决；定居；安顿",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"settle down", sent:"After years of traveling, he decided to settle down.", sentCn:"经过多年的旅行，他决定安定下来。"},{phrase:"settle a dispute", sent:"The two companies settled their dispute out of court.", sentCn:"两家公司在庭外解决了争端。"},{phrase:"settle in", sent:"It took her a few weeks to settle in at her new job.", sentCn:"她花了几周时间适应新工作。"}],ex:"They decided to settle their differences peacefully.",family:{noun:"settlement",verb:"settle",adj:"settled"},syn:["resolve","solve"],ant:["disturb","unsettle"],collocation:{correct:["settle accounts","settle matters","finally settle"],distractors:["settle problems","settle questions"],example_sent:"We need to settle accounts with the supplier this month."},fill_blank:{sentence:"The family decided to ___ in Canada after immigrating.",sentence_cn:"这个家庭移民后决定在加拿大定居。",options:["settle","battle","cattle","rattle"]},synonym_match:{synonyms:["resolve","establish"]},error_fix:{wrong:"We need to settle this problem quickly.",right:"We need to settle this matter quickly.",hint:"settle常与matter/dispute/issue搭配，很少直接说settle problem"}},
+  {word:"shine",ph:"/ʃaɪn/",en:"to give out bright light; to be very good at something",cn:"发光；闪耀；擅长",lv:"basic",pos:"v",tags:["general"],phrases:[{phrase:"shine bright", sent:"The stars shine bright in the clear night sky.", sentCn:"繁星在晴朗的夜空中闪闪发光。"},{phrase:"shine through", sent:"Her kindness always shines through in difficult times.", sentCn:"在困难时期，她的善良总是显现出来。"},{phrase:"make something shine", sent:"He polished the car to make it shine.", sentCn:"他把车擦得锃亮。"}],ex:"The sun shines brightly today.",family:{noun:"shine",verb:"shine",adj:"shiny",adv:"shinily"},syn:["glow","gleam"],ant:["dim","fade"],collocation:{correct:["shine brightly","shine light","shoes shine"],distractors:["shine strongly","shine hardly"],example_sent:"The lighthouse shines brightly to guide ships safely to shore."},fill_blank:{sentence:"The moon will ___ tonight because the sky is clear.",sentence_cn:"今晚月亮会发光，因为天空很晴朗。",options:["shine","shadow","shade","sharp"]},synonym_match:{synonyms:["glow","gleam"]},error_fix:{wrong:"The light is shining very hardly.",right:"The light is shining very brightly.",hint:"描述光线强度用brightly，不用hardly"}},
+  {word:"silly",ph:"/ˈsɪli/",en:"showing a lack of thought or judgment; foolish",cn:"愚蠢的；糊涂的；可笑的",lv:"basic",pos:"adj",tags:["general"],phrases:[{phrase:"silly mistake", sent:"I made a silly mistake on the math test.", sentCn:"我在数学考试中犯了一个愚蠢的错误。"},{phrase:"look silly", sent:"Don't worry about looking silly when you dance.", sentCn:"跳舞时不要担心看起来很傻。"},{phrase:"silly question", sent:"There's no such thing as a silly question in class.", sentCn:"在课堂上没有愚蠢的问题。"}],ex:"It was silly of me to forget my umbrella on a rainy day.",family:{noun:"silliness",adj:"silly",adv:"sillily"},syn:["foolish","stupid"],ant:["wise","sensible"],collocation:{correct:["silly mistake","look silly","silly idea"],distractors:["silly intelligent","very silly much"],example_sent:"Making a silly mistake like that cost us the game."},fill_blank:{sentence:"Don't be so ___; that's actually a good suggestion.",sentence_cn:"别这么傻；那实际上是个好建议。",options:["silly","serious","smart","strong"]},synonym_match:{synonyms:["foolish","stupid"]},error_fix:{wrong:"He is very silly much.",right:"He is very silly.",hint:"silly是形容词，前面用very修饰即可，不需要much"}},
+  {word:"slice",ph:"/slaɪs/",en:"a thin piece cut from something; to cut into thin pieces",cn:"薄片；切片",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"slice of bread", sent:"Would you like another slice of bread with your soup?", sentCn:"你想再来一片面包配汤吗？"},{phrase:"slice up", sent:"Please slice up the vegetables for the salad.", sentCn:"请把蔬菜切片做沙拉。"},{phrase:"thin slice", sent:"Cut the apple into thin slices for the pie.", sentCn:"把苹果切成薄片做馅饼。"}],ex:"She cut the cake into eight equal slices.",family:{noun:"slice",verb:"slice"},syn:["piece","portion"],ant:["whole","entirety"],collocation:{correct:["slice of bread","thin slice","slice carefully"],distractors:["slice hardly","slice of water"],example_sent:"I'll have just one slice of bread with my breakfast."},fill_blank:{sentence:"Could you cut me a ___ of that delicious cake?",sentence_cn:"你能给我切一片那个美味的蛋糕吗？",options:["slice","slide","sleep","slow"]},synonym_match:{synonyms:["piece","portion"]},error_fix:{wrong:"I want a slice of water.",right:"I want a glass of water.",hint:"slice用于固体食物，液体用glass或cup"}},
+  {word:"snack",ph:"/snæk/",en:"a small amount of food eaten between meals",cn:"零食；小食；点心",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"healthy snack", sent:"Fruits and nuts make excellent healthy snacks.", sentCn:"水果和坚果是很好的健康零食。"},{phrase:"snack time", sent:"The children look forward to snack time every afternoon.", sentCn:"孩子们每天下午都期待零食时间。"},{phrase:"grab a snack", sent:"Let's grab a snack before the movie starts.", sentCn:"电影开始前我们吃点零食吧。"}],ex:"I always keep some snacks in my backpack for when I get hungry.",family:{noun:"snack",verb:"snack"},syn:["treat","bite"],ant:["meal","feast"],collocation:{correct:["healthy snack","grab snack","snack food"],distractors:["snack hardly","big snack meal"],example_sent:"A healthy snack can give you energy between meals."},fill_blank:{sentence:"I'm a little hungry, so I'll have a quick ___.",sentence_cn:"我有点饿了，所以我要吃点零食。",options:["snack","snake","shock","stack"]},synonym_match:{synonyms:["treat","bite"]},error_fix:{wrong:"I want to eat a big snack meal.",right:"I want to eat a big meal.",hint:"snack是小份食物，大餐应该说meal"}},
+  {word:"solar",ph:"/ˈsoʊlər/",en:"relating to or derived from the sun",cn:"太阳的；日光的；太阳能的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"solar energy", sent:"Many houses now use solar energy to reduce electricity costs.", sentCn:"现在许多房屋使用太阳能来降低电费。"},{phrase:"solar system", sent:"Earth is the third planet from the sun in our solar system.", sentCn:"地球是我们太阳系中距离太阳第三近的行星。"},{phrase:"solar panel", sent:"The solar panels on the roof generate clean electricity.", sentCn:"屋顶上的太阳能电池板产生清洁电力。"}],ex:"The solar panels convert sunlight into electricity.",family:{adj:"solar"},syn:["sun-powered"],ant:["lunar"],collocation:{correct:["solar energy","solar panel","solar system"],distractors:["solar hardly","solar moon"],example_sent:"Solar energy is becoming more popular as technology improves."},fill_blank:{sentence:"The ___ system includes eight planets orbiting the sun.",sentence_cn:"太阳系包括八颗围绕太阳运行的行星。",options:["solar","lunar","polar","popular"]},synonym_match:{synonyms:["sun-powered"]},error_fix:{wrong:"The solar moon is bright tonight.",right:"The moon is bright tonight.",hint:"solar与太阳相关，月亮不能用solar修饰"}},
+  {word:"solution",ph:"/səˈluːʃən/",en:"a way of solving a problem; a liquid mixture",cn:"解决方案；溶液",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"find solution", sent:"We need to find a solution to this traffic problem.", sentCn:"我们需要找到解决这个交通问题的方案。"},{phrase:"perfect solution", sent:"There's no perfect solution, but this is our best option.", sentCn:"没有完美的解决方案，但这是我们最好的选择。"},{phrase:"solution to", sent:"Education is often seen as the solution to poverty.", sentCn:"教育常被视为解决贫困的方案。"}],ex:"The teacher helped us find the solution to the difficult math problem.",family:{noun:"solution",verb:"solve",adj:"solvable"},syn:["answer","remedy"],ant:["problem","question"],collocation:{correct:["find solution","perfect solution","solution to"],distractors:["solution hardly","solution for problem"],example_sent:"We must find a solution that works for everyone."},fill_blank:{sentence:"The scientists are working hard to find a ___ to climate change.",sentence_cn:"科学家们正在努力寻找气候变化的解决方案。",options:["solution","pollution","evolution","revolution"]},synonym_match:{synonyms:["answer","remedy"]},error_fix:{wrong:"What's the solution for this problem?",right:"What's the solution to this problem?",hint:"solution后面用介词to，不用for"}},
+  {word:"source",ph:"/sɔːrs/",en:"a place, person, or thing from which something comes or can be obtained",cn:"来源；源头；出处",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"source of information", sent:"The internet is a valuable source of information for students.", sentCn:"互联网对学生来说是宝贵的信息来源。"},{phrase:"reliable source", sent:"Always check if your news comes from a reliable source.", sentCn:"要始终检查你的新闻是否来自可靠来源。"},{phrase:"energy source", sent:"Wind and solar are clean energy sources.", sentCn:"风能和太阳能是清洁能源。"}],ex:"What is the source of this river?",family:{noun:"source",verb:"source"},syn:["origin","root"],ant:["destination","end"],collocation:{correct:["reliable source","energy source","source of"],distractors:["source hardly","source at"],example_sent:"Wikipedia is not always considered a reliable source for academic papers."},fill_blank:{sentence:"Can you tell me the ___ of this interesting story?",sentence_cn:"你能告诉我这个有趣故事的来源吗？",options:["source","sauce","course","force"]},synonym_match:{synonyms:["origin","root"]},error_fix:{wrong:"What's the source at this problem?",right:"What's the source of this problem?",hint:"source后面用介词of，不用at"}},
+  {word:"spot",ph:"/spɑːt/",en:"a small round mark; a place; to see or notice",cn:"斑点；地点；发现",lv:"basic",pos:"n",tags:["general"],phrases:[{phrase:"on the spot", sent:"The reporter interviewed witnesses on the spot.", sentCn:"记者在现场采访了目击者。"},{phrase:"spot someone", sent:"I managed to spot my friend in the crowded stadium.", sentCn:"我设法在拥挤的体育场里发现了我的朋友。"},{phrase:"perfect spot", sent:"This is the perfect spot for our picnic.", sentCn:"这里是我们野餐的完美地点。"}],ex:"There's a red spot on your white shirt.",family:{noun:"spot",verb:"spot",adj:"spotted",adv:"spottily"},syn:["mark","place"],ant:[],collocation:{correct:["on spot","spot someone","perfect spot"],distractors:["spot hardly","in spot"],example_sent:"I was put on the spot when the teacher asked me an unexpected question."},fill_blank:{sentence:"Can you ___ the difference between these two pictures?",sentence_cn:"你能发现这两张图片的不同吗？",options:["spot","sport","stop","shop"]},synonym_match:{synonyms:["mark","place"]},error_fix:{wrong:"I was in the spot when asked the question.",right:"I was on the spot when asked the question.",hint:"固定搭配是on the spot（在现场，当场），不是in the spot"}},
+  {word:"staff",ph:"/stæf/",en:"the people who work for an organization",cn:"员工；全体职员；工作人员",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"teaching staff", sent:"The teaching staff at our school is very experienced.", sentCn:"我们学校的教职员工都很有经验。"},{phrase:"staff meeting", sent:"All employees must attend the staff meeting tomorrow.", sentCn:"所有员工明天必须参加员工会议。"},{phrase:"medical staff", sent:"The medical staff worked around the clock during the emergency.", sentCn:"医务人员在紧急情况下夜以继日地工作。"}],ex:"The company hired additional staff to handle the increased workload.",family:{noun:"staff",verb:"staff"},syn:["employees","personnel"],ant:["management"],collocation:{correct:["qualified staff","staff shortage","senior staff"],distractors:["staff people","many staffs"],example_sent:"The hospital needs more qualified staff to provide better care."},fill_blank:{sentence:"The restaurant is looking for experienced ___ to work in the kitchen.",sentence_cn:"这家餐厅正在寻找有经验的员工在厨房工作。",options:["staff","stuffs","teams","groups"]},synonym_match:{synonyms:["employees","workers"]},error_fix:{wrong:"We need more staffs in our department.",right:"We need more staff in our department.",hint:"staff作为集合名词通常不用复数形式"}},
+  {word:"standard",ph:"/ˈstændərd/",en:"a level of quality or achievement that is considered acceptable or desirable",cn:"标准；水准；质量要求",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"high standard", sent:"The school maintains a high standard of education.", sentCn:"这所学校保持着高水准的教育。"},{phrase:"meet the standard", sent:"Your work doesn't meet the required standard.", sentCn:"你的工作没有达到要求的标准。"},{phrase:"set a standard", sent:"This performance sets a new standard for excellence.", sentCn:"这次表演为卓越表现树立了新标准。"}],ex:"The hotel failed to meet international safety standards.",family:{noun:"standard",verb:"standardize",adj:"standard"},syn:["criterion","benchmark"],ant:["exception"],collocation:{correct:["safety standards","living standards","academic standards"],distractors:["standard level","standard degree"],example_sent:"The factory must comply with strict safety standards."},fill_blank:{sentence:"The company has very high ___ for customer service.",sentence_cn:"这家公司对客户服务有很高的标准。",options:["standards","levels","degrees","grades"]},synonym_match:{synonyms:["criterion","benchmark"]},error_fix:{wrong:"We should improve our life standard.",right:"We should improve our living standards.",hint:"生活水平应该用living standards这个固定搭配"}},
+  {word:"statistic",ph:"/stəˈtɪstɪk/",en:"a fact or piece of data obtained from a study of a large quantity of numerical data",cn:"统计数字；统计资料",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"crime statistic", sent:"The latest crime statistics show a decrease in theft.", sentCn:"最新的犯罪统计数字显示盗窃案有所减少。"},{phrase:"official statistic", sent:"According to official statistics, unemployment has risen.", sentCn:"根据官方统计数据，失业率上升了。"},{phrase:"gather statistics", sent:"Researchers gathered statistics on student performance.", sentCn:"研究人员收集了学生成绩的统计数据。"}],ex:"This statistic shows that more people are buying electric cars.",family:{noun:"statistic",adj:"statistical",adv:"statistically"},syn:["data","figure"],ant:[],collocation:{correct:["reliable statistics","recent statistics","government statistics"],distractors:["statistic datas","statistic informations"],example_sent:"The report is based on reliable statistics from various sources."},fill_blank:{sentence:"The ___ reveals that online shopping has increased by 30%.",sentence_cn:"统计数据显示网上购物增长了30%。",options:["statistic","number","count","total"]},synonym_match:{synonyms:["data","figure"]},error_fix:{wrong:"These statistic are very important.",right:"These statistics are very important.",hint:"statistic通常用复数形式statistics"}},
+  {word:"statistics",ph:"/stəˈtɪstɪks/",en:"the practice or science of collecting and analyzing numerical data in large quantities",cn:"统计学；统计数据",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"study statistics", sent:"She decided to study statistics at university.", sentCn:"她决定在大学学习统计学。"},{phrase:"population statistics", sent:"Population statistics indicate rapid urban growth.", sentCn:"人口统计数据表明城市快速增长。"},{phrase:"economic statistics", sent:"Economic statistics suggest the country is recovering.", sentCn:"经济统计数据表明国家正在复苏。"}],ex:"Statistics is an important tool for understanding market trends.",family:{noun:"statistics",adj:"statistical",adv:"statistically"},syn:["data","figures"],ant:[],collocation:{correct:["national statistics","medical statistics","employment statistics"],distractors:["statistics science","statistics study"],example_sent:"National statistics office publishes annual reports on economic growth."},fill_blank:{sentence:"The professor specializes in ___ and probability theory.",sentence_cn:"这位教授专门研究统计学和概率论。",options:["statistics","mathematics","economics","analysis"]},synonym_match:{synonyms:["data","figures"]},error_fix:{wrong:"Statistics are a difficult subject.",right:"Statistics is a difficult subject.",hint:"当statistics指统计学这门学科时，谓语动词用单数"}},
+  {word:"steep",ph:"/stiːp/",en:"rising or falling at a sharp angle; having a rapid change",cn:"陡峭的；急剧的；过分的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"steep hill", sent:"The cyclists struggled up the steep hill.", sentCn:"骑自行车的人艰难地爬上陡峭的山坡。"},{phrase:"steep price", sent:"The restaurant charges a steep price for wine.", sentCn:"这家餐厅的酒价很贵。"},{phrase:"steep increase", sent:"There was a steep increase in housing costs.", sentCn:"住房成本急剧增加。"}],ex:"The mountain path was too steep for beginners to climb.",family:{noun:"steepness",verb:"steep",adj:"steep",adv:"steeply"},syn:["sharp","abrupt"],ant:["gentle","gradual"],collocation:{correct:["steep slope","steep decline","steep cliff"],distractors:["steep tall","steep high"],example_sent:"The car couldn't make it up the steep slope in the snow."},fill_blank:{sentence:"The ___ stairs made it difficult for elderly people to climb.",sentence_cn:"陡峭的楼梯使老年人很难攀爬。",options:["steep","high","tall","long"]},synonym_match:{synonyms:["sharp","abrupt"]},error_fix:{wrong:"The mountain is very steep high.",right:"The mountain is very steep.",hint:"steep本身已经表达陡峭的含义，不需要再加high"}},
+  {word:"still",ph:"/stɪl/",en:"up to and including the present or the time mentioned; continuing to happen",cn:"仍然；还是；静止的",lv:"basic",pos:"adv",tags:["general"],phrases:[{phrase:"still alive", sent:"The old tree is still alive after 200 years.", sentCn:"这棵老树200年后仍然活着。"},{phrase:"still working", sent:"My grandfather is 80 but still working.", sentCn:"我爷爷80岁了但仍在工作。"},{phrase:"stand still", sent:"Please stand still while I take your photo.", sentCn:"我给你拍照时请站着别动。"}],ex:"Despite the rain, we still decided to go hiking.",family:{noun:"stillness",verb:"still",adj:"still",adv:"still"},syn:["yet","however"],ant:["moving","active"],collocation:{correct:["still remember","still believe","keep still"],distractors:["still always","still forever"],example_sent:"I still remember the day we first met."},fill_blank:{sentence:"It's midnight and she's ___ studying for the exam.",sentence_cn:"已经午夜了，她还在为考试而学习。",options:["still","already","always","often"]},synonym_match:{synonyms:["yet","nevertheless"]},error_fix:{wrong:"He is still very busy always.",right:"He is still very busy.",hint:"still和always不能同时使用，意思重复"}},
+  {word:"studio",ph:"/ˈstuːdioʊ/",en:"a room where an artist works or where films, television, or radio programs are made",cn:"工作室；录音室；画室",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"recording studio", sent:"The band spent three days in the recording studio.", sentCn:"乐队在录音室里待了三天。"},{phrase:"art studio", sent:"She rents a small art studio downtown.", sentCn:"她在市中心租了一个小画室。"},{phrase:"dance studio", sent:"The dance studio offers classes for all ages.", sentCn:"这个舞蹈工作室为各个年龄段提供课程。"}],ex:"The photographer invited us to visit his studio.",family:{noun:"studio"},syn:["workshop","workroom"],ant:[],collocation:{correct:["television studio","movie studio","photography studio"],distractors:["studio room","studio place"],example_sent:"The television studio was equipped with the latest technology."},fill_blank:{sentence:"The artist works in her ___ every morning from 9 to 12.",sentence_cn:"这位艺术家每天上午9点到12点在她的工作室工作。",options:["studio","office","classroom","library"]},synonym_match:{synonyms:["workshop","workroom"]},error_fix:{wrong:"He has a music studio room.",right:"He has a music studio.",hint:"studio本身就包含房间的概念，不需要加room"}},
+  {word:"subscription",ph:"/səbˈskrɪpʃn/",en:"a payment made for receiving a service or publication regularly",cn:"订阅；订购；会员费",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"monthly subscription", sent:"The streaming service costs $10 for a monthly subscription.", sentCn:"这个流媒体服务的月订阅费是10美元。"},{phrase:"magazine subscription", sent:"I renewed my magazine subscription for another year.", sentCn:"我续订了一年的杂志订阅。"},{phrase:"cancel subscription", sent:"You can cancel your subscription at any time.", sentCn:"你可以随时取消订阅。"}],ex:"The gym offers different subscription plans for members.",family:{noun:"subscription",verb:"subscribe"},syn:["membership","enrollment"],ant:["cancellation"],collocation:{correct:["annual subscription","premium subscription","subscription fee"],distractors:["subscription money","subscription payment"],example_sent:"The annual subscription includes access to all premium features."},fill_blank:{sentence:"I need to renew my Netflix ___ before it expires next week.",sentence_cn:"我需要在下周到期之前续订我的Netflix订阅。",options:["subscription","membership","account","service"]},synonym_match:{synonyms:["membership","enrollment"]},error_fix:{wrong:"I want to subscription to this newspaper.",right:"I want to subscribe to this newspaper.",hint:"表示订阅动作应该用动词subscribe，而不是名词subscription"}},
+  {word:"tablet",ph:"/ˈtæblət/",en:"a flat piece of stone, clay, or wood with writing on it; a small flat piece of medicine; a portable computer",cn:"药片；平板电脑；碑，匾",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"take a tablet", sent:"The doctor told me to take a tablet after meals.", sentCn:"医生告诉我饭后吃一片药。"},{phrase:"stone tablet", sent:"Ancient laws were carved on stone tablets.", sentCn:"古代法律被刻在石碑上。"},{phrase:"tablet computer", sent:"She uses a tablet computer for reading e-books.", sentCn:"她用平板电脑看电子书。"}],ex:"He swallowed two tablets with water.",family:{},syn:["pill","pad"],ant:[],collocation:{correct:["take tablets","stone tablet","tablet computer"],distractors:["eat tablets","tablet phone"],example_sent:"You should take tablets as prescribed by the doctor."},fill_blank:{sentence:"The ancient writing was carved on a stone ___.",sentence_cn:"古代文字被刻在石___上。",options:["tablet","table","label","cable"]},synonym_match:{synonyms:["pill","pad"]},error_fix:{wrong:"I need to eat some tablets for headache.",right:"I need to take some tablets for headache.",hint:"服药用take，不用eat"}},
+  {word:"theft",ph:"/θeft/",en:"the crime of stealing something",cn:"盗窃；偷窃罪",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"car theft", sent:"Car theft has increased in this area recently.", sentCn:"这个地区的汽车盗窃案最近有所增加。"},{phrase:"identity theft", sent:"Identity theft is a serious crime in the digital age.", sentCn:"身份盗用在数字时代是一种严重犯罪。"},{phrase:"theft prevention", sent:"The store installed cameras for theft prevention.", sentCn:"商店安装摄像头来防盗。"}],ex:"The police are investigating the theft of jewelry from the store.",family:{verb:"steal",noun:"thief"},syn:["robbery","stealing"],ant:[],collocation:{correct:["report theft","prevent theft","theft victim"],distractors:["make theft","do theft"],example_sent:"She decided to report the theft to the police immediately."},fill_blank:{sentence:"The ___ of the bicycle was reported to the police.",sentence_cn:"自行车___案已报告给警方。",options:["theft","thief","steal","stolen"]},synonym_match:{synonyms:["robbery","stealing"]},error_fix:{wrong:"He did a theft in the shop.",right:"He committed a theft in the shop.",hint:"犯罪用commit，不用do"}},
+  {word:"thick",ph:"/θɪk/",en:"having a large distance between two opposite surfaces; dense or heavy",cn:"厚的；浓密的；粘稠的",lv:"basic",pos:"adj",tags:["general"],phrases:[{phrase:"thick book", sent:"She's reading a thick book about history.", sentCn:"她正在读一本厚厚的历史书。"},{phrase:"thick fog", sent:"The thick fog made driving dangerous.", sentCn:"浓雾使得开车很危险。"},{phrase:"thick hair", sent:"He has thick black hair.", sentCn:"他有浓密的黑发。"}],ex:"The wall is three meters thick.",family:{noun:"thickness",adv:"thickly",verb:"thicken"},syn:["dense","heavy"],ant:["thin","light"],collocation:{correct:["thick wall","thick soup","thick forest"],distractors:["thick taste","thick voice"],example_sent:"The thick wall blocked out all the noise from outside."},fill_blank:{sentence:"The ice on the lake is not ___ enough to walk on.",sentence_cn:"湖面上的冰不够___，不能在上面走。",options:["thick","think","thank","thing"]},synonym_match:{synonyms:["dense","heavy"]},error_fix:{wrong:"This book is very thick to read.",right:"This book is very thick to carry.",hint:"thick形容物理厚度，不能说读起来thick"}},
+  {word:"thoughtful",ph:"/ˈθɔːtfəl/",en:"showing consideration for others; showing careful thought",cn:"体贴的；考虑周到的；深思的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"thoughtful person", sent:"She is a thoughtful person who always considers others' feelings.", sentCn:"她是个体贴的人，总是考虑别人的感受。"},{phrase:"thoughtful gift", sent:"He gave her a thoughtful gift for her birthday.", sentCn:"他送给她一份贴心的生日礼物。"},{phrase:"thoughtful analysis", sent:"The report contains a thoughtful analysis of the problem.", sentCn:"报告包含了对问题的深思熟虑的分析。"}],ex:"It was thoughtful of you to remember my birthday.",family:{noun:"thoughtfulness",adv:"thoughtfully"},syn:["considerate","caring"],ant:["thoughtless","inconsiderate"],collocation:{correct:["thoughtful gesture","thoughtful comment","thoughtful decision"],distractors:["thoughtful mistake","thoughtful noise"],example_sent:"Her thoughtful gesture made everyone feel welcomed."},fill_blank:{sentence:"It was very ___ of him to help with the housework.",sentence_cn:"他帮忙做家务真是很___。",options:["thoughtful","thought","thinking","through"]},synonym_match:{synonyms:["considerate","caring"]},error_fix:{wrong:"He is a very thinking person.",right:"He is a very thoughtful person.",hint:"表示体贴用thoughtful，thinking是思考的动作"}},
+  {word:"thrilling",ph:"/ˈθrɪlɪŋ/",en:"very exciting and enjoyable",cn:"令人兴奋的；惊险的；刺激的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"thrilling experience", sent:"Skydiving was a thrilling experience for her.", sentCn:"跳伞对她来说是一次刺激的经历。"},{phrase:"thrilling movie", sent:"We watched a thrilling movie about space adventure.", sentCn:"我们看了一部关于太空冒险的惊险电影。"},{phrase:"thrilling game", sent:"The football match was a thrilling game until the end.", sentCn:"这场足球比赛直到最后都很激动人心。"}],ex:"The roller coaster ride was absolutely thrilling.",family:{verb:"thrill",noun:"thrill",adv:"thrillingly"},syn:["exciting","exhilarating"],ant:["boring","dull"],collocation:{correct:["thrilling adventure","thrilling performance","thrilling moment"],distractors:["thrilling homework","thrilling sleep"],example_sent:"The thrilling adventure kept us on the edge of our seats."},fill_blank:{sentence:"The ___ chase scene made everyone hold their breath.",sentence_cn:"___的追逐场面让每个人都屏住了呼吸。",options:["thrilling","drilling","chilling","willing"]},synonym_match:{synonyms:["exciting","exhilarating"]},error_fix:{wrong:"This book is very thrilled.",right:"This book is very thrilling.",hint:"物品本身用thrilling，人的感受用thrilled"}},
+  {word:"tourism",ph:"/ˈtʊrɪzəm/",en:"the business of providing services for people who are traveling for pleasure",cn:"旅游业；观光业",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"tourism industry", sent:"The tourism industry provides many jobs in this city.", sentCn:"旅游业为这个城市提供了很多就业机会。"},{phrase:"promote tourism", sent:"The government is trying to promote tourism in rural areas.", sentCn:"政府正努力促进农村地区的旅游业发展。"},{phrase:"mass tourism", sent:"Mass tourism can sometimes damage natural environments.", sentCn:"大众旅游有时会破坏自然环境。"}],ex:"Tourism is the main source of income for this island.",family:{noun:"tourist",adj:"touristic"},syn:["travel","sightseeing"],ant:[],collocation:{correct:["develop tourism","tourism revenue","sustainable tourism"],distractors:["make tourism","tourism factory"],example_sent:"The city plans to develop tourism by improving transportation."},fill_blank:{sentence:"___ has become the most important industry in this coastal city.",sentence_cn:"___已成为这个沿海城市最重要的产业。",options:["Tourism","Tourist","Tour","Touring"]},synonym_match:{synonyms:["travel","sightseeing"]},error_fix:{wrong:"Many tourists come here for tourism.",right:"Many tourists come here for sightseeing.",hint:"tourist和tourism不能同时用，应该说come for sightseeing"}},
+  {word:"trade",ph:"/treɪd/",en:"the activity of buying and selling goods and services; to exchange goods or services",cn:"贸易；交易；行业；交易，买卖",lv:"intermediate",pos:"n/v",tags:["general"],phrases:[{phrase:"international trade", sent:"International trade has increased between the two countries.", sentCn:"两国之间的国际贸易有所增加。"},{phrase:"trade agreement", sent:"The countries signed a new trade agreement last month.", sentCn:"各国上个月签署了新的贸易协定。"},{phrase:"trade with", sent:"Our company trades with suppliers from many countries.", sentCn:"我们公司与来自许多国家的供应商进行贸易。"}],ex:"China is one of the world's largest trading nations.",family:{noun:"trader",adj:"trading"},syn:["commerce","business"],ant:[],collocation:{correct:["foreign trade","trade deficit","free trade"],distractors:["trade school","trade language"],example_sent:"Foreign trade plays a crucial role in the country's economy."},fill_blank:{sentence:"The two companies decided to ___ their products for mutual benefit.",sentence_cn:"两家公司决定___产品以实现互利。",options:["trade","grade","blade","made"]},synonym_match:{synonyms:["commerce","business"]},error_fix:{wrong:"He works in the trade of computers.",right:"He works in the computer trade.",hint:"说某个行业用computer trade，不用trade of computers"}},
+  {word:"transition",ph:"/trænˈzɪʃən/",en:"the process of changing from one state or condition to another",cn:"过渡；转变；变迁",lv:"advanced",pos:"n",tags:["general"],phrases:[{phrase:"smooth transition", sent:"The company hopes for a smooth transition to the new management system.", sentCn:"公司希望能平稳过渡到新的管理系统。"},{phrase:"transition period", sent:"There will be a transition period of six months for the policy change.", sentCn:"政策变化将有六个月的过渡期。"},{phrase:"in transition", sent:"The country is in transition from a planned economy to a market economy.", sentCn:"这个国家正在从计划经济向市场经济转变。"}],ex:"The transition from high school to college can be challenging.",family:{adj:"transitional",verb:"transit"},syn:["change","shift"],ant:["stability","continuity"],collocation:{correct:["peaceful transition","gradual transition","transition process"],distractors:["transition homework","quick transition"],example_sent:"The peaceful transition of power impressed the international community."},fill_blank:{sentence:"The ___ from winter to spring brings warmer weather.",sentence_cn:"从冬天到春天的___带来了更温暖的天气。",options:["transition","transmission","transportation","translation"]},synonym_match:{synonyms:["change","shift"]},error_fix:{wrong:"He is in the transition to find a new job.",right:"He is in transition while looking for a new job.",hint:"in transition是固定搭配，不加the"}},
+  {word:"type",ph:"/taɪp/",en:"a category of things having common characteristics; to write using a keyboard",cn:"类型；种类；打字",lv:"basic",pos:"n/v",tags:["general"],phrases:[{phrase:"type of", sent:"What type of music do you like?", sentCn:"你喜欢什么类型的音乐？"},{phrase:"blood type", sent:"My blood type is O positive.", sentCn:"我的血型是O型阳性。"},{phrase:"type in", sent:"Please type in your password.", sentCn:"请输入您的密码。"}],ex:"There are many different types of flowers in the garden.",family:{noun:"type",verb:"type",adj:"typical",adv:"typically"},syn:["kind","category"],ant:[],collocation:{correct:["type of person","personality type","data type"],distractors:["type about","make type"],example_sent:"He's not the type of person who gives up easily."},fill_blank:{sentence:"This ___ of computer is very popular among students.",sentence_cn:"这种类型的电脑在学生中很受欢迎。",options:["type","kind","sort","style"]},synonym_match:{synonyms:["kind","sort"]},error_fix:{wrong:"I don't like this type movie.",right:"I don't like this type of movie.",hint:"type作名词时后面需要加of再接名词"}},
+  {word:"vast",ph:"/væst/",en:"extremely large in area, size, amount, or degree",cn:"广阔的；巨大的；大量的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"vast majority", sent:"The vast majority of students passed the exam.", sentCn:"绝大多数学生通过了考试。"},{phrase:"vast area", sent:"The desert covers a vast area of the continent.", sentCn:"这片沙漠覆盖了大陆的广大区域。"},{phrase:"vast amount", sent:"She has a vast amount of experience in teaching.", sentCn:"她在教学方面有丰富的经验。"}],ex:"The Pacific Ocean is vast and deep.",family:{noun:"vastness",adj:"vast",adv:"vastly"},syn:["huge","enormous"],ant:["tiny","small"],collocation:{correct:["vast ocean","vast knowledge","vast difference"],distractors:["very vast","vast big"],example_sent:"The vast ocean stretched endlessly before us."},fill_blank:{sentence:"There is a ___ difference between the two proposals.",sentence_cn:"这两个提案之间有巨大的差异。",options:["vast","wide","large","big"]},synonym_match:{synonyms:["enormous","immense"]},error_fix:{wrong:"The library has very vast collection of books.",right:"The library has a vast collection of books.",hint:"vast本身就表示极大，不需要用very修饰，且需要冠词a"}},
+  {word:"vegetation",ph:"/ˌvedʒɪˈteɪʃən/",en:"plants collectively; plant life in a particular region",cn:"植被；植物",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"dense vegetation", sent:"The dense vegetation makes it hard to walk through the forest.", sentCn:"茂密的植被使得穿过森林很困难。"},{phrase:"natural vegetation", sent:"The area's natural vegetation has been well preserved.", sentCn:"该地区的天然植被保护得很好。"},{phrase:"sparse vegetation", sent:"The desert has only sparse vegetation.", sentCn:"沙漠中只有稀疏的植被。"}],ex:"The tropical vegetation grows rapidly in the humid climate.",family:{noun:"vegetation",verb:"vegetate",adj:"vegetative"},syn:["flora","plants"],ant:[],collocation:{correct:["lush vegetation","vegetation cover","vegetation type"],distractors:["vegetation growth","green vegetation"],example_sent:"The rainforest has incredibly lush vegetation."},fill_blank:{sentence:"The mountain slopes are covered with thick ___.",sentence_cn:"山坡上覆盖着茂密的植被。",options:["vegetation","plants","trees","grass"]},synonym_match:{synonyms:["flora","plant life"]},error_fix:{wrong:"The vegetations in this area are very beautiful.",right:"The vegetation in this area is very beautiful.",hint:"vegetation是不可数名词，不能加s，动词用单数"}},
+  {word:"vehicle",ph:"/ˈviːɪkəl/",en:"a machine used for transporting people or goods",cn:"车辆；交通工具",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"motor vehicle", sent:"You need a license to drive a motor vehicle.", sentCn:"驾驶机动车辆需要驾照。"},{phrase:"public vehicle", sent:"Buses are common public vehicles in the city.", sentCn:"公交车是城市里常见的公共交通工具。"},{phrase:"emergency vehicle", sent:"The ambulance is an emergency vehicle.", sentCn:"救护车是紧急车辆。"}],ex:"Electric vehicles are becoming more popular nowadays.",family:{noun:"vehicle",adj:"vehicular"},syn:["transport","automobile"],ant:[],collocation:{correct:["commercial vehicle","passenger vehicle","military vehicle"],distractors:["vehicle car","driving vehicle"],example_sent:"The company uses commercial vehicles for delivery."},fill_blank:{sentence:"Each ___ must be registered with the government.",sentence_cn:"每辆车都必须在政府登记。",options:["vehicle","car","truck","bus"]},synonym_match:{synonyms:["transport","conveyance"]},error_fix:{wrong:"I saw many vehicles cars on the highway.",right:"I saw many vehicles on the highway.",hint:"vehicle本身就包含了各种车辆，不需要再加cars"}},
+  {word:"wireless",ph:"/ˈwaɪələs/",en:"using radio waves instead of wires to transmit signals",cn:"无线的；无线设备",lv:"intermediate",pos:"adj/n",tags:["general"],phrases:[{phrase:"wireless network", sent:"Our office has a secure wireless network.", sentCn:"我们办公室有一个安全的无线网络。"},{phrase:"wireless technology", sent:"Wireless technology has revolutionized communication.", sentCn:"无线技术已经彻底改变了通信方式。"},{phrase:"wireless connection", sent:"My laptop has a strong wireless connection.", sentCn:"我的笔记本电脑有很强的无线连接。"}],ex:"Most smartphones support wireless charging nowadays.",family:{noun:"wireless",adj:"wireless",adv:"wirelessly"},syn:["cordless","radio"],ant:["wired","cable"],collocation:{correct:["wireless device","wireless signal","wireless communication"],distractors:["wireless cable","wire wireless"],example_sent:"The wireless device can connect to the internet anywhere."},fill_blank:{sentence:"The new headphones use ___ technology for better sound quality.",sentence_cn:"新耳机使用无线技术以获得更好的音质。",options:["wireless","cordless","radio","bluetooth"]},synonym_match:{synonyms:["cordless","radio-based"]},error_fix:{wrong:"I need to connect the wireless wire to my computer.",right:"I need to connect wirelessly to my computer.",hint:"wireless意思是无线的，不能说wireless wire（无线电线），应该用副词wirelessly"}},
+  {word:"youthful",ph:"/ˈjuːθfəl/",en:"having the characteristics of youth; appearing young",cn:"年轻的；青春的；有朝气的",lv:"intermediate",pos:"adj",tags:["general"],phrases:[{phrase:"youthful appearance", sent:"She maintains a youthful appearance despite her age.", sentCn:"尽管年龄不小，她仍保持着年轻的外貌。"},{phrase:"youthful energy", sent:"The team captain showed youthful energy during the match.", sentCn:"队长在比赛中表现出青春活力。"},{phrase:"youthful enthusiasm", sent:"His youthful enthusiasm inspired the whole class.", sentCn:"他青春的热情激励了全班同学。"}],ex:"Despite being fifty, he has a youthful face and energetic personality.",family:{noun:"youth",adj:"youthful",adv:"youthfully"},syn:["young","vigorous"],ant:["aged","elderly"],collocation:{correct:["youthful vigor","youthful spirit","youthful looks"],distractors:["very youthful","youthful age"],example_sent:"Her youthful vigor impressed everyone at the meeting."},fill_blank:{sentence:"Regular exercise helps people maintain a ___ appearance.",sentence_cn:"经常锻炼有助于人们保持年轻的外貌。",options:["youthful","young","fresh","healthy"]},synonym_match:{synonyms:["vigorous","fresh"]},error_fix:{wrong:"She looks very youth for her age.",right:"She looks very youthful for her age.",hint:"youth是名词，修饰人的外貌应该用形容词youthful"}},
+  {word:"zinc",ph:"/zɪŋk/",en:"a chemical element that is a bluish-white metal",cn:"锌",lv:"advanced",pos:"n",tags:["general"],phrases:[{phrase:"zinc oxide", sent:"Zinc oxide is commonly used in sunscreen.", sentCn:"氧化锌常用于防晒霜中。"},{phrase:"zinc deficiency", sent:"Zinc deficiency can cause health problems.", sentCn:"缺锌可能导致健康问题。"},{phrase:"zinc supplement", sent:"The doctor recommended a zinc supplement.", sentCn:"医生建议服用锌补充剂。"}],ex:"Zinc is an essential mineral for human health.",family:{noun:"zinc",adj:"zinc"},syn:[],ant:[],collocation:{correct:["zinc coating","zinc alloy","zinc metal"],distractors:["zinc vitamin","zinc calcium"],example_sent:"The steel pipe has a protective zinc coating."},fill_blank:{sentence:"___ is an important trace element in the human body.",sentence_cn:"锌是人体内重要的微量元素。",options:["Zinc","Iron","Copper","Lead"]},synonym_match:{synonyms:[]},error_fix:{wrong:"I need to eat more zinc foods.",right:"I need to eat more zinc-rich foods.",hint:"zinc作为形容词修饰名词时，通常用zinc-rich表示富含锌的"}},
+  {word:"contract",ph:"/ˈkɒntrækt/",en:"A formal legal agreement between two or more parties",cn:"合同；合约；签合同",lv:"intermediate",pos:"n",tags:["general","business"],phrases:[{phrase:"sign a contract", sent:"Both parties signed the contract before the project began.", sentCn:"项目开始前双方签署了合同。"},{phrase:"break a contract", sent:"Breaking a contract can result in serious legal consequences.", sentCn:"违约可能导致严重的法律后果。"},{phrase:"contract with", sent:"The company contracted with a local firm to supply materials.", sentCn:"该公司与当地一家公司签约供应材料。"}],ex:"She signed a one-year contract with the new employer.",family:{noun:"contract",verb:"contract",adj:"contractual"},syn:["agreement","deal"],ant:[],collocation:{correct:["sign a contract","renew a contract","breach a contract"],distractors:["do a contract","make contract"],example_sent:"They signed a contract to work together for two years."},fill_blank:{sentence:"The two companies agreed to sign a ___ before starting the project.",sentence_cn:"两家公司同意在项目开始前签订一份___。",options:["contract","paper","promise","letter"]},synonym_match:{synonyms:["agreement","deal"]},error_fix:{wrong:"They made a contract yesterday.",right:"They signed a contract yesterday.",hint:"contract通常用sign（签署），不用make"}},
+  {word:"core",ph:"/kɔːr/",en:"The most important or central part of something",cn:"核心；中心；要旨",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"core value", sent:"Honesty is one of the core values of our school.", sentCn:"诚信是我们学校的核心价值观之一。"},{phrase:"core subject", sent:"Maths and English are core subjects in Chinese high schools.", sentCn:"数学和英语是中国高中的核心科目。"},{phrase:"at the core", sent:"At the core of the problem is a lack of communication.", sentCn:"问题的核心是缺乏沟通。"}],ex:"Exercise is a core part of a healthy lifestyle.",family:{noun:"core",adj:"core"},syn:["centre","heart"],ant:["surface","edge"],collocation:{correct:["core value","core subject","core skill"],distractors:["center core","main core"],example_sent:"Critical thinking is a core skill for every student."},fill_blank:{sentence:"Reading is a ___ skill that all students must develop.",sentence_cn:"阅读是所有学生都必须培养的___技能。",options:["core","hard","basic","big"]},synonym_match:{synonyms:["centre","heart"]},error_fix:{wrong:"The center core of the apple was removed.",right:"The core of the apple was removed.",hint:"core本身就有中心之意，不需要再加center"}},
+  {word:"corridor",ph:"/ˈkɒrɪdɔːr/",en:"A long passage in a building with rooms on either side",cn:"走廊；通道",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"walk down the corridor", sent:"She walked down the corridor to reach the classroom.", sentCn:"她沿着走廊走到教室。"},{phrase:"long corridor", sent:"The hospital has a very long corridor connecting all the wards.", sentCn:"医院有一条很长的走廊连接所有病房。"},{phrase:"corridor of power", sent:"He worked in the corridors of power for many years.", sentCn:"他在权力走廊工作了很多年。"}],ex:"The school corridor was busy with students during the break.",family:{noun:"corridor"},syn:["hallway","passage"],ant:[],collocation:{correct:["walk down a corridor","long corridor","narrow corridor"],distractors:["do corridor","make a corridor"],example_sent:"Students rushed down the corridor when the bell rang."},fill_blank:{sentence:"The students lined up in the ___ before entering the classroom.",sentence_cn:"学生们在进入教室之前在___里排队。",options:["corridor","garden","stage","library"]},synonym_match:{synonyms:["hallway","passage"]},error_fix:{wrong:"We met in the hallway corridor.",right:"We met in the corridor.",hint:"corridor和hallway意思相同，不能叠用"}},
+  {word:"decline",ph:"/dɪˈklaɪn/",en:"To become smaller, weaker, or less; to politely refuse",cn:"下降；减少；婉拒；谢绝",lv:"intermediate",pos:"v",tags:["general"],phrases:[{phrase:"decline an offer", sent:"She politely declined the job offer as it was too far away.", sentCn:"她礼貌地拒绝了这份工作邀请，因为离家太远。"},{phrase:"in decline", sent:"The number of wild birds in the region is in decline.", sentCn:"该地区野鸟数量正在减少。"},{phrase:"economic decline", sent:"The town suffered from economic decline after the factory closed.", sentCn:"工厂关闭后，该镇经历了经济衰退。"}],ex:"The population of the village has declined over the past decade.",family:{noun:"decline",verb:"decline"},syn:["decrease","fall","refuse"],ant:["increase","rise","accept"],collocation:{correct:["decline an offer","sharp decline","economic decline"],distractors:["do a decline","make decline"],example_sent:"Sales showed a sharp decline in the third quarter."},fill_blank:{sentence:"She ___ the invitation politely, saying she was too busy.",sentence_cn:"她礼貌地___了邀请，说她太忙了。",options:["declined","accepted","refused","ignored"]},synonym_match:{synonyms:["decrease","refuse"]},error_fix:{wrong:"She refused to decline the offer.",right:"She declined the offer.",hint:"decline已有婉拒之意，不需要再加refused"}},
+  {word:"depend",ph:"/dɪˈpend/",en:"To rely on someone or something for support or help",cn:"依靠；取决于；信赖",lv:"basic",pos:"v",tags:["general"],phrases:[{phrase:"depend on", sent:"Children depend on their parents for food and shelter.", sentCn:"孩子们依靠父母获得食物和住所。"},{phrase:"it depends", sent:"Whether we go depends on the weather.", sentCn:"我们是否去取决于天气。"},{phrase:"depend heavily on", sent:"The local economy depends heavily on tourism.", sentCn:"当地经济严重依赖旅游业。"}],ex:"The success of the project depends on teamwork.",family:{noun:"dependence",verb:"depend",adj:"dependent",adv:"dependently"},syn:["rely","count on"],ant:["ignore","disregard"],collocation:{correct:["depend on","depend heavily on","depend entirely on"],distractors:["depend to","depend with"],example_sent:"We depend on clean water for survival."},fill_blank:{sentence:"Your result will ___ on how hard you study.",sentence_cn:"你的成绩将___于你学习有多努力。",options:["depend","result","effect","cause"]},synonym_match:{synonyms:["rely","count on"]},error_fix:{wrong:"I depend to my parents for help.",right:"I depend on my parents for help.",hint:"depend后面要跟on，不能用to"}},
+  {word:"description",ph:"/dɪˈskrɪpʃən/",en:"A spoken or written account of what something is like",cn:"描述；描写；说明",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"give a description", sent:"Can you give a description of what you saw?", sentCn:"你能描述一下你看到的东西吗？"},{phrase:"job description", sent:"Read the job description carefully before applying.", sentCn:"申请前请仔细阅读职位描述。"},{phrase:"detailed description", sent:"The report included a detailed description of the accident.", sentCn:"报告包括对事故的详细描述。"}],ex:"Her description of the journey made everyone want to travel there.",family:{noun:"description",verb:"describe",adj:"descriptive"},syn:["account","explanation"],ant:[],collocation:{correct:["give a description","job description","detailed description"],distractors:["do a description","make description"],example_sent:"He gave a clear description of the suspect to the police."},fill_blank:{sentence:"The police officer asked for a ___ of the missing person.",sentence_cn:"警察要求提供失踪者的___。",options:["description","picture","story","report"]},synonym_match:{synonyms:["account","portrayal"]},error_fix:{wrong:"She made a description of the scene.",right:"She gave a description of the scene.",hint:"description通常用give（给出描述），不用make"}},
+  {word:"dialogue",ph:"/ˈdaɪəlɒɡ/",en:"A conversation between two or more people in a book, film, or play",cn:"对话；交流；对白",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"have a dialogue", sent:"The two leaders had a dialogue about peace.", sentCn:"两位领导人就和平问题进行了对话。"},{phrase:"open dialogue", sent:"Open dialogue between students and teachers improves learning.", sentCn:"师生之间的开放对话有助于提高学习效果。"},{phrase:"written dialogue", sent:"The written dialogue in the play felt very natural.", sentCn:"剧本中的对白感觉非常自然。"}],ex:"The film's dialogue was praised for being realistic and witty.",family:{noun:"dialogue",verb:"dialogue"},syn:["conversation","exchange"],ant:["monologue"],collocation:{correct:["have a dialogue","open dialogue","written dialogue"],distractors:["do dialogue","make a dialogue"],example_sent:"They had a productive dialogue about improving the school."},fill_blank:{sentence:"The ___ between the two characters felt very realistic.",sentence_cn:"两个角色之间的___感觉非常真实。",options:["dialogue","speech","text","writing"]},synonym_match:{synonyms:["conversation","discussion"]},error_fix:{wrong:"They did a dialogue about the problem.",right:"They had a dialogue about the problem.",hint:"dialogue通常用have（进行对话），不用do"}},
+  {word:"director",ph:"/dɪˈrektər/",en:"A person who is in charge of an activity or organization",cn:"主任；导演；董事；总监",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"film director", sent:"The film director won an award for her outstanding work.", sentCn:"这位电影导演因其出色的工作获奖。"},{phrase:"school director", sent:"The school director made important decisions about the curriculum.", sentCn:"学校主任就课程做出了重要决定。"},{phrase:"board of directors", sent:"The board of directors approved the new budget.", sentCn:"董事会批准了新预算。"}],ex:"She became the director of a famous art museum at age 40.",family:{noun:"director",verb:"direct",adj:"directive"},syn:["manager","head"],ant:[],collocation:{correct:["film director","board of directors","managing director"],distractors:["do director","make a director"],example_sent:"The managing director announced the new company policy."},fill_blank:{sentence:"The ___ of the school gave a speech at the opening ceremony.",sentence_cn:"学校___在开幕式上发表了讲话。",options:["director","teacher","student","manager"]},synonym_match:{synonyms:["manager","head"]},error_fix:{wrong:"She is a director of films.",right:"She is a film director.",hint:"film director是固定搭配，film放在director前面作修饰语"}}
+];
+
+/* ═══ HELPERS ═══ */
+const shuffle = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];} return b; };
+const pick = (a,n,ex=[]) => shuffle(a.filter(x=>!ex.includes(x))).slice(0,n);
+const rid = () => Math.random().toString(36).slice(2,9);
+
+/* ═══ EXERCISE GENERATORS (all with safety fallbacks) ═══ */
+const mkLearn = w => ({type:"learn",word:w,id:rid()});
+
+const mkMC = (w,all) => {
+  try {
+    const d = pick(all,3,[w]).map(x=>x.en);
+    const opts = shuffle([w.en,...d]);
+    return {type:"mc",word:w,options:opts.length>=2?opts:[w.en,"Not sure","Unknown meaning","Other"],correct:w.en,id:rid()};
+  } catch(e) { return {type:"mc",word:w,options:[w.en,"Not sure","Unknown","Other"],correct:w.en,id:rid()}; }
+};
+
+const mkReverse = (w,all) => {
+  try {
+    const d = pick(all,3,[w]).map(x=>x.word);
+    const opts = shuffle([w.word,...d]);
+    return {type:"reverse",word:w,options:opts.length>=2?opts:[w.word,"unknown","other","none"],correct:w.word,id:rid()};
+  } catch(e) { return mkMC(w,all); }
+};
+
+const mkDragFill = (w, all) => {
+  try {
+    const tgt = w.word.split(" ");
+    const words = w.ex.split(" ");
+    const blanks = [];
+    words.forEach((sw,i)=>{const cl=sw.replace(/[^a-zA-Z]/g,"").toLowerCase(); if(tgt.some(t=>cl===t.toLowerCase()||cl.startsWith(t.toLowerCase()))) blanks.push(i);});
+    if(!blanks.length){const cs=words.map((s,i)=>({s,i})).filter(x=>x.s.length>3&&x.i>0); if(cs.length) blanks.push(cs[Math.floor(Math.random()*cs.length)].i);}
+    if(!blanks.length) blanks.push(1); // safety
+    const correct = blanks.map(i=>words[i]).filter(Boolean);
+    const distractors = pick(all,2,[w]).map(x=>x.word.split(" ")[0]);
+    const opts = shuffle([...correct,...distractors]);
+    const tmpl = words.map((sw,i)=>blanks.includes(i)?{blank:true,answer:sw,id:i}:{blank:false,text:sw});
+    return {type:"dragfill",word:w,template:tmpl,dragOptions:opts.length?opts:[w.word],id:rid()};
+  } catch(e) { return mkMC(w,all); }
+};
+
+// ── 听力题型生成器 ──
+const mkListenPick = (w, all) => {
+  try {
+    const distractors = pick(all, 3, [w]).map(x => x.cn);
+    const opts = shuffle([w.cn, ...distractors]);
+    return {type:"listen_pick", word:w, audioKey:w.word, answer:w.cn, options:opts, id:rid()};
+  } catch(e) { return mkMC(w, all); }
+};
+
+const mkListenFill = (w, all) => {
+  try {
+    // Try phrase sentences first (they have sentCn)
+    const phraseSents = (w.phrases||[])
+      .filter(p => p.sent && p.sentCn && AUDIO_HASH_MAP[p.sent])
+      .filter(p => new RegExp("\\b" + w.word.replace(/[-]/g,"[-]") + "\\b", "i").test(p.sent));
+    
+    let sentence, sentCn, audioHash;
+    if (phraseSents.length > 0) {
+      const chosen = phraseSents[Math.floor(Math.random() * phraseSents.length)];
+      sentence = chosen.sent; sentCn = chosen.sentCn; audioHash = AUDIO_HASH_MAP[sentence];
+    } else {
+      // Fallback to ex sentence (no Chinese translation available)
+      sentence = w.ex || "";
+      sentCn = "";
+      audioHash = AUDIO_HASH_MAP[sentence];
+    }
+    if (!sentence || !audioHash) return mkMC(w, all);
+    const wordRegex = new RegExp("\\b" + w.word.replace(/[-]/g,"[-]") + "\\b", "i");
+    if (!wordRegex.test(sentence)) return mkMC(w, all);
+    const masked = sentence.replace(wordRegex, "___");
+    const distractors = pick(all, 3, [w]).map(x => x.word);
+    const opts = shuffle([w.word, ...distractors]);
+    return {type:"listen_fill", word:w, audioHash, sentence, sentCn, masked, answer:w.word, options:opts, id:rid()};
+  } catch(e) { return mkMC(w, all); }
+};
+
+// ── 听英文释义选单词题 ──
+const mkListenDef = (w, all) => {
+  try {
+    const distractors = pick(all, 3, [w]).map(x => x.word);
+    const opts = shuffle([w.word, ...distractors]);
+    return {type:"listen_def", word:w, answer:w.word, options:opts,
+            enDef:w.en, cnDef:w.cn, id:rid()};
+  } catch(e) { return mkMC(w, all); }
+};
+
+// ── 句子跟读题 ──
+const mkFollowRead = (w) => {
+  // Pick a phrase sentence with Chinese, or fallback to example sentence
+  const phraseSents = (w.phrases||[]).filter(p => p.sent && p.sentCn);
+  let sentence, sentCn;
+  if (phraseSents.length > 0) {
+    const chosen = phraseSents[Math.floor(Math.random() * phraseSents.length)];
+    sentence = chosen.sent; sentCn = chosen.sentCn;
+  } else {
+    sentence = w.ex || w.word; sentCn = w.cn || "";
+  }
+  return { type:"follow_read", word:w, sentence, sentCn, id:rid() };
+};
+
+const mkWordFamily = (w,all) => {
+  try {
+    if(!w.family || Object.keys(w.family).length < 2) return mkMC(w, all||VOCAB);
+    const forms = Object.entries(w.family).filter(([k,v])=>v&&v!==w.word);
+    if(!forms.length) return mkMC(w, all||VOCAB);
+    const [targetType, targetForm] = forms[Math.floor(Math.random()*forms.length)];
+    const distractors = shuffle([w.word+"ing",w.word+"tion",w.word+"ly",w.word+"ness","un"+w.word,w.word+"ful",w.word+"able"]).filter(d=>d!==targetForm).slice(0,3);
+    const opts = shuffle([targetForm,...distractors]);
+    return {type:"wordfamily",word:w,targetType,targetForm,options:opts.length>=2?opts:[targetForm,w.word+"ed",w.word+"ing","un"+w.word],id:rid()};
+  } catch(e) { return mkMC(w, all||VOCAB); }
+};
+
+const mkSynAnt = (w, all) => {
+  try {
+    if(!w.syn?.length) return mkMC(w, all||VOCAB);
+    const correctSyn = w.syn[Math.floor(Math.random()*w.syn.length)];
+    const rawD = pick(all,5,[w]).map(x=> x.syn?.length ? x.syn[0] : x.word).filter(d=>d&&d!==correctSyn);
+    const distractors = rawD.slice(0,3);
+    while(distractors.length<3) distractors.push(pick(all,1,[w]).map(x=>x.word)[0]||"none");
+    return {type:"synant",word:w,question:`Which word is closest in meaning to "${w.word}"?`,options:shuffle([correctSyn,...distractors]),correct:correctSyn,id:rid()};
+  } catch(e) { return mkMC(w, all||VOCAB); }
+};
+
+const mkErrorSpot = (w, all) => {
+  try {
+    const candidates = pick(all,3,[w]);
+    if(!candidates.length) return mkMC(w, all||VOCAB);
+    const wrongWord = candidates[0];
+    const regex = new RegExp(w.word.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"gi");
+    const errorSent = w.ex.replace(regex, wrongWord.word);
+    if(errorSent === w.ex) return mkMC(w, all||VOCAB); // replacement didn't work
+    return {type:"errorspot",word:w,errorSent,wrongWord:wrongWord.word,correctWord:w.word,id:rid()};
+  } catch(e) { return mkMC(w, all||VOCAB); }
+};
+
+const mkPhraseComplete = (w, all) => {
+  try {
+    if(!w.phrases?.length) return mkMC(w, all||VOCAB);
+    const phraseObj = w.phrases[Math.floor(Math.random()*w.phrases.length)];
+    const phWords = phraseObj.phrase.split(" ");
+    const mainWord = phWords.find(pw => pw.toLowerCase().includes(w.word.toLowerCase().split(" ")[0])) || phWords[0];
+    const otherWords = phWords.filter(pw => pw !== mainWord);
+    if(!otherWords.length) return mkMC(w, all||VOCAB);
+    const answer = otherWords.join(" ");
+    const rawD = pick(all,5,[w]).map(x=>{
+      if(!x.phrases?.length) return x.word;
+      const pp=x.phrases[0].phrase.split(" ");
+      const filtered=pp.filter(p=>!p.toLowerCase().includes(x.word.toLowerCase().split(" ")[0])).join(" ");
+      return filtered || x.word;
+    }).filter(d=>d&&d!==answer);
+    const distractors = rawD.slice(0,3);
+    while(distractors.length<3) distractors.push(pick(all,1,[w]).map(x=>x.word)[0]||"other");
+    const mainWordIndex = phWords.indexOf(mainWord);
+    const answerBeforeMain = mainWordIndex > 0;
+    return {type:"phrasecomplete",word:w,mainWord,answer,answerBeforeMain,phraseFull:phraseObj.phrase,phraseSent:phraseObj.sent,phraseSentCn:phraseObj.sentCn||"",options:shuffle([answer,...distractors]),id:rid()};
+  } catch(e) { return mkMC(w, all||VOCAB); }
+};
+
+// Match pairs
+const mkMatch = (w, all) => {
+  try {
+    // Only 2 pairs: the target word + 1 other — keeps focus on the word being learned
+    const items = [w, ...pick(all,1,[w])];
+    if(items.length < 2) return mkMC(w, all||VOCAB);
+    const meanings = shuffle(items.map(x=>({w:x.word,m:x.en})));
+    return {type:"match",word:w,pairs:shuffle(items.map(x=>x.word)),meanings:meanings.map(x=>x.m),map:Object.fromEntries(items.map(x=>[x.word,x.en])),id:rid()};
+  } catch(e) { return mkMC(w, all||VOCAB); }
+};
+
+
+// Dialogue completion: pick the correct conversational reply using the word's phrase sentence
+// Per-word Q&A pairs for the dialogue exercise
+const DIALOGUE_QA = {
+  "glacier":      { q:"What happens to glaciers in summer?",             a:"The glacier melts slowly every summer.",              aCn:"冰川每年夏天都会慢慢融化。" },
+  "destination":  { q:"Where are you going after school today?",         a:"Our destination is the library on Green Street.",     aCn:"我们的目的地是绿街的图书馆。" },
+  "disturbing":   { q:"Why did you turn off the TV?",                    a:"The news was disturbing, so I turned off the TV.",    aCn:"新闻令人不安，所以我关掉了电视。" },
+  "spiritual":    { q:"How does he relax after a busy day?",             a:"He finds spiritual peace when he reads quietly.",     aCn:"他安静阅读时能找到心灵的平静。" },
+  "ecosystem":    { q:"Why are forests so important?",                   a:"Forests are an important ecosystem for many animals.",aCn:"森林是许多动物重要的生态系统。" },
+  "abruptly":     { q:"Why did everyone look up suddenly?",              a:"She stopped abruptly when she heard her name.",       aCn:"她听到自己的名字时突然停了下来。" },
+  "reputation":   { q:"What is your school known for?",                  a:"Our school has a good reputation for sports.",        aCn:"我们学校以体育著称，声誉很好。" },
+  "skeptical":    { q:"Did you believe him when he said he was done?",   a:"I was skeptical when he said he finished so fast.",   aCn:"他说这么快就完成了，我持怀疑态度。" },
+  "equipment":    { q:"What do we need for the science class?",          a:"We need the right equipment for the science experiment.", aCn:"我们需要合适的设备做科学实验。" },
+  "eventually":   { q:"Will I get better if I keep practising?",         a:"If you keep practising, you will eventually improve.",aCn:"如果你坚持练习，最终会有所进步。" },
+  "rescue":       { q:"What happened when the child fell in the river?", a:"The rescue team arrived at the scene quickly.",       aCn:"救援队迅速赶到了现场。" },
+  "permit":       { q:"Can we use a dictionary in today's test?",        a:"The teacher permits us to use a dictionary in the test.", aCn:"老师允许我们在考试中使用词典。" },
+  "permanent":    { q:"Will that scar on his hand go away?",             a:"The scar on his hand is permanent.",                  aCn:"他手上的疤痕是永久性的。" },
+  "deserve":      { q:"Do you think I'll get a good grade?",             a:"You studied so hard — you deserve a good grade.",     aCn:"你学得这么努力，理应得到好成绩。" },
+  "hesitation":   { q:"Was he nervous answering the question?",          a:"He answered the question without hesitation.",        aCn:"他毫不犹豫地回答了这个问题。" },
+  "anxiety":      { q:"How did you feel before the big exam?",           a:"I felt anxiety before the big exam.",                 aCn:"大考前我感到很焦虑。" },
+  "immediately":  { q:"What should I do if there is an emergency?",      a:"Call me immediately if you need help.",               aCn:"如果需要帮助，请立刻打电话给我。" },
+  "coincidence":  { q:"You and I chose the same book — what are the odds?", a:"What a coincidence — we chose the same book!",    aCn:"真巧，我们选了同一本书！" },
+  "familiar":     { q:"Had you heard that voice before?",                a:"Her voice sounded very familiar to me.",              aCn:"她的声音听起来对我很熟悉。" },
+  "gradually":    { q:"Is your English improving?",                      a:"My English is gradually getting better.",             aCn:"我的英语在逐渐变好。" },
+  "criteria":     { q:"What do you need to join the club?",              a:"Good grades are one criteria for joining the club.",  aCn:"好成绩是加入俱乐部的标准之一。" },
+  "opponent":     { q:"How was your chess match today?",                 a:"My opponent in the chess match was very skilled.",    aCn:"我在象棋比赛中的对手非常厉害。" },
+  "qualification":{ q:"Is a degree useful when looking for work?",       a:"A university degree is a useful qualification.",      aCn:"大学学位是一个有用的资格证明。" },
+  "unconscious":  { q:"What happened to the player after he fell?",      a:"The player fell unconscious after hitting his head.", aCn:"那名球员撞到头后失去了意识。" },
+  "thrilled":     { q:"How did you feel when you got the top score?",    a:"I was thrilled when I got the top score.",            aCn:"拿到最高分时我非常兴奋。" },
+  "ashamed":      { q:"How did she feel after lying to her friend?",     a:"She felt ashamed after lying to her friend.",         aCn:"对朋友撒谎后她感到很羞愧。" },
+};
+
+const mkDialogue = (w, all) => {
+  try {
+    const qa = DIALOGUE_QA[w.word];
+    if(!qa) return mkMC(w, all||VOCAB);
+    const correct = qa.a;
+    // Distractors: answers from other words' QA pairs
+    const otherQAs = Object.entries(DIALOGUE_QA)
+      .filter(([k]) => k !== w.word)
+      .map(([,v]) => v.a);
+    const distractors = shuffle(otherQAs).slice(0, 3);
+    return {type:"dialogue", word:w, question:qa.q, correct, options:shuffle([correct,...distractors]), answerCn:qa.aCn, id:rid()};
+  } catch(e) { return mkMC(w, all||VOCAB); }
+};
+
+// Sentence builder: tap word tiles in correct order to form the example sentence
+const mkSentBuild = (w, all) => {
+  try {
+    const sentence = w.ex || (w.phrases?.[0]?.sent);
+    if(!sentence) return mkMC(w, all||VOCAB);
+    const tokens = sentence.replace(/[.,!?;:"]/g,'').trim().split(/\s+/).filter(Boolean);
+    if(tokens.length < 4 || tokens.length > 11) return mkMC(w, all||VOCAB);
+    const distractors = pick(all, 4, [w])
+      .map(x => x.word)
+      .filter(d => !tokens.map(t=>t.toLowerCase()).includes(d.toLowerCase()))
+      .slice(0, 2);
+    const tiles = shuffle([...tokens, ...distractors]);
+    return {type:"sentbuild", word:w, sentence, tokens, tiles, cn:w.cn, id:rid()};
+  } catch(e) { return mkMC(w, all||VOCAB); }
+};
+
+
+// Verb Forms exercise: show base form, ask for past/pp/ing/3rd person
+const mkVerbForms = (w, all) => {
+  try {
+    if(!w.verbForms) return mkMC(w, all||VOCAB);
+    const vf = w.verbForms;
+    // Pick which form to test — weight toward past & pp (most tested in gaokao)
+    const targets = [
+      {label:"过去式 (Past Tense)", key:"past", q:`What is the past tense of "${w.word}"?`},
+      {label:"过去分词 (Past Participle)", key:"pp", q:`What is the past participle of "${w.word}"?`},
+      {label:"现在分词 (Present Participle / -ing)", key:"ing", q:`What is the -ing form of "${w.word}"?`},
+      {label:"第三人称单数 (3rd Person)", key:"s", q:`What is the third person singular of "${w.word}"?`},
+    ];
+    const target = targets[Math.floor(Math.random()*targets.length)];
+    const correct = vf[target.key];
+    // Distractors: wrong forms from same word or other words' forms
+    const wrongForms = Object.values(vf).filter(v=>v!==correct);
+    const otherWords = pick(all,4,[w]).filter(x=>x.verbForms);
+    const otherForms = otherWords.flatMap(x=>Object.values(x.verbForms)).filter(v=>v!==correct);
+    const distractors = shuffle([...wrongForms,...otherForms]).slice(0,3);
+    while(distractors.length<3) distractors.push(w.word+"ed");
+    return {type:"verbforms", word:w, question:target.q, label:target.label, correct, options:shuffle([correct,...distractors.slice(0,3)]), id:rid()};
+  } catch(e) { return mkMC(w, all||VOCAB); }
+};
+
+/* ═══ SPEAKER ═══ */
+// Helper: convert hex to rgba
+const hexToRgba = (hex, alpha) => {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
+function Speak({text,rate=0.88,size=36,color=C.primary,style:sx={}}) {
+  const [on,setOn]=useState(false);
+  const go=e=>{
+    e?.stopPropagation();
+    if(on) return;
+    setOn(true);
+    speak(text, rate).finally(()=>setOn(false));
+  };
+  return <button onClick={go} style={{width:size,height:size,borderRadius:"50%",border:"none",cursor:"pointer",background:on?hexToRgba(color,0.15):hexToRgba(color,0.08),color,fontSize:size*0.45,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s",transform:on?"scale(1.15)":"scale(1)",boxShadow:on?`0 0 0 4px ${hexToRgba(color,0.2)}`:"none",flexShrink:0,...sx}}>{on?"🔊":"🔈"}</button>;
+}
+function Confetti({active}){if(!active)return null;const ps=Array.from({length:40},(_,i)=>({i,x:Math.random()*100,d:Math.random()*0.5,dur:1+Math.random()*1.5,c:["#4DB6FF","#9B6FFF","#3CC87A","#F8C740","#FF6B6B","#F8C740"][i%6],s:6+Math.random()*8}));return <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:999,overflow:"hidden"}}>{ps.map(p=><div key={p.i} style={{position:"absolute",top:"-10%",left:`${p.x}%`,width:p.s,height:p.s*1.4,background:p.c,borderRadius:p.i%3===0?"50%":"2px",animation:`cfall ${p.dur}s ease-in ${p.d}s forwards`,transform:`rotate(${Math.random()*360}deg)`}}/>)}</div>;}
+
+/* ═══ LEARN CARD — Word → Phrases (with sentences!) → Sentence → cycle ═══ */
+function LearnCard({exercise,onDone}) {
+  const [step,setStep]=useState(0);
+  const [cycle,setCycle]=useState(0);
+  const [phraseIdx,setPhraseIdx]=useState(0);
+  const [showPhraseSent,setShowPhraseSent]=useState(false);
+  const w=exercise.word;
+  useEffect(()=>{setTimeout(()=>speak(w.word),400);setStep(0);setCycle(0);setPhraseIdx(0);setShowPhraseSent(false);},[w.word]);
+
+  const nextStep=()=>{
+    if(step===0){setStep(1);setPhraseIdx(0);setShowPhraseSent(false);setTimeout(()=>speak(w.phrases[0].phrase),200);}
+    else if(step===1){setStep(2);setTimeout(()=>speak(w.ex,0.82),200);}
+    else if(step===2){setStep(3);} // One pass only, straight to done
+  };
+
+  const dots=(
+    <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:14}}>
+      {["Word","Phrases","Sentence"].map((l,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 12px",borderRadius:20,background:step===i?`${[C.primary,C.secondary,C.accent][i]}18`:"transparent",border:`2px solid ${step===i?[C.primary,C.secondary,C.accent][i]:C.tl+"33"}`,transition:"all 0.3s"}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:step>=i?[C.primary,C.secondary,C.accent][i]:C.tl+"44",transition:"all 0.3s"}}/>
+          <span style={{fontSize:11,fontWeight:700,color:step===i?[C.primary,C.secondary,C.accent][i]:C.tl}}>{l}</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,width:"100%",maxWidth:460}}>
+      {step<3&&dots}
+
+      {step===0&&(
+        <div onClick={nextStep} style={{width:"100%",borderRadius:24,cursor:"pointer",background:`linear-gradient(135deg,${C.peach},${C.sky})`,padding:"36px 24px",display:"flex",flexDirection:"column",alignItems:"center",gap:14,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.primary}33`}}>
+          <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:C.primary,fontWeight:800}}>📖 Word</div>
+          <div style={{fontSize:48,fontWeight:900,color:C.text,fontFamily:"'Nunito',sans-serif"}}>{w.word}</div>
+          <div style={{fontSize:19,color:C.secondary,fontFamily:"'JetBrains Mono',monospace"}}>{w.ph}</div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <Speak text={w.word} size={44} color={C.primary}/>
+            <button onClick={e=>{e.stopPropagation();speak(w.word,0.5);}} style={{background:C.mint,border:"none",color:C.text,padding:"5px 14px",borderRadius:20,cursor:"pointer",fontSize:12,fontWeight:700}}>🐢</button>
+            <button onClick={e=>{e.stopPropagation();speak(w.word,1.1);}} style={{background:C.sky,border:"none",color:C.text,padding:"5px 14px",borderRadius:20,cursor:"pointer",fontSize:12,fontWeight:700}}>🐇</button>
+          </div>
+          <div style={{fontSize:17,color:C.text,lineHeight:1.6,textAlign:"center"}}>{w.en}</div>
+          <div style={{fontSize:17,color:C.gold,fontWeight:700,padding:"8px 20px",background:"#FFF8E8",borderRadius:14,border:`1.5px solid ${C.gold}44`}}>🇨🇳 {w.cn}</div>
+          <div style={{fontSize:12,color:C.tl,marginTop:6,letterSpacing:1}}>👆 tap for phrases →</div>
+        </div>
+      )}
+
+      {step===1&&(
+        <div style={{width:"100%",borderRadius:24,background:`linear-gradient(135deg,${C.lav},#fff)`,padding:"32px 22px",display:"flex",flexDirection:"column",alignItems:"center",gap:16,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.secondary}33`,animation:"slideUp 0.4s ease"}}>
+          <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:C.secondary,fontWeight:800}}>💬 Phrases</div>
+          <div style={{fontSize:26,fontWeight:800,color:C.secondary}}>{w.word}</div>
+          <div style={{display:"flex",flexDirection:"column",gap:10,width:"100%"}}>
+            {w.phrases.map((p,i)=>(
+              <div key={i} style={{borderRadius:16,overflow:"hidden",border:`2px solid ${[C.primary,C.accent,C.gold][i]}22`,background:`${[C.primary,C.accent,C.gold][i]}06`}}>
+                <div onClick={e=>{e.stopPropagation();speak(p.phrase);setPhraseIdx(i);setShowPhraseSent(false);}}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"14px 18px",cursor:"pointer"}}>
+                  <Speak text={p.phrase} size={30} color={[C.primary,C.accent,C.gold][i]}/>
+                  <span style={{fontSize:20,fontWeight:700,color:C.text,fontFamily:"'Nunito',sans-serif"}}>{p.phrase}</span>
+                </div>
+                {phraseIdx===i&&(
+                  <div style={{padding:"0 18px 16px",animation:"slideUp 0.3s ease"}}>
+                    {!showPhraseSent?(
+                      <button onClick={e=>{e.stopPropagation();setShowPhraseSent(true);setTimeout(()=>speak(p.sent,0.82),200);}}
+                        style={{background:`${[C.primary,C.accent,C.gold][i]}12`,border:`1.5px solid ${[C.primary,C.accent,C.gold][i]}33`,color:[C.primary,C.accent,C.gold][i],padding:"8px 18px",borderRadius:14,cursor:"pointer",fontSize:13,fontWeight:700,width:"100%"}}>
+                        📖 Show sentence using this phrase
+                      </button>
+                    ):(
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                          <div style={{fontSize:15,color:C.text,lineHeight:1.7,fontStyle:"italic",flex:1}}>"{p.sent}"</div>
+                          <Speak text={p.sent} rate={0.82} size={30} color={[C.primary,C.accent,C.gold][i]}/>
+                        </div>
+                        <div style={{fontSize:13,color:"#8a7000",fontWeight:600,background:"rgba(255,220,50,0.12)",padding:"5px 12px",borderRadius:10,border:"1px solid rgba(255,200,0,0.2)"}}>🇨🇳 {p.sentCn}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <button onClick={e=>{e.stopPropagation();nextStep();}} style={{background:`${C.secondary}12`,border:`2px solid ${C.secondary}33`,color:C.secondary,padding:"10px 28px",borderRadius:16,cursor:"pointer",fontSize:14,fontWeight:700,marginTop:4}}>
+            Continue to Sentence →
+          </button>
+        </div>
+      )}
+
+      {step===2&&(
+        <div onClick={nextStep} style={{width:"100%",borderRadius:24,cursor:"pointer",background:`linear-gradient(135deg,${C.sky},${C.mint})`,padding:"36px 24px",display:"flex",flexDirection:"column",alignItems:"center",gap:16,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.accent}33`,animation:"slideUp 0.4s ease"}}>
+          <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:"#3CC87A",fontWeight:800}}>📝 Sentence</div>
+          <div style={{fontSize:24,fontWeight:800,color:"#3CC87A"}}>{w.word}</div>
+          <div style={{fontSize:20,color:C.text,lineHeight:1.8,textAlign:"center",fontWeight:500,maxWidth:400}}>"{w.ex}"</div>
+          <div style={{fontSize:15,color:"#8a7000",fontWeight:600,background:"rgba(255,220,50,0.15)",padding:"8px 18px",borderRadius:12,border:"1.5px solid rgba(255,200,0,0.25)",textAlign:"center",maxWidth:380}}>🇨🇳 {w.cn} — {w.en}</div>
+          <Speak text={w.ex} rate={0.82} size={44} color={C.accent}/>
+          <div style={{fontSize:12,color:C.tl,letterSpacing:1}}>👆 tap to continue</div>
+        </div>
+      )}
+
+      {step===3&&(
+        <div style={{width:"100%",borderRadius:24,background:`linear-gradient(135deg,${C.mint},#fff)`,padding:"32px 28px",display:"flex",flexDirection:"column",alignItems:"center",gap:14,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.success}33`,animation:"slideUp 0.4s ease"}}>
+          <div style={{fontSize:32,fontWeight:900,color:C.text}}>{w.word}</div>
+          <div style={{fontSize:15,color:C.tm,textAlign:"center"}}>{w.en}</div>
+          <div style={{fontSize:15,color:C.gold,fontWeight:700}}>🇨🇳 {w.cn}</div>
+          <div style={{display:"flex",gap:12,marginTop:8}}>
+            <button onClick={()=>onDone(false)} style={{background:`${C.error}12`,border:`2px solid ${C.error}44`,color:C.error,padding:"12px 26px",borderRadius:16,cursor:"pointer",fontSize:15,fontWeight:700}}>🔄 Still Learning</button>
+            <button onClick={()=>onDone(true)} style={{background:`${C.success}12`,border:`2px solid ${C.success}44`,color:C.success,padding:"12px 26px",borderRadius:16,cursor:"pointer",fontSize:15,fontWeight:700}}>✅ Got It!</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══ DRAG FILL ═══ */
+function DragFillQ({exercise,onDone}) {
+  const [placed,setPlaced]=useState({});
+  const [avail,setAvail]=useState(exercise.dragOptions);
+  const [touch,setTouch]=useState(null);
+  const [done,setDone]=useState(false);
+  const timer=useRef(null);
+  const w=exercise.word;
+  const blanks=exercise.template.filter(t=>t.blank);
+  useEffect(()=>()=>{if(timer.current)clearTimeout(timer.current);},[]);
+
+  const place=(blankId)=>{
+    if(!touch||done)return;
+    const np={...placed,[blankId]:touch};setPlaced(np);
+    setAvail(p=>{const n=[...p];n.splice(n.indexOf(touch),1);return n;});setTouch(null);
+    if(blanks.every(b=>np[b.id]!==undefined)){
+      const ok=blanks.every(b=>np[b.id]===b.answer);setDone(true);
+      if(ok) playCorrectSound(); else playWrongSound();
+      // Wait for sentence to be fully read before advancing
+      setTimeout(async ()=>{
+        await speak(w.ex, 0.82);
+        onDone(ok);
+      }, 500);
+    }
+  };
+  const remove=(blankId)=>{if(done)return;const word=placed[blankId];if(!word)return;const np={...placed};delete np[blankId];setPlaced(np);setAvail(p=>[...p,word]);};
+
+  const bc=[C.primary,C.secondary,C.accent,C.gold];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20,width:"100%",maxWidth:460}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.accent,fontWeight:700,marginBottom:6}}>🧩 Drag to fill</div>
+      </div>
+      <div style={{background:C.card,borderRadius:20,padding:"22px 18px",boxShadow:"0 4px 20px rgba(0,0,0,0.06)",border:`2px solid ${C.accent}22`}}>
+        <div style={{fontSize:19,lineHeight:2.2,color:C.text,fontFamily:"'Nunito',sans-serif",fontWeight:500,textAlign:"center"}}>
+          {exercise.template.map((t,i)=>{
+            if(!t.blank)return <span key={i}>{t.text} </span>;
+            const f=placed[t.id];const ok=done&&f===t.answer;const bad=done&&f&&f!==t.answer;
+            return <span key={i} onClick={()=>f?remove(t.id):place(t.id)} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",minWidth:85,height:34,borderRadius:12,margin:"2px 3px",cursor:"pointer",verticalAlign:"middle",fontSize:16,fontWeight:700,transition:"all 0.2s",
+              background:f?(ok?`${C.success}18`:bad?`${C.error}12`:`${C.accent}15`):(touch?`${C.gold}15`:`${C.tl}10`),
+              border:f?`2px ${ok?"solid "+C.success:bad?"solid "+C.error:"dashed "+C.accent}`:`2px dashed ${touch?C.gold:C.tl}55`,
+              color:f?(ok?C.success:bad?C.error:C.accent):C.tl,animation:!f&&touch?"pulse 1s ease infinite":"none",
+            }}>{f||"___"}</span>;
+          })}
+        </div>
+      </div>
+      {!done&&<div style={{display:"flex",flexWrap:"wrap",gap:10,justifyContent:"center"}}>
+        {avail.map((o,i)=><div key={o+i} onClick={()=>setTouch(touch===o?null:o)} style={{padding:"10px 22px",borderRadius:14,cursor:"pointer",fontSize:17,fontWeight:700,userSelect:"none",transition:"all 0.2s",
+          background:touch===o?`${C.gold}25`:`${bc[i%4]}12`,border:touch===o?`2px solid ${C.gold}`:`2px solid ${bc[i%4]}33`,color:touch===o?C.gold:C.text,
+          transform:touch===o?"scale(1.08)":"scale(1)",boxShadow:touch===o?`0 4px 16px ${C.gold}33`:"0 2px 8px rgba(0,0,0,0.04)",
+        }}>{o}</div>)}
+      </div>}
+      {touch&&!done&&<div style={{textAlign:"center",fontSize:13,color:C.gold,fontWeight:600,animation:"pulse 1.5s ease infinite"}}>👆 Tap a blank to place "{touch}"</div>}
+      {done&&<div style={{textAlign:"center",padding:"12px 16px",background:"#FFF8E8",borderRadius:14,border:"1.5px solid #F4A23644"}}>
+        <div style={{fontSize:14,color:C.gold,fontWeight:600,marginBottom:4}}>🇨🇳 {w.cn}</div>
+        <div style={{fontSize:13,color:C.tm}}>🔊 reading sentence...</div>
+      </div>}
+    </div>
+  );
+}
+
+/* ═══ MULTIPLE CHOICE ═══ */
+function ChoiceQ({exercise,onDone}) {
+  const [sel,setSel]=useState(null);const [done,setDone]=useState(false);const timer=useRef(null);
+  const isRev=exercise.type==="reverse";const w=exercise.word;
+  useEffect(()=>{if(!isRev)setTimeout(()=>speak(w.word),300);},[w.word,isRev]);
+  useEffect(()=>()=>{if(timer.current)clearTimeout(timer.current);},[]);
+  const go=opt=>{if(done)return;setSel(opt);setDone(true);
+    const correct=opt===exercise.correct;
+    if(correct) playCorrectSound(); else playWrongSound();
+    setTimeout(async()=>{
+      await speak(w.en,0.88);
+      onDone(correct);
+    },400);
+  };
+  const oc=["#FF6B35","#7B2D8E","#00B4D8","#2DC653"];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:22,width:"100%",maxWidth:440}}>
+      <div style={{textAlign:"center"}}>
+        {isRev?<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.accent,fontWeight:700,marginBottom:10}}>Which word?</div><div style={{fontSize:16,color:C.text,lineHeight:1.7}}>{w.en}</div><div style={{fontSize:15,color:C.gold,marginTop:6,fontWeight:600}}>🇨🇳 {w.cn}</div></>
+        :<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.primary,fontWeight:700,marginBottom:10}}>What does it mean?</div><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}><div style={{fontSize:34,fontWeight:800,fontFamily:"'Nunito',sans-serif"}}>{w.word}</div><Speak text={w.word} size={36} color={C.primary}/></div><div style={{fontSize:16,color:C.secondary,fontFamily:"'JetBrains Mono',monospace",marginTop:4}}>{w.ph}</div></>}
+      </div>
+      {done&&<div style={{textAlign:"center",padding:"10px 16px",background:"#FFF8E8",borderRadius:14,border:`1.5px solid ${C.gold}44`,animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:C.gold,fontWeight:600}}>🇨🇳 {w.cn}</span><span style={{fontSize:13,color:C.tl,marginLeft:8}}>🔊 reading...</span></div>}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.correct;let bg=`${oc[i]}08`,bd=`2px solid ${oc[i]}22`,cl=C.text;
+          if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
+          return <button key={i} onClick={()=>go(opt)} style={{background:bg,border:bd,color:cl,padding:"14px 20px",borderRadius:16,cursor:done?"default":"pointer",fontSize:15,textAlign:"left",lineHeight:1.5,transition:"all 0.2s",fontFamily:"'Nunito',sans-serif",fontWeight:it?700:500}}>
+            <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:28,height:28,borderRadius:"50%",background:oc[i]+"18",color:oc[i],fontWeight:800,fontSize:13,marginRight:12}}>{String.fromCharCode(65+i)}</span>{opt}</button>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ═══ WORD FAMILY ═══ */
+function WordFamilyQ({exercise,onDone}) {
+  const [sel,setSel]=useState(null);const [done,setDone]=useState(false);const timer=useRef(null);
+  const w=exercise.word;
+  useEffect(()=>()=>{if(timer.current)clearTimeout(timer.current);},[]);
+  const go=opt=>{if(done)return;setSel(opt);setDone(true);const ok=opt===exercise.targetForm;
+    if(ok) playCorrectSound(); else playWrongSound();
+    setTimeout(async()=>{
+      await speak(`The ${exercise.targetType} form is ${exercise.targetForm}`,0.88);
+      onDone(ok);
+    },400);
+  };
+  const oc=[C.primary,C.secondary,C.accent,C.gold];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:22,width:"100%",maxWidth:440}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.secondary,fontWeight:700,marginBottom:10}}>🔤 Word Family</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+          <div style={{fontSize:34,fontWeight:800}}>{w.word}</div><Speak text={w.word} size={36} color={C.secondary}/>
+        </div>
+        <div style={{fontSize:17,color:C.tm,marginTop:10,lineHeight:1.6}}>What is the <strong style={{color:C.secondary}}>{exercise.targetType}</strong> form?</div>
+      </div>
+      {done&&<div style={{textAlign:"center",padding:"10px 16px",background:`${C.lav}`,borderRadius:14,border:`1.5px solid ${C.secondary}33`,animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:C.secondary,fontWeight:600}}>✨ {exercise.targetType}: {exercise.targetForm}</span></div>}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.targetForm;let bg=`${oc[i]}10`,bd=`2px solid ${oc[i]}33`,cl=C.text;
+          if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
+          return <button key={i} onClick={()=>go(opt)} style={{background:bg,border:bd,color:cl,padding:"12px 16px",borderRadius:14,cursor:done?"default":"pointer",fontSize:16,fontWeight:700,transition:"all 0.2s"}}>{opt}</button>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ═══ SYNONYM MATCH ═══ */
+function SynAntQ({exercise,onDone}) {
+  const [sel,setSel]=useState(null);const [done,setDone]=useState(false);const timer=useRef(null);
+  const w=exercise.word;
+  useEffect(()=>()=>{if(timer.current)clearTimeout(timer.current);},[]);
+  const go=opt=>{if(done)return;setSel(opt);setDone(true);const ok=opt===exercise.correct;
+    if(ok) playCorrectSound(); else playWrongSound();
+    setTimeout(async()=>{
+      await speak(`${w.word} means ${w.en}`,0.88);
+      onDone(ok);
+    },400);
+  };
+  const oc=[C.primary,C.accent,C.gold,C.secondary];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:22,width:"100%",maxWidth:440}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.gold,fontWeight:700,marginBottom:10}}>🔗 Synonym</div>
+        <div style={{fontSize:16,color:C.tm,lineHeight:1.6}}>{exercise.question}</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginTop:8}}>
+          <span style={{fontSize:28,fontWeight:800}}>{w.word}</span><Speak text={w.word} size={32} color={C.gold}/>
+        </div>
+      </div>
+      {done&&<div style={{textAlign:"center",padding:"10px 16px",background:"#FFF8E8",borderRadius:14,border:`1.5px solid ${C.gold}44`,animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:C.gold,fontWeight:600}}>🇨🇳 {w.cn} · synonyms: {w.syn?.join(", ")}</span></div>}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.correct;let bg=`${oc[i]}10`,bd=`2px solid ${oc[i]}33`,cl=C.text;
+          if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
+          return <button key={i} onClick={()=>go(opt)} style={{background:bg,border:bd,color:cl,padding:"12px 16px",borderRadius:14,cursor:done?"default":"pointer",fontSize:16,fontWeight:700,transition:"all 0.2s"}}>{opt}</button>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ═══ ERROR SPOTTER ═══ */
+function ErrorSpotQ({exercise,onDone}) {
+  const [found,setFound]=useState(false);const [clicked,setClicked]=useState(null);const timer=useRef(null);
+  const w=exercise.word;
+  useEffect(()=>()=>{if(timer.current)clearTimeout(timer.current);},[]);
+  const words=exercise.errorSent.split(" ");
+  const clickWord=(word,i)=>{
+    if(found)return;setClicked(i);
+    const clean=word.replace(/[^a-zA-Z]/g,"").toLowerCase();
+    const isWrong=clean===exercise.wrongWord.toLowerCase();
+    setFound(true);
+    if(isWrong) playCorrectSound(); else playWrongSound();
+    setTimeout(async()=>{
+      await speak(`The correct word should be ${exercise.correctWord}. ${w.en}`,0.85);
+      onDone(isWrong);
+    },400);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:22,width:"100%",maxWidth:460}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.error,fontWeight:700,marginBottom:6}}>🔍 Error Spotter</div>
+        <div style={{fontSize:15,color:C.tm,lineHeight:1.6}}>Find the <strong style={{color:C.error}}>wrong word</strong> in this sentence:</div>
+      </div>
+      <div style={{background:C.card,borderRadius:20,padding:"24px 20px",boxShadow:"0 4px 20px rgba(0,0,0,0.06)",border:`2px solid ${C.error}22`}}>
+        <div style={{fontSize:19,lineHeight:2,textAlign:"center",fontFamily:"'Nunito',sans-serif"}}>
+          {words.map((word,i)=>{
+            const clean=word.replace(/[^a-zA-Z]/g,"").toLowerCase();
+            const isWrong=clean===exercise.wrongWord.toLowerCase();
+            const isClicked=clicked===i;
+            let color=C.text;let bg="transparent";let bd="none";let td="none";
+            if(found&&isWrong){color=C.error;bg=`${C.error}15`;bd=`2px solid ${C.error}`;td="line-through";}
+            else if(found&&isClicked&&!isWrong){color=C.tl;bg=`${C.tl}10`;}
+            return <span key={i} onClick={()=>clickWord(word,i)} style={{cursor:found?"default":"pointer",padding:"2px 4px",borderRadius:8,margin:"0 1px",color,background:bg,border:bd,textDecoration:td,transition:"all 0.2s",fontWeight:isWrong&&found?700:500}}>{word} </span>;
+          })}
+        </div>
+      </div>
+      {found&&(
+        <div style={{textAlign:"center",padding:"12px 16px",background:`${C.success}08`,borderRadius:14,border:`1.5px solid ${C.success}33`,animation:"slideUp 0.3s ease"}}>
+          <div style={{fontSize:15,fontWeight:700,color:C.success}}>✅ Correct word: {exercise.correctWord}</div>
+          <div style={{fontSize:13,color:C.tm,marginTop:4}}>🇨🇳 {w.cn} · {w.en}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══ PHRASE COMPLETE ═══ */
+function PhraseCompleteQ({exercise,onDone}) {
+  const [sel,setSel]=useState(null);const [done,setDone]=useState(false);const timer=useRef(null);
+  const w=exercise.word;
+  useEffect(()=>()=>{if(timer.current)clearTimeout(timer.current);},[]);
+  const go=opt=>{if(done)return;setSel(opt);setDone(true);const ok=opt===exercise.answer;
+    if(ok) playCorrectSound(); else playWrongSound();
+    setTimeout(async()=>{
+      await speak(exercise.phraseSent,0.85);
+      onDone(ok);
+    },400);
+  };
+  const oc=[C.primary,C.accent,C.gold,C.secondary];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:22,width:"100%",maxWidth:440}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.primary,fontWeight:700,marginBottom:10}}>💬 Complete the phrase</div>
+        <div style={{fontSize:28,fontWeight:800,color:C.text}}>{exercise.answerBeforeMain ? <><span style={{color:C.primary}}>?</span>{" + "}{exercise.mainWord}</> : <>{exercise.mainWord}{" + "}<span style={{color:C.primary}}>?</span></>}</div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.answer;let bg=`${oc[i]}10`,bd=`2px solid ${oc[i]}33`,cl=C.text;
+          if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
+          return <button key={i} onClick={()=>go(opt)} style={{background:bg,border:bd,color:cl,padding:"12px 16px",borderRadius:14,cursor:done?"default":"pointer",fontSize:16,fontWeight:700,transition:"all 0.2s"}}>{exercise.answerBeforeMain ? `${opt} ${exercise.mainWord}` : `${exercise.mainWord} ${opt}`}</button>;
+        })}
+      </div>
+      {done&&(
+        <div style={{background:`${C.accent}08`,borderRadius:16,padding:"16px",border:`1.5px solid ${C.accent}22`,animation:"slideUp 0.3s ease"}}>
+          <div style={{fontSize:15,fontWeight:700,color:C.accent,marginBottom:8}}>✨ {exercise.phraseFull}</div>
+          <div style={{fontSize:14,color:C.tm,lineHeight:1.6,fontStyle:"italic",display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
+            <span>"{exercise.phraseSent}"</span><Speak text={exercise.phraseSent} rate={0.82} size={28} color={C.accent}/>
+          </div>
+          {exercise.phraseSentCn&&(
+            <div style={{fontSize:13,color:"#8a7000",fontWeight:600,background:"rgba(255,220,50,0.12)",padding:"6px 12px",borderRadius:10,border:"1px solid rgba(255,200,0,0.2)"}}>
+              🇨🇳 {exercise.phraseSentCn}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══ MATCH PAIRS ═══ */
+function MatchQ({exercise,onDone}) {
+  const [selW,setSelW]=useState(null);
+  const [matches,setMatches]=useState({});
+  const [wrong,setWrong]=useState(null);
+  const [finishing,setFinishing]=useState(false);
+  const total=exercise.pairs.length;
+  const wc=[C.primary,C.secondary,C.accent,C.gold];
+
+  const clickW = w => {
+    if(matches[w]||finishing) return;
+    setSelW(w===selW?null:w);
+    setWrong(null);
+    speak(w);
+  };
+
+  const clickM = async m => {
+    if(!selW||Object.values(matches).includes(m)||finishing) return;
+    if(exercise.map[selW]===m) {
+      playCorrectSound();
+      const nm={...matches,[selW]:m};
+      setMatches(nm);
+      setSelW(null);
+      // When all pairs matched, read each word + meaning then proceed
+      if(Object.keys(nm).length===total) {
+        setFinishing(true);
+        // Read each matched pair: "word — meaning"
+        for(const [word, meaning] of Object.entries(nm)) {
+          await speak(word, 0.88);
+          await speak(meaning, 0.85);
+        }
+        onDone(true);
+      }
+    } else {
+      playWrongSound();
+      setWrong(m);
+      setTimeout(()=>setWrong(null),600);
+    }
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",maxWidth:500}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.secondary,fontWeight:700}}>🔗 Match</div>
+        <div style={{display:"flex",justifyContent:"center",gap:6,marginTop:8}}>
+          {exercise.pairs.map((_,i)=>(
+            <div key={i} style={{width:12,height:12,borderRadius:"50%",background:Object.keys(matches).length>i?C.success:`${C.tl}33`,transition:"all 0.3s"}}/>
+          ))}
+        </div>
+      </div>
+      {finishing&&(
+        <div style={{textAlign:"center",padding:"8px",borderRadius:12,background:`${C.success}10`,border:`1px solid ${C.success}33`,fontSize:13,color:C.success,fontWeight:700,animation:"pulse 1s infinite"}}>
+          🔊 朗读释义中...
+        </div>
+      )}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {exercise.pairs.map((w,i)=>(
+            <button key={w} onClick={()=>clickW(w)}
+              style={{background:matches[w]?`${C.success}12`:selW===w?`${wc[i]}18`:`${wc[i]}08`,
+                border:matches[w]?`2px solid ${C.success}`:selW===w?`2px solid ${wc[i]}`:`2px solid ${wc[i]}22`,
+                color:matches[w]?C.success:C.text,padding:"12px 14px",borderRadius:14,
+                cursor:(matches[w]||finishing)?"default":"pointer",fontSize:15,fontWeight:700,
+                opacity:matches[w]?0.6:1,transition:"all 0.2s"}}>
+              {w}
+            </button>
+          ))}
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {exercise.meanings.map((m,i)=>{
+            const matched=Object.values(matches).includes(m);
+            return (
+              <button key={i} onClick={()=>clickM(m)}
+                style={{background:matched?`${C.success}12`:wrong===m?`${C.error}12`:"#f8f6ff",
+                  border:matched?`2px solid ${C.success}`:wrong===m?`2px solid ${C.error}`:"2px solid #e8e4f0",
+                  color:matched?C.success:wrong===m?C.error:C.tm,
+                  padding:"12px 14px",borderRadius:14,
+                  cursor:(matched||finishing)?"default":"pointer",
+                  fontSize:12,textAlign:"left",lineHeight:1.5,
+                  opacity:matched?0.6:1,transition:"all 0.2s"}}>
+                {m.length>60?m.slice(0,60)+"…":m}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function DialogueQ({exercise, onDone}) {
+  const [sel,setSel]=useState(null);
+  const [done,setDone]=useState(false);
+  const C_=C;
+  const oc=[C_.primary,C_.accent,C_.gold,C_.secondary];
+
+  // Auto-read the question when the card appears
+  useEffect(()=>{ setTimeout(()=>speak(exercise.question, 0.88), 400); },[]);
+
+  const go = async (opt) => {
+    if(done) return;
+    setSel(opt); setDone(true);
+    const correct = opt===exercise.correct;
+    if(correct){ playCorrectSound(); await speak(exercise.correct,0.85); }
+    else { playWrongSound(); await speak(exercise.correct,0.85); }
+    onDone(correct);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20,width:"100%",maxWidth:440}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C_.accent,fontWeight:700,marginBottom:12}}>💬 完成对话 · Complete the Dialogue</div>
+      </div>
+      {/* Person A — asks a question */}
+      <div style={{display:"flex",alignItems:"flex-end",gap:10}}>
+        <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${C_.secondary},${C_.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>👩</div>
+        <div style={{background:C_.card,borderRadius:"4px 18px 18px 18px",padding:"12px 16px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",maxWidth:300}}>
+          <div style={{fontSize:14,lineHeight:1.6,color:C_.text,fontWeight:600,marginBottom:6}}>{exercise.question}</div>
+          <Speak text={exercise.question} size={22} color={C_.secondary}/>
+        </div>
+      </div>
+      {/* Person B — reply (blank or revealed) */}
+      <div style={{display:"flex",alignItems:"flex-end",gap:10,flexDirection:"row-reverse"}}>
+        <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${C_.primary},${C_.gold})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>👦</div>
+        <div style={{borderRadius:"18px 4px 18px 18px",padding:"12px 16px",minWidth:100,
+          background:done?(sel===exercise.correct?`${C_.success}15`:`${C_.error}10`):C_.card,
+          border:done?(sel===exercise.correct?`2px solid ${C_.success}44`:`2px solid ${C_.error}44`):`2px dashed ${C_.primary}33`,
+          boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
+          {done
+            ? <div style={{fontSize:13,color:sel===exercise.correct?C_.success:C_.error,fontWeight:600,lineHeight:1.5}}>{exercise.correct}</div>
+            : <div style={{fontSize:13,color:C_.tl,letterSpacing:2}}>· · · · · ·</div>
+          }
+        </div>
+      </div>
+      {/* Options */}
+      <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
+        {exercise.options.map((opt,i)=>{
+          const it=sel===opt, ic=opt===exercise.correct;
+          let bg=`${oc[i%4]}10`, bd=`2px solid ${oc[i%4]}33`, cl=C_.text;
+          if(done&&ic){bg=`${C_.success}18`;bd=`2px solid ${C_.success}`;cl=C_.success;}
+          else if(done&&it&&!ic){bg=`${C_.error}12`;bd=`2px solid ${C_.error}`;cl=C_.error;}
+          return (
+            <button key={i} onClick={()=>go(opt)} style={{background:bg,border:bd,color:cl,padding:"12px 16px",borderRadius:14,cursor:done?"default":"pointer",fontSize:13,fontWeight:600,textAlign:"left",lineHeight:1.5,transition:"all 0.2s",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{width:24,height:24,borderRadius:"50%",background:bd.includes(C_.success)?C_.success:bd.includes(C_.error)?C_.error:oc[i%4],color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,flexShrink:0}}>{i+1}</span>
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+      {done&&<div style={{textAlign:"center",fontSize:13,color:C_.tl,padding:"10px 14px",borderRadius:12,background:`${C_.accent}08`,border:`1px solid ${C_.accent}22`}}>🇨🇳 <span style={{color:C_.accent,fontWeight:700}}>{exercise.answerCn}</span></div>}
+    </div>
+  );
+}
+
+
+
+/* ═══ SENTENCE BUILD Q ═══ */
+function SentBuildQ({exercise, onDone}) {
+  const [phase,setPhase]=useState("listen"); // "listen" | "build"
+  const [playing,setPlaying]=useState(false);
+  const [placed,setPlaced]=useState([]);
+  const [avail,setAvail]=useState(exercise.tiles);
+  const [done,setDone]=useState(false);
+  const [wrong,setWrong]=useState(false);
+  const C_=C;
+
+  // Auto-play on mount
+  useEffect(()=>{
+    setPlaying(true);
+    speak(exercise.sentence, 0.82).then(()=>setPlaying(false));
+  },[]);
+
+  const replayAndBuild = async () => {
+    setPlaying(true);
+    await speak(exercise.sentence, 0.82);
+    setPlaying(false);
+    setPhase("build");
+  };
+
+  const addWord = (word, i) => {
+    if(done) return;
+    setPlaced(p=>[...p,word]);
+    setAvail(a=>{const na=[...a]; na.splice(i,1); return na;});
+  };
+
+  const removeWord = (word, i) => {
+    if(done) return;
+    setPlaced(p=>{const np=[...p]; np.splice(i,1); return np;});
+    setAvail(a=>[...a,word]);
+  };
+
+  const check = async () => {
+    if(done||placed.length===0) return;
+    const isCorrect = placed.join(" ").toLowerCase()===exercise.tokens.join(" ").toLowerCase();
+    setDone(true);
+    if(isCorrect){ setWrong(false); playCorrectSound(); await speak(exercise.sentence,0.85); }
+    else { setWrong(true); playWrongSound(); await speak(exercise.sentence,0.85); }
+    onDone(isCorrect);
+  };
+
+  const tileColors = [C_.primary,C_.secondary,C_.accent,C_.gold,C_.success];
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",maxWidth:440}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C_.secondary,fontWeight:700,marginBottom:8}}>🔤 造句 · Build the Sentence</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"14px 16px",borderRadius:16,background:`linear-gradient(135deg,${C_.secondary}10,${C_.accent}10)`,border:`1.5px solid ${C_.secondary}22`}}>
+          <div style={{fontSize:20}}>🧑‍💼</div>
+          <div style={{fontSize:14,color:C_.tm,fontWeight:600}}>{exercise.cn}</div>
+        </div>
+      </div>
+
+      {/* LISTEN phase */}
+      {phase==="listen"&&(
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,padding:"28px 20px",borderRadius:20,background:`linear-gradient(135deg,${C_.secondary}08,${C_.accent}08)`,border:`2px solid ${C_.secondary}22`,animation:"slideUp 0.3s ease"}}>
+          <div style={{fontSize:13,color:C_.tm,fontWeight:600}}>👂 先听句子，再来造句</div>
+          <div style={{width:72,height:72,borderRadius:"50%",background:playing?`linear-gradient(135deg,${C_.secondary},${C_.accent})`:`${C_.secondary}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,cursor:"pointer",transition:"all 0.3s",boxShadow:playing?`0 8px 24px ${C_.secondary}44`:"none",animation:playing?"pulse 1s ease-in-out infinite":"none"}}
+            onClick={()=>{if(!playing){setPlaying(true);speak(exercise.sentence,0.82).then(()=>setPlaying(false));}}}>
+            {playing?"🔊":"🔈"}
+          </div>
+          {playing
+            ? <div style={{fontSize:13,color:C_.secondary,fontWeight:600,animation:"pulse 1s infinite"}}>正在朗读...</div>
+            : <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+                <button onClick={()=>{setPlaying(true);speak(exercise.sentence,0.82).then(()=>setPlaying(false));}}
+                  style={{fontSize:13,color:C_.tl,background:"transparent",border:`1.5px solid ${C_.tl}44`,padding:"6px 16px",borderRadius:20,cursor:"pointer",fontWeight:600}}>
+                  🔁 再听一遍
+                </button>
+                <button onClick={replayAndBuild}
+                  style={{background:`linear-gradient(135deg,${C_.secondary},${C_.accent})`,border:"none",color:"#fff",padding:"12px 28px",borderRadius:14,cursor:"pointer",fontSize:15,fontWeight:800,boxShadow:`0 6px 20px ${C_.secondary}33`}}>
+                  ✏️ 开始造句 →
+                </button>
+              </div>
+          }
+        </div>
+      )}
+
+      {/* BUILD phase */}
+      {phase==="build"&&(
+        <>
+          {/* Replay button */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            <button onClick={()=>{if(!playing){setPlaying(true);speak(exercise.sentence,0.82).then(()=>setPlaying(false));}}}
+              style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:C_.secondary,background:`${C_.secondary}10`,border:`1.5px solid ${C_.secondary}33`,padding:"5px 14px",borderRadius:20,cursor:playing?"default":"pointer",fontWeight:700}}>
+              {playing?"🔊 朗读中...":"🔁 再听一遍"}
+            </button>
+          </div>
+          {/* Answer area */}
+          <div style={{minHeight:56,padding:"10px 12px",borderRadius:14,border:`2px dashed ${done?(wrong?C_.error:C_.success):C_.primary}55`,background:done?(wrong?`${C_.error}08`:`${C_.success}08`):`${C_.primary}05`,display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
+            {placed.length===0
+              ? <div style={{color:C_.tl,fontSize:13,width:"100%",textAlign:"center"}}>点击下方单词，按顺序组成句子</div>
+              : placed.map((w,i)=>(
+                  <button key={i+"-"+w} onClick={()=>removeWord(w,i)} style={{padding:"6px 12px",borderRadius:20,background:done?(wrong?`${C_.error}18`:`${C_.success}18`):tileColors[i%5]+"18",border:`1.5px solid ${done?(wrong?C_.error:C_.success):tileColors[i%5]}55`,color:done?(wrong?C_.error:C_.success):tileColors[i%5],fontSize:14,fontWeight:700,cursor:done?"default":"pointer",transition:"all 0.2s"}}>
+                    {w}
+                  </button>
+                ))
+            }
+          </div>
+          {done&&wrong&&(
+            <div style={{padding:"10px 14px",borderRadius:12,background:`${C_.success}10`,border:`1.5px solid ${C_.success}33`,display:"flex",gap:8,alignItems:"center"}}>
+              <Speak text={exercise.sentence} size={26} color={C_.success}/>
+              <div style={{fontSize:13,color:C_.success,fontWeight:600}}>{exercise.sentence}</div>
+            </div>
+          )}
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",padding:"12px",borderRadius:14,background:C_.card,minHeight:60}}>
+            {avail.map((w,i)=>(
+              <button key={i+"-"+w} onClick={()=>addWord(w,i)} style={{padding:"8px 14px",borderRadius:20,background:"#fff",border:`2px solid ${tileColors[i%5]}44`,color:C_.text,fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,0.06)",transition:"all 0.2s"}}>
+                {w}
+              </button>
+            ))}
+          </div>
+          {!done&&(
+            <button onClick={check} disabled={placed.length===0} style={{background:placed.length===0?"#ccc":`linear-gradient(135deg,${C_.secondary},${C_.accent})`,border:"none",color:"#fff",padding:"14px",borderRadius:14,cursor:placed.length===0?"default":"pointer",fontSize:15,fontWeight:800,opacity:placed.length===0?0.5:1,transition:"all 0.2s"}}>
+              ✓ 检查 · Check
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+
+
+
+/* ═══ VERB FORMS Q ═══ */
+// ══════════════════════════════════════════
+// 听英文释义选单词 ListenDefQ
+// ══════════════════════════════════════════
+function ListenDefQ({exercise, onDone}) {
+  const [sel, setSel] = useState(null);
+  const [done, setDone] = useState(false);
+  const timer = useRef(null);
+  const w = exercise.word;
+
+  const readDef = () => {
+    try {
+      window.speechSynthesis?.cancel();
+      const u = new SpeechSynthesisUtterance(exercise.enDef);
+      u.lang = "en-US"; u.rate = 0.82; u.pitch = 1;
+      u.onerror = () => speak(exercise.enDef, 0.82);
+      window.speechSynthesis?.speak(u);
+    } catch(e) { speak(exercise.enDef, 0.82); }
+  };
+
+  useEffect(() => {
+    setTimeout(readDef, 400);
+    return () => { window.speechSynthesis?.cancel(); if(timer.current) clearTimeout(timer.current); };
+  }, []);
+
+  const go = opt => {
+    if(done) return;
+    setSel(opt); setDone(true);
+    const ok = opt === exercise.answer;
+    if(ok) playCorrectSound(); else playWrongSound();
+    if(!ok) {
+      try {
+        const wl = JSON.parse(localStorage.getItem("vm_wrong_listen")||"[]");
+        if(!wl.includes(w.word)) wl.push(w.word);
+        localStorage.setItem("vm_wrong_listen", JSON.stringify(wl));
+      } catch(e){}
+    }
+    timer.current = setTimeout(() => onDone(ok), ok?800:1500);
+  };
+
+  const oc = [C.primary, C.accent, C.gold, C.secondary];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16,width:"100%",maxWidth:440}}>
+      <div style={{textAlign:"center",padding:"12px 0 4px"}}>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:10}}>👂 Listen to Definition</div>
+        <button onClick={readDef}
+          style={{width:64,height:64,borderRadius:"50%",background:"linear-gradient(135deg,#00B4D8,#7B61FF)",border:"none",cursor:"pointer",fontSize:28,boxShadow:"0 4px 16px rgba(0,180,216,0.35)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
+          🔊
+        </button>
+      </div>
+      <div style={{background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
+        <div style={{fontSize:15,lineHeight:1.7,color:C.text,fontWeight:600}}>{exercise.enDef}</div>
+        <div style={{fontSize:12,color:C.tl,marginTop:6,paddingTop:6,borderTop:`1px solid ${C.primary}15`,fontStyle:"italic"}}>
+          🇨🇳 {exercise.cnDef}
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        {exercise.options.map((opt,i) => {
+          const it=sel===opt, ic=opt===exercise.answer;
+          let bg=`${oc[i%4]}10`, bd=`2px solid ${oc[i%4]}33`, cl=C.text;
+          if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}
+          else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
+          return <button key={i} onClick={()=>go(opt)}
+            style={{background:bg,border:bd,color:cl,padding:"14px 12px",borderRadius:14,cursor:done?"default":"pointer",fontSize:15,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",transition:"all 0.2s"}}>
+            {opt}
+          </button>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════
+// 听音选词题 ListenPickQ
+// ══════════════════════════════════════════
+function ListenPickQ({exercise, onDone}) {
+  const [sel, setSel] = useState(null);
+  const [done, setDone] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  const timer = useRef(null);
+  const w = exercise.word;
+
+  useEffect(() => {
+    // 自动播放单词音频
+    setTimeout(() => speak(w.word, 0.82), 300);
+    return () => { if(timer.current) clearTimeout(timer.current); };
+  }, [w.word]);
+
+  const go = opt => {
+    if(done) return;
+    setSel(opt); setDone(true);
+    const ok = opt === exercise.answer;
+    if(ok) playCorrectSound(); else playWrongSound();
+    // 答错存入听错错题本
+    if(!ok) {
+      try {
+        const wl = JSON.parse(localStorage.getItem("vm_wrong_listen")||"[]");
+        if(!wl.includes(w.word)) wl.push(w.word);
+        localStorage.setItem("vm_wrong_listen", JSON.stringify(wl));
+      } catch(e){}
+    }
+    timer.current = setTimeout(() => onDone(ok), 1200);
+  };
+
+  const oc = [C.primary, C.accent, C.gold, C.secondary];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",maxWidth:440}}>
+      <div style={{textAlign:"center",padding:"20px 0 10px"}}>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:12}}>👂 Listen &amp; Choose</div>
+        <button onClick={()=>speak(w.word, 0.82)}
+          style={{width:80,height:80,borderRadius:"50%",background:"linear-gradient(135deg,#00B4D8,#7B61FF)",border:"none",cursor:"pointer",fontSize:36,boxShadow:"0 4px 20px rgba(0,180,216,0.4)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
+          🔊
+        </button>
+        <div style={{marginTop:12,fontSize:13,color:C.tl}}>点击重播 · Tap to replay</div>
+        {done && <div style={{marginTop:8,fontSize:20,fontWeight:800,color:C.text}}>{w.word}</div>}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        {exercise.options.map((opt,i) => {
+          const it=sel===opt, ic=opt===exercise.answer;
+          let bg=`${oc[i%4]}10`, bd=`2px solid ${oc[i%4]}33`, cl=C.text;
+          if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}
+          else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
+          return <button key={i} onClick={()=>go(opt)}
+            style={{background:bg,border:bd,color:cl,padding:"14px 12px",borderRadius:14,cursor:done?"default":"pointer",fontSize:14,fontWeight:700,transition:"all 0.2s",lineHeight:1.4}}>
+            {opt}
+          </button>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════
+// 听句填空题 ListenFillQ
+// ══════════════════════════════════════════
+function ListenFillQ({exercise, onDone}) {
+  const [sel, setSel] = useState(null);
+  const [done, setDone] = useState(false);
+  const timer = useRef(null);
+  const w = exercise.word;
+
+  useEffect(() => {
+    // 自动播放句子音频
+    setTimeout(() => {
+      const url = `/audio/${exercise.audioHash}.mp3`;
+      const au = new Audio(url);
+      au.play().catch(() => speak(exercise.sentence, 0.82));
+    }, 300);
+    return () => { if(timer.current) clearTimeout(timer.current); };
+  }, [exercise.audioHash]);
+
+  const playAudio = () => {
+    const url = `/audio/${exercise.audioHash}.mp3`;
+    const au = new Audio(url);
+    au.play().catch(() => speak(exercise.sentence, 0.82));
+  };
+
+  const go = opt => {
+    if(done) return;
+    setSel(opt); setDone(true);
+    const ok = opt === exercise.answer;
+    if(ok) playCorrectSound(); else playWrongSound();
+    if(!ok) {
+      try {
+        const wl = JSON.parse(localStorage.getItem("vm_wrong_listen")||"[]");
+        if(!wl.includes(w.word)) wl.push(w.word);
+        localStorage.setItem("vm_wrong_listen", JSON.stringify(wl));
+      } catch(e){}
+    }
+    timer.current = setTimeout(() => onDone(ok), 1200);
+  };
+
+  const oc = [C.primary, C.accent, C.gold, C.secondary];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",maxWidth:440}}>
+      <div style={{textAlign:"center",padding:"16px 0 8px"}}>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:12}}>👂 Listen &amp; Fill</div>
+        <button onClick={playAudio}
+          style={{width:64,height:64,borderRadius:"50%",background:"linear-gradient(135deg,#00B4D8,#7B61FF)",border:"none",cursor:"pointer",fontSize:28,boxShadow:"0 4px 16px rgba(0,180,216,0.35)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
+          🔊
+        </button>
+      </div>
+      <div style={{background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
+        <div style={{fontSize:15,lineHeight:1.8,color:C.text,fontWeight:500}}>
+          {exercise.masked.split("___").map((part,i,arr) => (
+            <span key={i}>{part}{i<arr.length-1 && (
+              done
+                ? <span style={{color:C.success,fontWeight:800,borderBottom:`2px solid ${C.success}`}}> {exercise.answer} </span>
+                : <span style={{display:"inline-block",width:80,borderBottom:`2px dashed ${C.primary}`,margin:"0 4px"}}> </span>
+            )}</span>
+          ))}
+        </div>
+        {exercise.sentCn && (
+          <div style={{fontSize:12,color:C.tl,marginTop:8,paddingTop:8,borderTop:`1px solid ${C.primary}15`,fontStyle:"italic"}}>
+            🇨🇳 {exercise.sentCn}
+          </div>
+        )}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        {exercise.options.map((opt,i) => {
+          const it=sel===opt, ic=opt===exercise.answer;
+          let bg=`${oc[i%4]}10`, bd=`2px solid ${oc[i%4]}33`, cl=C.text;
+          if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}
+          else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
+          return <button key={i} onClick={()=>go(opt)}
+            style={{background:bg,border:bd,color:cl,padding:"14px 12px",borderRadius:14,cursor:done?"default":"pointer",fontSize:15,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",transition:"all 0.2s"}}>
+            {opt}
+          </button>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════
+// 句子跟读题 FollowReadQ
+// 流程：听示范 → 录音跟读 → 语音识别 → 逐词对比
+// ══════════════════════════════════════════
+function FollowReadQ({exercise, onDone}) {
+  const [phase, setPhase] = useState("listen"); // listen | record | result
+  const [recording, setRecording] = useState(false);
+  const [recognized, setRecognized] = useState("");
+  const [recordBlob, setRecordBlob] = useState(null);
+  const [playingDemo, setPlayingDemo] = useState(false);
+  const [playingUser, setPlayingUser] = useState(false);
+  const [matchResult, setMatchResult] = useState(null); // [{word, matched}]
+  const [score, setScore] = useState(0);
+  const recognitionRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timer = useRef(null);
+  const w = exercise.word;
+  const sentence = exercise.sentence;
+  const sentCn = exercise.sentCn;
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+      if (recognitionRef.current) try { recognitionRef.current.abort(); } catch(e) {}
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") 
+        try { mediaRecorderRef.current.stop(); } catch(e) {}
+      window.speechSynthesis?.cancel();
+    };
+  }, []);
+
+  // Auto-play demo on mount
+  useEffect(() => {
+    const t = setTimeout(() => playDemo(), 500);
+    return () => clearTimeout(t);
+  }, []);
+
+  const playDemo = async () => {
+    setPlayingDemo(true);
+    try { await speak(sentence, 0.82); } catch(e) {}
+    setPlayingDemo(false);
+  };
+
+  const playUserRecording = () => {
+    if (!recordBlob) return;
+    setPlayingUser(true);
+    const audio = new Audio(URL.createObjectURL(recordBlob));
+    audio.onended = () => setPlayingUser(false);
+    audio.onerror = () => setPlayingUser(false);
+    audio.play().catch(() => setPlayingUser(false));
+  };
+
+  const startRecording = async () => {
+    setRecognized("");
+    setRecordBlob(null);
+    chunksRef.current = [];
+
+    // Start Speech Recognition
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setRecognized("(你的浏览器不支持语音识别，请使用 Chrome)");
+      setPhase("result");
+      doCompare("", sentence);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+    recognitionRef.current = recognition;
+
+    recognition.onresult = (e) => {
+      const transcript = Array.from(e.results).map(r => r[0].transcript).join("");
+      setRecognized(transcript);
+    };
+    recognition.onerror = (e) => { console.log("Speech recognition error:", e.error); };
+    recognition.onend = () => {
+      // Speech recognition ended naturally — auto-trigger stop
+      stopRecording();
+    };
+    recognition.start();
+
+    // Start MediaRecorder for playback
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      mediaRecorderRef.current = mr;
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        setRecordBlob(blob);
+        stream.getTracks().forEach(t => t.stop());
+      };
+      mr.start();
+    } catch(e) { console.log("Mic access denied:", e); }
+
+    setRecording(true);
+    setPhase("record");
+
+    // Auto-stop after 10 seconds
+    timer.current = setTimeout(() => stopRecording(), 10000);
+  };
+
+  const stoppedRef = useRef(false);
+
+  const stopRecording = () => {
+    if (stoppedRef.current) return; // prevent double-stop
+    stoppedRef.current = true;
+    if (timer.current) clearTimeout(timer.current);
+    setRecording(false);
+
+    // Stop recognition
+    if (recognitionRef.current) {
+      recognitionRef.current.onend = () => {};
+      recognitionRef.current.onresult = () => {};
+      try { recognitionRef.current.stop(); } catch(e) {}
+      try { recognitionRef.current.abort(); } catch(e) {}
+    }
+
+    // Stop media recorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try { mediaRecorderRef.current.stop(); } catch(e) {}
+    }
+
+    // Directly go to result after a short delay (don't depend on onend)
+    setTimeout(() => {
+      setPhase("result");
+      setRecognized(prev => {
+        doCompare(prev, sentence);
+        return prev;
+      });
+    }, 500);
+  };
+
+  const doCompare = (spokenText, targetSentence) => {
+    const targetWords = targetSentence.replace(/[.,!?;:'"()]/g, "").toLowerCase().split(/\s+/).filter(Boolean);
+    const spokenWords = (spokenText || "").replace(/[.,!?;:'"()]/g, "").toLowerCase().split(/\s+/).filter(Boolean);
+    const spokenSet = new Set(spokenWords);
+    const result = targetWords.map(word => ({
+      word,
+      matched: spokenSet.has(word)
+    }));
+    const matched = result.filter(r => r.matched).length;
+    const pct = targetWords.length > 0 ? Math.round((matched / targetWords.length) * 100) : 0;
+    setMatchResult(result);
+    setScore(pct);
+  };
+
+  const handleNext = () => {
+    const ok = score >= 60;
+    onDone(ok);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16,width:"100%",maxWidth:440}}>
+      {/* Title */}
+      <div style={{textAlign:"center",padding:"8px 0"}}>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:6}}>🎙️ Follow & Read</div>
+        <div style={{fontSize:13,color:C.tm,fontWeight:600}}>听示范 → 跟读 → 对比</div>
+      </div>
+
+      {/* Target sentence card */}
+      <div style={{background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
+        <div style={{fontSize:16,lineHeight:1.8,color:C.text,fontWeight:700,marginBottom:8}}>
+          {matchResult ? matchResult.map((r, i) => (
+            <span key={i} style={{
+              color: r.matched ? C.success : C.error,
+              textDecoration: r.matched ? "none" : "underline wavy",
+              fontWeight: r.matched ? 700 : 800,
+              marginRight: 4,
+            }}>{r.word} </span>
+          )) : sentence}
+        </div>
+        <div style={{fontSize:12,color:C.tl,borderTop:`1px solid ${C.primary}15`,paddingTop:8,fontStyle:"italic"}}>
+          🇨🇳 {sentCn}
+        </div>
+      </div>
+
+      {/* Demo play button */}
+      <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+        <button onClick={playDemo} disabled={playingDemo || recording}
+          style={{display:"flex",alignItems:"center",gap:6,padding:"10px 20px",borderRadius:14,
+            background:playingDemo?"linear-gradient(135deg,#00B4D8,#7B61FF)":"#fff",
+            border:playingDemo?"none":"2px solid #00B4D833",
+            color:playingDemo?"#fff":"#00B4D8",cursor:"pointer",fontSize:14,fontWeight:700,
+            transition:"all 0.2s"}}>
+          {playingDemo ? "🔊 播放中..." : "🔊 听示范"}
+        </button>
+        {recordBlob && (
+          <button onClick={playUserRecording} disabled={playingUser}
+            style={{display:"flex",alignItems:"center",gap:6,padding:"10px 20px",borderRadius:14,
+              background:playingUser?"linear-gradient(135deg,#FF6B6B,#FF8C5A)":"#fff",
+              border:playingUser?"none":"2px solid #FF6B6B33",
+              color:playingUser?"#fff":"#FF6B6B",cursor:"pointer",fontSize:14,fontWeight:700,
+              transition:"all 0.2s"}}>
+            {playingUser ? "🎧 回放中..." : "🎧 我的录音"}
+          </button>
+        )}
+      </div>
+
+      {/* Record button */}
+      {phase !== "result" && (
+        <div style={{textAlign:"center"}}>
+          {!recording ? (
+            <button onClick={startRecording}
+              style={{width:80,height:80,borderRadius:"50%",
+                background:"linear-gradient(135deg,#FF6B6B,#FF8C5A)",
+                border:"4px solid #fff",boxShadow:"0 4px 20px rgba(255,107,83,0.4)",
+                cursor:"pointer",fontSize:32,color:"#fff",
+                display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
+              🎙️
+            </button>
+          ) : (
+            <button onClick={stopRecording}
+              style={{width:80,height:80,borderRadius:"50%",
+                background:"linear-gradient(135deg,#FF3333,#FF6B6B)",
+                border:"4px solid #fff",boxShadow:"0 4px 20px rgba(255,50,50,0.5)",
+                cursor:"pointer",fontSize:28,color:"#fff",
+                display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto",
+                animation:"pulse 1s ease-in-out infinite"}}>
+              ⬛
+            </button>
+          )}
+          <div style={{fontSize:12,color:C.tl,marginTop:8,fontWeight:600}}>
+            {recording ? "录音中...点击停止" : "点击开始跟读"}
+          </div>
+          {recording && recognized && (
+            <div style={{fontSize:13,color:C.tm,marginTop:8,padding:"8px 14px",background:"#f8f8ff",borderRadius:10,fontStyle:"italic"}}>
+              识别中：{recognized}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {phase === "result" && (
+        <div style={{textAlign:"center"}}>
+          {/* Score circle */}
+          <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",
+            background:score>=80?"linear-gradient(135deg,#3CC87A,#00B4D8)":score>=60?"linear-gradient(135deg,#F8C740,#FF8C5A)":"linear-gradient(135deg,#FF6B6B,#FF3333)",
+            borderRadius:20,padding:"20px 36px",marginBottom:16,
+            boxShadow:"0 6px 24px rgba(0,0,0,0.15)"}}>
+            <div style={{fontSize:36,fontWeight:900,color:"#fff"}}>{score}%</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.85)",fontWeight:600}}>
+              {score>=80?"太棒了！发音很准！":score>=60?"不错！继续练习！":"再试一次吧！"}
+            </div>
+          </div>
+
+          {/* Recognition result */}
+          <div style={{background:"#fff",borderRadius:14,padding:"14px 16px",marginBottom:16,border:"1.5px solid #E8EEFF",textAlign:"left"}}>
+            <div style={{fontSize:11,color:C.tl,fontWeight:700,marginBottom:6}}>🤖 识别结果：</div>
+            <div style={{fontSize:14,color:recognized?C.text:C.tl,lineHeight:1.6,fontWeight:600}}>
+              {recognized || "(未识别到语音)"}
+            </div>
+          </div>
+
+          {/* Legend */}
+          <div style={{display:"flex",gap:16,justifyContent:"center",marginBottom:16,fontSize:12,color:C.tl}}>
+            <span><span style={{color:C.success,fontWeight:800}}>■</span> 识别正确</span>
+            <span><span style={{color:C.error,fontWeight:800}}>■</span> 未识别到</span>
+          </div>
+
+          {/* Buttons */}
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={()=>{setPhase("listen");setMatchResult(null);setRecognized("");setRecordBlob(null);setScore(0);stoppedRef.current=false;}}
+              style={{flex:1,padding:"14px",borderRadius:14,background:C.card,border:"2px solid #E8EEFF",
+                color:C.tm,cursor:"pointer",fontSize:14,fontWeight:700}}>
+              🔄 再试一次
+            </button>
+            <button onClick={handleNext}
+              style={{flex:1,padding:"14px",borderRadius:14,
+                background:score>=60?"linear-gradient(135deg,#3CC87A,#00B4D8)":"linear-gradient(135deg,#FF8C5A,#FF6B6B)",
+                border:"none",color:"#fff",cursor:"pointer",fontSize:14,fontWeight:800}}>
+              {score>=60?"✓ 下一题":"→ 跳过"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════
+// 经典台词跟读数据
+// ══════════════════════════════════════════
+const MOVIE_LINES = {
+  lion_king: {
+    name:"The Lion King", cn:"狮子王", emoji:"🦁", color:"#F8C740",
+    lines:[
+      {id:"lk1",line:"Remember who you are. You are my son and the one true king.",cnLine:"记住你是谁。你是我的儿子，唯一的真正国王。",character:"Mufasa",difficulty:1},
+      {id:"lk2",line:"The past can hurt. But the way I see it, you can either run from it or learn from it.",cnLine:"过去可能会伤害你。但我认为，你可以选择逃避，也可以选择从中学习。",character:"Rafiki",difficulty:2},
+      {id:"lk3",line:"Everything you see exists together in a delicate balance.",cnLine:"你所看到的一切都在微妙的平衡中共存。",character:"Mufasa",difficulty:1},
+      {id:"lk4",line:"I laugh in the face of danger.",cnLine:"我在危险面前放声大笑。",character:"Simba",difficulty:1},
+      {id:"lk5",line:"Being brave doesn't mean you go looking for trouble.",cnLine:"勇敢并不意味着你要去自找麻烦。",character:"Mufasa",difficulty:1},
+    ]
+  },
+  frozen: {
+    name:"Frozen", cn:"冰雪奇缘", emoji:"🧊", color:"#00B4D8",
+    lines:[
+      {id:"fz1",line:"Some people are worth melting for.",cnLine:"有些人值得你为他们融化。",character:"Olaf",difficulty:1},
+      {id:"fz2",line:"Let it go. The cold never bothered me anyway.",cnLine:"随它去吧。反正寒冷从来不会困扰我。",character:"Elsa",difficulty:1},
+      {id:"fz3",line:"Only an act of true love can thaw a frozen heart.",cnLine:"只有真爱之举才能融化冰冻的心。",character:"Grand Pabbie",difficulty:2},
+      {id:"fz4",line:"You cannot live your life in fear of what might happen.",cnLine:"你不能活在对未来可能发生的事的恐惧中。",character:"Anna",difficulty:2},
+      {id:"fz5",line:"Love is putting someone else's needs before yours.",cnLine:"爱就是把别人的需要放在自己的前面。",character:"Olaf",difficulty:1},
+    ]
+  },
+  harry_potter: {
+    name:"Harry Potter", cn:"哈利·波特", emoji:"🧙", color:"#9B6FFF",
+    lines:[
+      {id:"hp1",line:"It does not do to dwell on dreams and forget to live.",cnLine:"沉溺于梦想而忘记生活是不可取的。",character:"Dumbledore",difficulty:2},
+      {id:"hp2",line:"Happiness can be found even in the darkest of times.",cnLine:"即使在最黑暗的时刻也能找到幸福。",character:"Dumbledore",difficulty:1},
+      {id:"hp3",line:"It is our choices that show what we truly are.",cnLine:"正是我们的选择展示了我们真正是什么样的人。",character:"Dumbledore",difficulty:1},
+      {id:"hp4",line:"Words are our most inexhaustible source of magic.",cnLine:"语言是我们最取之不尽的魔法源泉。",character:"Dumbledore",difficulty:2},
+      {id:"hp5",line:"It takes a great deal of bravery to stand up to your enemies, but just as much to stand up to your friends.",cnLine:"面对敌人需要很大的勇气，但面对朋友同样需要。",character:"Dumbledore",difficulty:3},
+    ]
+  },
+};
+
+// ══════════════════════════════════════════
+// 经典台词跟读页面
+// ══════════════════════════════════════════
+function MovieReadScreen({ onClose }) {
+  const [selectedMovie, setSelectedMovie] = useState(null);
+  const [lineIdx, setLineIdx] = useState(0);
+  const [phase, setPhase] = useState("idle"); // idle | recording | result
+  const [playing, setPlaying] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recognized, setRecognized] = useState("");
+  const [score, setScore] = useState(0);
+  const [matchResult, setMatchResult] = useState(null);
+  const recRef = useRef(null);
+  const stoppedRef = useRef(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (recRef.current) try { recRef.current.abort(); } catch(e) {}
+      window.speechSynthesis?.cancel();
+    };
+  }, []);
+
+  // Movie selection screen
+  if (!selectedMovie) {
+    return (
+      <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",padding:"24px 16px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+          <button onClick={onClose} style={{background:C.card,border:"2px solid #ffd4d4",color:C.error,padding:"8px 14px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>✕</button>
+          <div>
+            <div style={{fontSize:20,fontWeight:900,color:C.text}}>🎬 经典台词跟读</div>
+            <div style={{fontSize:12,color:C.tl}}>选择一部电影开始跟读练习</div>
+          </div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:14,maxWidth:460,margin:"0 auto"}}>
+          {Object.entries(MOVIE_LINES).map(([key, movie]) => (
+            <div key={key} onClick={() => { setSelectedMovie(key); setLineIdx(0); setPhase("idle"); setMatchResult(null); setRecognized(""); setScore(0); stoppedRef.current=false; }}
+              style={{background:"linear-gradient(135deg,#1A1A2E,#2D1B69)",borderRadius:20,padding:"24px 20px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,transition:"transform 0.2s",border:`2px solid ${movie.color}33`}}
+              onMouseEnter={e=>e.currentTarget.style.transform="translateY(-3px)"}
+              onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
+              <div style={{fontSize:44}}>{movie.emoji}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:17,fontWeight:800,color:"#fff"}}>{movie.name}</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",marginTop:2}}>{movie.cn} · {movie.lines.length} 条经典台词</div>
+              </div>
+              <div style={{fontSize:24,color:"rgba(255,255,255,0.3)"}}>›</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const movie = MOVIE_LINES[selectedMovie];
+  const currentLine = movie.lines[lineIdx];
+
+  const playDemo = async () => {
+    setPlaying(true);
+    try { await speak(currentLine.line, 0.8); } catch(e) {}
+    setPlaying(false);
+  };
+
+  const startRec = () => {
+    setRecognized(""); setMatchResult(null); setScore(0);
+    stoppedRef.current = false;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { setPhase("result"); setRecognized("(浏览器不支持语音识别)"); doCompare("", currentLine.line); return; }
+    const rec = new SR();
+    rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false;
+    recRef.current = rec;
+    rec.onresult = (e) => { setRecognized(Array.from(e.results).map(r=>r[0].transcript).join("")); };
+    rec.onerror = () => {};
+    rec.onend = () => { if(!stoppedRef.current) stopRec(); };
+    rec.start();
+    setRecording(true); setPhase("recording");
+    timerRef.current = setTimeout(()=>stopRec(), 12000);
+  };
+
+  const stopRec = () => {
+    if (stoppedRef.current) return;
+    stoppedRef.current = true;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setRecording(false);
+    if (recRef.current) { try{recRef.current.stop();}catch(e){} try{recRef.current.abort();}catch(e){} }
+    setTimeout(() => {
+      setPhase("result");
+      setRecognized(prev => { doCompare(prev, currentLine.line); return prev; });
+    }, 500);
+  };
+
+  const doCompare = (spokenText, targetSentence) => {
+    const target = targetSentence.replace(/[.,!?;:'"()]/g,"").toLowerCase().split(/\s+/).filter(Boolean);
+    const spoken = (spokenText||"").replace(/[.,!?;:'"()]/g,"").toLowerCase().split(/\s+/).filter(Boolean);
+    const spokenSet = new Set(spoken);
+    const result = target.map(w=>({word:w, matched:spokenSet.has(w)}));
+    const pct = target.length>0 ? Math.round(result.filter(r=>r.matched).length / target.length * 100) : 0;
+    setMatchResult(result); setScore(pct);
+    if(pct >= 60) addPetFood(1);
+  };
+
+  const goNext = () => {
+    if (lineIdx + 1 < movie.lines.length) {
+      setLineIdx(lineIdx + 1);
+      setPhase("idle"); setMatchResult(null); setRecognized(""); setScore(0); stoppedRef.current=false;
+    }
+  };
+
+  const goPrev = () => {
+    if (lineIdx > 0) {
+      setLineIdx(lineIdx - 1);
+      setPhase("idle"); setMatchResult(null); setRecognized(""); setScore(0); stoppedRef.current=false;
+    }
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",padding:"20px 16px 100px"}}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+        <button onClick={()=>setSelectedMovie(null)} style={{background:C.card,border:`2px solid ${movie.color}33`,color:movie.color,padding:"8px 14px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>← 返回</button>
+        <div style={{flex:1}}>
+          <div style={{fontSize:16,fontWeight:800,color:C.text}}>{movie.emoji} {movie.name}</div>
+          <div style={{fontSize:11,color:C.tl}}>{lineIdx+1} / {movie.lines.length}</div>
+        </div>
+        <button onClick={onClose} style={{background:"none",border:"1px solid #ccc",color:C.tl,padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:11}}>✕ 关闭</button>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{height:4,background:`${movie.color}15`,borderRadius:4,marginBottom:24,overflow:"hidden"}}>
+        <div style={{height:"100%",width:`${((lineIdx+1)/movie.lines.length)*100}%`,background:movie.color,borderRadius:4,transition:"width 0.4s ease"}}/>
+      </div>
+
+      {/* Quote card */}
+      <div style={{background:C.card,borderRadius:20,overflow:"hidden",border:`2px solid ${movie.color}22`,boxShadow:"0 4px 20px rgba(0,0,0,0.06)",marginBottom:20,maxWidth:460,margin:"0 auto 20px"}}>
+        {/* Character header */}
+        <div style={{padding:"14px 18px",background:"linear-gradient(135deg,#1A1A2E,#2D1B69)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:24}}>{movie.emoji}</span>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:"#fff"}}>{currentLine.character}</div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.5)"}}>{movie.cn}</div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:3}}>
+            {[1,2,3].map(s=><span key={s} style={{fontSize:10,color:s<=currentLine.difficulty?"#F8C740":"rgba(255,255,255,0.2)"}}>★</span>)}
+          </div>
+        </div>
+
+        {/* Quote text */}
+        <div style={{padding:"20px 18px"}}>
+          <div style={{fontSize:16,lineHeight:1.8,fontWeight:700,color:C.text,marginBottom:10,fontStyle:"italic"}}>
+            {matchResult ? matchResult.map((r,i) => (
+              <span key={i} style={{color:r.matched?C.success:C.error,textDecoration:r.matched?"none":"underline wavy",fontWeight:r.matched?700:800,marginRight:3}}>{r.word} </span>
+            )) : `"${currentLine.line}"`}
+          </div>
+          <div style={{fontSize:12,color:C.tl,fontStyle:"italic",borderTop:`1px solid ${movie.color}15`,paddingTop:10}}>
+            🇨🇳 {currentLine.cnLine}
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div style={{padding:"0 18px 18px",display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",justifyContent:"center"}}>
+          <button onClick={playDemo} disabled={playing||recording}
+            style={{display:"flex",alignItems:"center",gap:6,padding:"10px 18px",borderRadius:14,
+              background:playing?movie.color:"#fff",border:playing?"none":`1.5px solid ${movie.color}33`,
+              color:playing?"#fff":movie.color,cursor:"pointer",fontSize:13,fontWeight:700}}>
+            {playing?"🔊 播放中...":"🔊 听示范"}
+          </button>
+          {phase==="idle"&&(
+            <button onClick={startRec}
+              style={{display:"flex",alignItems:"center",gap:6,padding:"10px 18px",borderRadius:14,
+                background:"linear-gradient(135deg,#FF6B6B,#FF8C5A)",border:"none",
+                color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700}}>
+              🎙️ 开始跟读
+            </button>
+          )}
+          {phase==="recording"&&(
+            <button onClick={stopRec}
+              style={{display:"flex",alignItems:"center",gap:6,padding:"10px 18px",borderRadius:14,
+                background:"#FF3333",border:"none",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700,
+                animation:"pulse 1s ease-in-out infinite"}}>
+              ⬛ 停止
+            </button>
+          )}
+          {phase==="result"&&(
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <div style={{padding:"6px 14px",borderRadius:12,
+                background:score>=80?`${C.success}15`:score>=60?"#FFF4D4":`${C.error}10`,
+                border:`1.5px solid ${score>=80?C.success+"44":score>=60?C.gold+"44":C.error+"44"}`}}>
+                <span style={{fontSize:18,fontWeight:900,color:score>=80?C.success:score>=60?C.gold:C.error}}>{score}%</span>
+                <span style={{fontSize:11,color:C.tl,marginLeft:4}}>{score>=80?"太棒了!":score>=60?"不错!":"再试试"}</span>
+              </div>
+              <button onClick={()=>{setPhase("idle");setMatchResult(null);setRecognized("");setScore(0);stoppedRef.current=false;}}
+                style={{padding:"10px 14px",borderRadius:14,background:C.card,border:"1.5px solid #E8EEFF",
+                  color:C.tm,cursor:"pointer",fontSize:12,fontWeight:700}}>
+                🔄 再试
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Recognition text */}
+        {recording && recognized && (
+          <div style={{padding:"0 18px 14px"}}>
+            <div style={{fontSize:12,color:C.tm,padding:"8px 12px",background:"#f8f8ff",borderRadius:10,fontStyle:"italic"}}>
+              识别中：{recognized}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <div style={{display:"flex",gap:10,justifyContent:"center",maxWidth:460,margin:"0 auto"}}>
+        <button onClick={goPrev} disabled={lineIdx===0}
+          style={{flex:1,padding:"14px",borderRadius:14,background:C.card,border:"2px solid #E8EEFF",
+            color:lineIdx===0?"#ccc":C.tm,cursor:lineIdx===0?"default":"pointer",fontSize:14,fontWeight:700,
+            opacity:lineIdx===0?0.4:1}}>
+          ‹ 上一条
+        </button>
+        <button onClick={goNext} disabled={lineIdx+1>=movie.lines.length}
+          style={{flex:1,padding:"14px",borderRadius:14,
+            background:lineIdx+1>=movie.lines.length?C.card:`linear-gradient(135deg,${movie.color},${movie.color}cc)`,
+            border:lineIdx+1>=movie.lines.length?"2px solid #E8EEFF":"none",
+            color:lineIdx+1>=movie.lines.length?"#ccc":"#fff",cursor:lineIdx+1>=movie.lines.length?"default":"pointer",
+            fontSize:14,fontWeight:800,opacity:lineIdx+1>=movie.lines.length?0.4:1}}>
+          下一条 ›
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function VerbFormsQ({exercise, onDone}) {
+  const [sel,setSel]=useState(null);
+  const [done,setDone]=useState(false);
+  const C_=C;
+  const oc=[C_.primary,C_.accent,C_.gold,C_.secondary];
+
+  const go = async (opt) => {
+    if(done) return;
+    setSel(opt); setDone(true);
+    const correct = opt===exercise.correct;
+    if(correct){ playCorrectSound(); await speak(exercise.correct,0.88); }
+    else { playWrongSound(); await speak(exercise.correct,0.88); }
+    onDone(correct);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20,width:"100%",maxWidth:440}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C_.secondary,fontWeight:700,marginBottom:10}}>🔀 动词变形 · Verb Forms</div>
+        <div style={{padding:"18px",borderRadius:18,background:`linear-gradient(135deg,${C_.secondary}12,${C_.accent}08)`,border:`1.5px solid ${C_.secondary}22`,marginBottom:4}}>
+          <div style={{fontSize:13,color:C_.tm,marginBottom:8,fontWeight:600}}>{exercise.question}</div>
+          <div style={{fontSize:36,fontWeight:900,color:C_.text}}>{exercise.word.word}</div>
+          <div style={{fontSize:13,color:C_.tl,marginTop:4}}>{exercise.label}</div>
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        {exercise.options.map((opt,i)=>{
+          const it=sel===opt, ic=opt===exercise.correct;
+          let bg=`${oc[i%4]}10`, bd=`2px solid ${oc[i%4]}33`, cl=C_.text;
+          if(done&&ic){bg=`${C_.success}18`;bd=`2px solid ${C_.success}`;cl=C_.success;}
+          else if(done&&it&&!ic){bg=`${C_.error}12`;bd=`2px solid ${C_.error}`;cl=C_.error;}
+          return (
+            <button key={i} onClick={()=>go(opt)}
+              style={{background:bg,border:bd,color:cl,padding:"14px 10px",borderRadius:14,
+                cursor:done?"default":"pointer",fontSize:16,fontWeight:700,
+                fontFamily:"'JetBrains Mono',monospace",transition:"all 0.2s"}}>
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+      {done&&(
+        <div style={{textAlign:"center",padding:"10px 14px",borderRadius:12,
+          background:`${C_.success}08`,border:`1px solid ${C_.success}22`,
+          fontSize:13,color:C_.success,fontWeight:600}}>
+          ✓ {exercise.word.word} → <span style={{fontFamily:"'JetBrains Mono',monospace"}}>{exercise.correct}</span>
+          <div style={{fontSize:12,color:C_.tl,marginTop:4}}>{exercise.label}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ══ GRAMMAR DRILLS DATA ══════════════════════════════════════════════════════
+
+const ADVERBIAL_QUESTIONS = [
+  {q:"I will call you _____ I arrive at the station.", a:"when", opts:["when","which","who","while"], cn:"我到达车站时会给你打电话。", tip:"when 引导时间状语从句"},
+  {q:"_____ she finished dinner, she went for a walk.", a:"After", opts:["After","Before","Until","Since"], cn:"吃完晚饭后，她去散步了。", tip:"after 引导时间状语从句"},
+  {q:"She will wait here _____ you come back.", a:"until", opts:["until","after","before","since"], cn:"她会在这里等到你回来。", tip:"until 引导时间状语从句，表直到"},
+  {q:"She called me _____ she heard the news.", a:"as soon as", opts:["as soon as","as long as","as far as","as well as"], cn:"她一听到消息就给我打电话了。", tip:"as soon as 一...就..."},
+  {q:"While she _____ , the phone rang.", a:"was cooking", opts:["was cooking","cooked","is cooking","had cooked"], cn:"她正在做饭的时候，电话响了。", tip:"while 引导时间状语从句，背景动作用进行时"},
+  {q:"She kept studying _____ she passed the exam.", a:"until", opts:["until","when","since","after"], cn:"她一直学习，直到通过了考试。", tip:"until 表持续到某结果"},
+  {q:"He arrived _____ the concert had already started.", a:"when", opts:["when","although","because","so that"], cn:"他到达时，音乐会已经开始了。", tip:"when 引导时间状语从句"},
+  {q:"_____ the teacher entered, everyone became quiet.", a:"As soon as", opts:["As soon as","As long as","Although","Unless"], cn:"老师一进来，所有人都安静下来。", tip:"as soon as 一...就..."},
+  {q:"We had been walking for hours _____ we finally reached the top.", a:"before", opts:["before","until","when","after"], cn:"我们走了好几个小时才终于到达山顶。", tip:"before 引导时间状语从句"},
+  {q:"I hadn't eaten _____ I finished the project.", a:"until", opts:["until","when","after","since"], cn:"我一直没吃东西，直到完成项目。", tip:"not...until 直到...才"},
+  {q:"He has been living here _____ he was a child.", a:"since", opts:["since","for","when","until"], cn:"他从小就住在这里。", tip:"since 引导时间状语从句，表起点"},
+  {q:"_____ it gets dark, we should head home.", a:"Before", opts:["Before","After","Until","When"], cn:"天黑之前，我们应该回家。", tip:"before 引导时间状语从句"},
+  {q:"She was reading _____ he came back.", a:"when", opts:["when","while","after","before"], cn:"她正在读书，这时他回来了。", tip:"when 突然发生，与进行时搭配"},
+  {q:"They were playing _____ it started to rain.", a:"when", opts:["when","while","until","before"], cn:"他们正在玩，突然开始下雨了。", tip:"when 引导时间状语从句"},
+  {q:"_____ I was young, I loved playing football.", a:"When", opts:["When","While","Since","After"], cn:"当我年轻的时候，我喜欢踢足球。", tip:"when 引导时间状语从句"},
+  {q:"I turn off the light _____ I leave the room.", a:"whenever", opts:["whenever","wherever","however","whatever"], cn:"每当我离开房间时我都会关灯。", tip:"whenever 每当"},
+  {q:"She will be happy _____ she hears the good news.", a:"when", opts:["when","while","before","although"], cn:"当她听到好消息时，她会很高兴。", tip:"when 引导时间状语从句"},
+  {q:"_____ he woke up, he immediately checked his phone.", a:"As soon as", opts:["As soon as","As long as","Although","Even if"], cn:"他一醒来就立即检查手机。", tip:"as soon as 一...就..."},
+  {q:"It had been raining _____ we arrived.", a:"when", opts:["when","before","after","until"], cn:"我们到达时一直在下雨。", tip:"when 引导时间状语从句"},
+  {q:"She didn't speak _____ the teacher asked her a question.", a:"until", opts:["until","when","while","since"], cn:"她没有说话，直到老师问她一个问题。", tip:"not...until 直到...才"},
+  {q:"He didn't go to school _____ he was ill.", a:"because", opts:["because","although","unless","while"], cn:"他因为生病没有去上学。", tip:"because 引导原因状语从句"},
+  {q:"_____ it was raining, we stayed indoors.", a:"Since", opts:["Since","Although","If","Unless"], cn:"因为在下雨，我们待在室内。", tip:"since 表原因，因为"},
+  {q:"She wore a coat _____ it was cold.", a:"because", opts:["because","although","if","unless"], cn:"因为天气冷，她穿了一件外套。", tip:"because 引导原因状语从句"},
+  {q:"_____ he was tired, he decided to rest.", a:"As", opts:["As","Although","If","Unless"], cn:"因为他累了，所以决定休息。", tip:"as 表原因，因为"},
+  {q:"She couldn't attend the party _____ she had an exam.", a:"because", opts:["because","although","unless","so that"], cn:"她不能参加聚会，因为她有考试。", tip:"because 引导原因状语从句"},
+  {q:"_____ the weather was nice, they decided to have a picnic.", a:"Since", opts:["Since","Although","Even though","Unless"], cn:"因为天气不错，他们决定去野餐。", tip:"since 引导原因状语从句"},
+  {q:"He was late _____ he missed the bus.", a:"because", opts:["because","although","while","unless"], cn:"他迟到了，因为他错过了公共汽车。", tip:"because 引导原因状语从句"},
+  {q:"_____ she had studied hard, she felt confident.", a:"Since", opts:["Since","Unless","Although","So that"], cn:"因为她努力学习过，所以感到自信。", tip:"since 引导原因状语从句"},
+  {q:"We had to cancel the trip _____ one of us was sick.", a:"because", opts:["because","although","if","until"], cn:"我们不得不取消旅行，因为我们中有一个人生病了。", tip:"because 引导原因状语从句"},
+  {q:"_____ she loves reading, she often visits the library.", a:"As", opts:["As","Although","If","Unless"], cn:"因为她喜欢阅读，她经常去图书馆。", tip:"as 引导原因状语从句"},
+  {q:"_____ you work hard, you will succeed.", a:"If", opts:["If","Unless","Though","Until"], cn:"如果你努力工作，你就会成功。", tip:"if 引导条件状语从句"},
+  {q:"_____ you leave early, you'll miss the bus.", a:"Unless", opts:["Unless","If","Because","Although"], cn:"除非你早点出发，否则你会错过公共汽车。", tip:"unless = if not，除非"},
+  {q:"_____ it rains, we will stay inside.", a:"If", opts:["If","Although","Until","Since"], cn:"如果下雨，我们就待在室内。", tip:"if 引导条件状语从句"},
+  {q:"_____ he works hard, he will pass.", a:"As long as", opts:["As long as","As soon as","Although","Unless"], cn:"只要他努力工作，他就会通过。", tip:"as long as 只要，条件状语从句"},
+  {q:"She will help you _____ you ask politely.", a:"if", opts:["if","unless","although","because"], cn:"如果你礼貌地请求，她会帮你的。", tip:"if 引导条件状语从句"},
+  {q:"We won't start _____ everyone is here.", a:"until", opts:["until","unless","if","although"], cn:"除非所有人都到了，否则我们不会开始。", tip:"not...until 条件含义"},
+  {q:"_____ you study every day, you will improve.", a:"If", opts:["If","Although","Unless","Since"], cn:"如果你每天学习，你就会进步。", tip:"if 引导条件状语从句"},
+  {q:"He will fail the exam _____ he studies harder.", a:"unless", opts:["unless","if","although","because"], cn:"除非他更加努力学习，否则他会考试不及格。", tip:"unless 除非"},
+  {q:"_____ you have a ticket, you cannot enter.", a:"Without", opts:["Without","Unless","If","Although"], cn:"没有票，你就不能进入。", tip:"without 条件含义，表缺少"},
+  {q:"She will lend you the book _____ you promise to return it.", a:"if", opts:["if","unless","although","since"], cn:"如果你承诺归还，她会把书借给你。", tip:"if 引导条件状语从句"},
+  {q:"_____ the weather is bad, the event will be cancelled.", a:"If", opts:["If","Although","Since","Unless"], cn:"如果天气不好，活动将被取消。", tip:"if 条件状语从句"},
+  {q:"You can borrow it _____ you bring it back tomorrow.", a:"as long as", opts:["as long as","as soon as","as far as","in case"], cn:"只要你明天带回来，你可以借走。", tip:"as long as 只要"},
+  {q:"Take an umbrella _____ it rains.", a:"in case", opts:["in case","so that","unless","if"], cn:"带把伞，以防下雨。", tip:"in case 以防，条件状语从句"},
+  {q:"_____ provided that she agrees, the plan will go ahead.", a:"Provided that", opts:["Provided that","As long as","In case","So that"], cn:"只要她同意，计划就会进行。", tip:"provided that 只要，条件从句"},
+  {q:"He will finish on time _____ nobody interrupts him.", a:"as long as", opts:["as long as","although","unless","because"], cn:"只要没人打扰他，他就会准时完成。", tip:"as long as 只要"},
+  {q:"_____ he was tired, he kept on working.", a:"Although", opts:["Although","Because","Since","Unless"], cn:"尽管他很累，他仍然继续工作。", tip:"although 引导让步状语从句"},
+  {q:"_____ she sings well, she is shy on stage.", a:"Although", opts:["Although","Because","If","Since"], cn:"尽管她唱得很好，但在台上很害羞。", tip:"although 引导让步状语从句"},
+  {q:"He worked hard _____ he was very tired.", a:"even though", opts:["even though","so that","in order that","as long as"], cn:"即使很累，他仍然努力工作。", tip:"even though 表强调让步"},
+  {q:"_____ the exam was difficult, most students passed.", a:"Although", opts:["Although","Because","If","Until"], cn:"尽管考试很难，大多数学生还是通过了。", tip:"although 引导让步状语从句"},
+  {q:"They went on the trip _____ it was very expensive.", a:"even though", opts:["even though","because","if","unless"], cn:"尽管费用很高，他们还是去旅行了。", tip:"even though 强调让步"},
+  {q:"_____ hard you try, you can improve.", a:"However", opts:["However","Whatever","Whenever","Wherever"], cn:"不管你多么努力，你都能进步。", tip:"however hard = no matter how hard"},
+  {q:"_____ happens, I will support you.", a:"Whatever", opts:["Whatever","However","Whenever","Wherever"], cn:"不管发生什么，我都会支持你。", tip:"whatever 引导让步从句"},
+  {q:"_____ she goes, she makes friends easily.", a:"Wherever", opts:["Wherever","Whatever","However","Whenever"], cn:"无论她走到哪里，她都很容易交到朋友。", tip:"wherever 无论哪里"},
+  {q:"He kept smiling _____ he was very sad inside.", a:"even though", opts:["even though","because","so that","unless"], cn:"尽管内心很悲伤，他仍然保持微笑。", tip:"even though 强调让步"},
+  {q:"_____ I disagree with him, I respect his opinion.", a:"Although", opts:["Although","Because","Since","If"], cn:"尽管我不同意他，我仍尊重他的意见。", tip:"although 引导让步状语从句"},
+  {q:"She studied hard _____ she could pass the exam.", a:"so that", opts:["so that","even though","as long as","in case"], cn:"她努力学习，以便能通过考试。", tip:"so that 引导目的状语从句"},
+  {q:"He studied hard _____ he might win the prize.", a:"so that", opts:["so that","although","unless","because"], cn:"他努力学习，以便赢得奖励。", tip:"so that 引导目的状语从句"},
+  {q:"She ran fast _____ she could catch the bus.", a:"so that", opts:["so that","because","although","unless"], cn:"她跑得很快，以便能赶上公共汽车。", tip:"so that 表目的"},
+  {q:"He arrived early _____ he could get a good seat.", a:"so that", opts:["so that","even though","as long as","unless"], cn:"他早早到达以便能得到好座位。", tip:"so that 引导目的状语从句"},
+  {q:"She practises every day _____ she can become a better player.", a:"so that", opts:["so that","although","unless","until"], cn:"她每天练习，以便成为更好的球员。", tip:"so that 目的状语从句"},
+  {q:"Take notes _____ you don't forget the key points.", a:"so that", opts:["so that","unless","although","because"], cn:"做笔记，这样你就不会忘记要点。", tip:"so that 目的从句"},
+  {q:"He spoke slowly _____ everyone could understand.", a:"so that", opts:["so that","because","although","unless"], cn:"他说得很慢，以便每个人都能理解。", tip:"so that 目的状语从句"},
+  {q:"She saved money _____ she could travel abroad.", a:"so that", opts:["so that","although","because","unless"], cn:"她存钱以便能出国旅行。", tip:"so that 引导目的状语从句"},
+  {q:"He wrote it down _____ he wouldn't forget.", a:"so that", opts:["so that","because","although","until"], cn:"他把它写下来，这样他就不会忘记。", tip:"so that 目的状语从句"},
+  {q:"She studies medicine _____ she can help others.", a:"so that", opts:["so that","although","unless","because"], cn:"她学医，以便能帮助他人。", tip:"so that 目的状语从句"},
+  {q:"He spoke so quietly _____ nobody could hear him.", a:"that", opts:["that","which","what","as"], cn:"他说话声音太轻，以至于没人能听见他。", tip:"so...that 结果状语从句"},
+  {q:"The film was so boring _____ I fell asleep.", a:"that", opts:["that","which","as","what"], cn:"这部电影太无聊了，以至于我睡着了。", tip:"so...that 结果状语从句"},
+  {q:"It was such a hard question _____ nobody answered it.", a:"that", opts:["that","which","as","what"], cn:"这是一道如此难的题，以至于没有人回答。", tip:"such...that 结果状语从句"},
+  {q:"She worked so hard _____ she got promoted.", a:"that", opts:["that","which","what","as"], cn:"她工作如此努力，以至于得到了晋升。", tip:"so...that 结果状语从句"},
+  {q:"The bag was so heavy _____ I couldn't carry it.", a:"that", opts:["that","which","what","as"], cn:"这个包太重了，我拿不动。", tip:"so...that 结果状语从句"},
+  {q:"She is as smart _____ her sister.", a:"as", opts:["as","than","like","that"], cn:"她和她姐姐一样聪明。", tip:"as...as 同级比较"},
+  {q:"He runs faster _____ anyone else on the team.", a:"than", opts:["than","as","like","that"], cn:"他跑得比队里任何人都快。", tip:"比较级 + than"},
+  {q:"This test was harder _____ the last one.", a:"than", opts:["than","as","like","that"], cn:"这次考试比上次更难。", tip:"比较级 + than"},
+  {q:"She speaks English better _____ I expected.", a:"than", opts:["than","as","like","that"], cn:"她的英语说得比我预期的好。", tip:"比较级 + than"},
+  {q:"The more you practise, _____ better you become.", a:"the", opts:["the","a","that","as"], cn:"你练习越多，你就变得越好。", tip:"the more...the + 比较级"},
+  {q:"_____ she is busy, she still finds time to exercise.", a:"Although", opts:["Although","Because","If","Since"], cn:"尽管她很忙，她仍然找时间锻炼。", tip:"although 引导让步状语从句"},
+  {q:"_____ I know, she has never been abroad.", a:"As far as", opts:["As far as","As long as","As soon as","As well as"], cn:"据我所知，她从未出过国。", tip:"as far as I know 固定搭配"},
+  {q:"He practises every day _____ he can become a better player.", a:"so that", opts:["so that","although","unless","until"], cn:"他每天练习，以便能成为更好的球员。", tip:"so that 目的状语从句"},
+  {q:"_____ it was very cold, she refused to wear a coat.", a:"Although", opts:["Although","Because","If","Since"], cn:"尽管天气很冷，她拒绝穿外套。", tip:"although 让步状语从句"},
+  {q:"She studies hard _____ she might get a scholarship.", a:"so that", opts:["so that","because","unless","although"], cn:"她努力学习，以便能获得奖学金。", tip:"so that 目的状语从句"},
+  {q:"_____ the homework was challenging, he completed it on time.", a:"Although", opts:["Although","Because","If","Unless"], cn:"尽管作业很有挑战性，他还是按时完成了。", tip:"although 让步状语从句"},
+  {q:"He will keep trying _____ he succeeds.", a:"until", opts:["until","when","while","since"], cn:"他会一直努力，直到成功为止。", tip:"until 引导时间状语从句"},
+  {q:"She speaks quietly _____ she won't disturb others.", a:"so that", opts:["so that","because","although","unless"], cn:"她说话轻声细语，这样就不会打扰别人。", tip:"so that 目的状语从句"},
+  {q:"_____ you need help, don't hesitate to ask.", a:"If", opts:["If","Although","Unless","Since"], cn:"如果你需要帮助，请随时提问。", tip:"if 条件状语从句"},
+  {q:"He had hardly sat down _____ the phone rang.", a:"when", opts:["when","before","until","after"], cn:"他几乎刚坐下电话就响了。", tip:"hardly...when 一...就..."},
+  {q:"She will succeed _____ she stays focused.", a:"as long as", opts:["as long as","as soon as","although","unless"], cn:"只要她保持专注，她就会成功。", tip:"as long as 只要"},
+  {q:"_____ he was nervous, he gave an excellent speech.", a:"Although", opts:["Although","Because","If","Unless"], cn:"尽管他很紧张，他还是发表了出色的演讲。", tip:"although 让步状语从句"},
+  {q:"She didn't leave _____ she finished her work.", a:"until", opts:["until","when","while","since"], cn:"她没有离开，直到她完成了工作。", tip:"not...until 直到...才"},
+  {q:"_____ the test was easy, she still checked her answers carefully.", a:"Even though", opts:["Even though","Because","If","Since"], cn:"即使考试很简单，她还是仔细检查了答案。", tip:"even though 强调让步"},
+  {q:"He saved money _____ he could buy a new laptop.", a:"so that", opts:["so that","because","although","unless"], cn:"他存钱以便能买一台新笔记本电脑。", tip:"so that 目的状语从句"},
+  {q:"_____ you feel tired, take a short break.", a:"If", opts:["If","Although","Unless","Since"], cn:"如果你感到累了，休息一下。", tip:"if 条件状语从句"},
+  {q:"She had no sooner arrived _____ it started to snow.", a:"than", opts:["than","when","before","after"], cn:"她刚到，就开始下雪了。", tip:"no sooner...than 一...就..."},
+  {q:"_____ she was disappointed, she accepted the result gracefully.", a:"Although", opts:["Although","Because","If","Unless"], cn:"尽管她失望了，她还是优雅地接受了结果。", tip:"although 让步状语从句"},
+  {q:"He exercises every morning _____ he can stay healthy.", a:"so that", opts:["so that","because","although","unless"], cn:"他每天早上锻炼，以便保持健康。", tip:"so that 目的状语从句"},
+  {q:"The harder you try, _____ better your results will be.", a:"the", opts:["the","a","that","as"], cn:"你越努力，你的结果就越好。", tip:"the harder...the better 比较级结构"},
+  {q:"She left early _____ she could catch the first train.", a:"so that", opts:["so that","because","although","unless"], cn:"她早早离开，以便赶上第一班火车。", tip:"so that 目的状语从句"},
+  {q:"_____ he is rich, he is not happy.", a:"Although", opts:["Although","Because","If","Since"], cn:"尽管他很富有，但他并不快乐。", tip:"although 让步从句"},
+  {q:"_____ she practises more, she will improve.", a:"If", opts:["If","Although","Unless","Since"], cn:"如果她多练习，她就会进步。", tip:"if 条件状语从句"},
+  {q:"She read the instructions carefully _____ she wouldn't make mistakes.", a:"so that", opts:["so that","because","although","unless"], cn:"她仔细阅读说明，这样就不会犯错。", tip:"so that 目的状语从句"},
+  {q:"He is studying hard _____ he can enter a top university.", a:"so that", opts:["so that","because","although","unless"], cn:"他努力学习，以便能进入顶尖大学。", tip:"so that 目的状语从句"},
+  {q:"_____ I see her, I will give her your message.", a:"When", opts:["When","Although","Unless","Since"], cn:"当我见到她时，我会把你的信息告诉她。", tip:"when 引导时间状语从句"},
+  {q:"She has been practising _____ she was five years old.", a:"since", opts:["since","for","when","until"], cn:"她从五岁起就一直在练习。", tip:"since 引导时间状语从句表起点"},
+  {q:"He'll wait here _____ you come back.", a:"until", opts:["until","when","while","since"], cn:"他会在这里等，直到你回来。", tip:"until 引导时间状语从句"},
+  {q:"She studies hard _____ she wants to be a doctor.", a:"because", opts:["because","although","unless","so that"], cn:"她努力学习，因为她想成为医生。", tip:"because 引导原因状语从句"},
+  {q:"_____ he failed the first time, he never gave up.", a:"Although", opts:["Although","Because","If","Since"], cn:"尽管他第一次失败了，他从未放弃。", tip:"although 让步状语从句"},
+  {q:"_____ she left, he felt very lonely.", a:"After", opts:["After","Before","Until","Since"], cn:"她离开后，他感到非常孤独。", tip:"after 引导时间状语从句"},
+  {q:"He's saving money _____ he can travel next year.", a:"so that", opts:["so that","because","although","unless"], cn:"他在存钱，以便明年能旅行。", tip:"so that 目的状语从句"},
+  {q:"_____ the match was over, they celebrated.", a:"When", opts:["When","Although","Unless","Since"], cn:"比赛结束时，他们庆祝了。", tip:"when 引导时间状语从句"},
+  {q:"She will finish _____ she gets tired.", a:"before", opts:["before","after","until","when"], cn:"她会在累之前完成。", tip:"before 引导时间状语从句"},
+  {q:"He speaks English well _____ he practises every day.", a:"because", opts:["because","although","unless","so that"], cn:"他英语说得好，因为他每天练习。", tip:"because 引导原因状语从句"},
+  {q:"_____ hard she tries, she always stays calm.", a:"However", opts:["However","Whatever","Whenever","Wherever"], cn:"无论她多么努力，她总是保持冷静。", tip:"however 让步状语从句"},
+  {q:"He left _____ anyone could say goodbye.", a:"before", opts:["before","after","until","when"], cn:"他在任何人道别之前就离开了。", tip:"before 引导时间状语从句"},
+  {q:"She stayed up late _____ she could finish the project.", a:"so that", opts:["so that","because","although","unless"], cn:"她熬夜以便能完成项目。", tip:"so that 目的状语从句"},
+  {q:"_____ you are free this weekend, let's meet.", a:"If", opts:["If","Although","Unless","Since"], cn:"如果你这个周末有空，我们见个面吧。", tip:"if 条件状语从句"},
+  {q:"He practises _____ he wants to be perfect.", a:"because", opts:["because","although","unless","so that"], cn:"他练习是因为他想要完美。", tip:"because 引导原因状语从句"},
+  {q:"_____ she was afraid, she still jumped.", a:"Although", opts:["Although","Because","If","Unless"], cn:"尽管她害怕，她还是跳了。", tip:"although 让步状语从句"},
+  {q:"He has improved greatly _____ he started practising.", a:"since", opts:["since","for","when","until"], cn:"自从他开始练习以来，他进步了很多。", tip:"since 引导时间状语从句表起点"},
+];
+
+const NOUN_CLAUSE_QUESTIONS = [
+  {q:"Do you know _____ she left so early?", a:"why", opts:["why","what","how","when"], cn:"你知道她为什么离开得这么早吗？", tip:"why 引导宾语从句"},
+  {q:"I don't know _____ he will come.", a:"whether", opts:["whether","that","what","how"], cn:"我不知道他是否会来。", tip:"whether 表是否，引导宾语从句"},
+  {q:"Tell me _____ you found the answer.", a:"how", opts:["how","what","that","which"], cn:"告诉我你是怎么找到答案的。", tip:"how 引导宾语从句"},
+  {q:"_____ she said was very helpful.", a:"What", opts:["What","That","Which","How"], cn:"她说的话非常有帮助。", tip:"what 引导主语从句，what = the thing that"},
+  {q:"The problem is _____ we don't have enough time.", a:"that", opts:["that","what","which","whether"], cn:"问题是我们没有足够的时间。", tip:"that 引导表语从句"},
+  {q:"I wonder _____ she is feeling better now.", a:"whether", opts:["whether","what","that","if"], cn:"我想知道她现在是否感觉好些了。", tip:"wonder 后接 whether/if 表是否"},
+  {q:"_____ he was late is not surprising.", a:"That", opts:["That","What","Whether","How"], cn:"他迟到并不令人惊讶。", tip:"that 引导主语从句"},
+  {q:"Nobody knows _____ the meeting will be held.", a:"where", opts:["where","which","that","what"], cn:"没有人知道会议将在哪里举行。", tip:"where 引导宾语从句，表地点"},
+  {q:"She asked me _____ I had finished the work.", a:"whether", opts:["whether","what","how","that"], cn:"她问我是否已经完成了工作。", tip:"asked 后接 whether 表是否"},
+  {q:"_____ matters most is your effort.", a:"What", opts:["What","That","Which","Whether"], cn:"最重要的是你的努力。", tip:"what 引导主语从句"},
+  {q:"The fact _____ he lied shocked everyone.", a:"that", opts:["that","which","what","whether"], cn:"他撒谎的事实震惊了所有人。", tip:"that 引导同位语从句，解释fact内容"},
+  {q:"I can't understand _____ she is so unhappy.", a:"why", opts:["why","that","what","how"], cn:"我不明白她为什么这么不开心。", tip:"why 引导宾语从句，表原因"},
+  {q:"The news _____ he had won first place made us happy.", a:"that", opts:["that","which","what","whether"], cn:"他获得第一名的消息让我们很高兴。", tip:"that 引导同位语从句，解释news内容"},
+  {q:"She told me _____ she wanted to become a doctor.", a:"that", opts:["that","what","whether","which"], cn:"她告诉我她想成为一名医生。", tip:"that 引导宾语从句，可省略"},
+  {q:"_____ is important is that you keep trying.", a:"What", opts:["What","That","Which","How"], cn:"重要的是你要坚持尝试。", tip:"what 引导主语从句"},
+  {q:"I'm not sure _____ I should choose.", a:"which", opts:["which","what","that","whether"], cn:"我不确定该选哪一个。", tip:"which 引导宾语从句，表在已知范围中选择"},
+  {q:"The idea _____ learning never stops is inspiring.", a:"that", opts:["that","which","what","whether"], cn:"学习永无止境这个理念很鼓舞人心。", tip:"that 引导同位语从句，解释idea"},
+  {q:"He asked _____ I would join the team.", a:"whether", opts:["whether","that","what","how"], cn:"他问我是否愿意加入团队。", tip:"asked 后接 whether/if 引导宾语从句"},
+  {q:"_____ you decide is fine with me.", a:"Whatever", opts:["Whatever","However","Whenever","Wherever"], cn:"不管你决定什么，我都可以。", tip:"whatever 引导主语从句，表任何事"},
+  {q:"The question is _____ we can afford it.", a:"whether", opts:["whether","that","what","how"], cn:"问题是我们是否负担得起。", tip:"whether 引导表语从句"},
+  {q:"She didn't know _____ to do next.", a:"what", opts:["what","that","which","whether"], cn:"她不知道下一步该做什么。", tip:"what 引导宾语从句，what + to do"},
+  {q:"It is clear _____ she works very hard.", a:"that", opts:["that","what","which","how"], cn:"很明显她工作非常努力。", tip:"It is clear that... 形式主语句型"},
+  {q:"I know _____ he will come back.", a:"that", opts:["that","what","whether","which"], cn:"我知道他会回来的。", tip:"that 引导宾语从句，表确定的事"},
+  {q:"Can you explain _____ you were late?", a:"why", opts:["why","what","how","whether"], cn:"你能解释一下你为什么迟到吗？", tip:"why 引导宾语从句，表原因"},
+  {q:"_____ team wins the game is not important.", a:"Which", opts:["Which","What","That","Whether"], cn:"哪支队伍赢得比赛并不重要。", tip:"which 引导主语从句，在已知范围中"},
+  {q:"They wondered _____ she had passed the test.", a:"whether", opts:["whether","that","what","how"], cn:"他们想知道她是否通过了考试。", tip:"wondered 后接 whether/if 表是否"},
+  {q:"The reason _____ he succeeded is hard work.", a:"why", opts:["why","that","which","what"], cn:"他成功的原因是努力工作。", tip:"why 引导同位语从句，修饰reason"},
+  {q:"It surprised me _____ she knew my name.", a:"that", opts:["that","what","whether","how"], cn:"她知道我的名字让我感到惊讶。", tip:"It surprised me that... 形式主语句型"},
+  {q:"I don't understand _____ he could say that.", a:"how", opts:["how","what","why","that"], cn:"我不明白他怎么能说那种话。", tip:"how 引导宾语从句，表方式"},
+  {q:"_____ she will come depends on the weather.", a:"Whether", opts:["Whether","What","That","How"], cn:"她是否来取决于天气。", tip:"whether 引导主语从句，表是否"},
+  {q:"She asked _____ I could help her.", a:"if", opts:["if","what","that","how"], cn:"她问我是否能帮她。", tip:"if/whether 引导宾语从句，表是否"},
+  {q:"The suggestion _____ we take a break was welcomed.", a:"that", opts:["that","which","what","whether"], cn:"我们休息一下的建议受到了欢迎。", tip:"that 引导同位语从句，解释suggestion"},
+  {q:"He promised _____ he would try his best.", a:"that", opts:["that","what","whether","which"], cn:"他承诺他会尽力而为。", tip:"that 引导宾语从句"},
+  {q:"I believe _____ honesty is the best policy.", a:"that", opts:["that","what","whether","which"], cn:"我相信诚实是最好的政策。", tip:"that 引导宾语从句"},
+  {q:"_____ you said yesterday was not true.", a:"What", opts:["What","That","Which","How"], cn:"你昨天说的话不是真的。", tip:"what 引导主语从句"},
+  {q:"The problem _____ nobody listens is serious.", a:"that", opts:["that","which","what","whether"], cn:"没有人倾听的问题很严重。", tip:"that 引导同位语从句"},
+  {q:"Please tell me _____ time you will arrive.", a:"what", opts:["what","that","which","whether"], cn:"请告诉我你什么时候到。", tip:"what time 引导宾语从句"},
+  {q:"Do you believe _____ he is telling the truth?", a:"that", opts:["that","what","whether","which"], cn:"你相信他说的是真话吗？", tip:"that 引导宾语从句"},
+  {q:"I wasn't sure _____ she was angry with me.", a:"whether", opts:["whether","that","what","if"], cn:"我不确定她是否对我生气。", tip:"whether 表是否，引导宾语从句"},
+  {q:"The truth is _____ nobody knows the answer.", a:"that", opts:["that","what","which","whether"], cn:"事实是没有人知道答案。", tip:"that 引导表语从句"},
+  {q:"She realised _____ she had made a mistake.", a:"that", opts:["that","what","whether","which"], cn:"她意识到她犯了一个错误。", tip:"that 引导宾语从句"},
+  {q:"He reported _____ he had seen something strange.", a:"that", opts:["that","what","whether","which"], cn:"他报告说他看到了一些奇怪的东西。", tip:"that 引导宾语从句"},
+  {q:"It is strange _____ nobody noticed the mistake.", a:"that", opts:["that","what","which","how"], cn:"奇怪的是没有人注意到这个错误。", tip:"It is strange that... 形式主语句型"},
+  {q:"_____ is wrong with the plan is hard to explain.", a:"What", opts:["What","That","Which","Whether"], cn:"这个计划的问题所在很难解释。", tip:"what 引导主语从句"},
+  {q:"She said _____ she would come back soon.", a:"that", opts:["that","what","whether","which"], cn:"她说她很快就会回来。", tip:"that 引导宾语从句，可省略"},
+  {q:"He confessed _____ he had stolen the money.", a:"that", opts:["that","what","whether","which"], cn:"他承认他偷了钱。", tip:"that 引导宾语从句"},
+  {q:"The message _____ they had won arrived late.", a:"that", opts:["that","which","what","whether"], cn:"他们赢得比赛的消息来得很迟。", tip:"that 引导同位语从句，解释message"},
+  {q:"_____ you are saying doesn't make sense.", a:"What", opts:["What","That","Which","How"], cn:"你说的没有任何意义。", tip:"what 引导主语从句"},
+  {q:"I found _____ she had already left.", a:"that", opts:["that","what","whether","which"], cn:"我发现她已经离开了。", tip:"that 引导宾语从句"},
+  {q:"She isn't sure _____ she wants to study abroad.", a:"whether", opts:["whether","that","what","if"], cn:"她不确定她是否想出国留学。", tip:"whether 表是否"},
+  {q:"The news _____ school would be cancelled excited everyone.", a:"that", opts:["that","which","what","whether"], cn:"学校将停课的消息让大家都很兴奋。", tip:"that 引导同位语从句"},
+  {q:"I hope _____ everything goes well.", a:"that", opts:["that","what","whether","which"], cn:"我希望一切顺利。", tip:"that 引导宾语从句"},
+  {q:"It seems _____ she has forgotten her bag.", a:"that", opts:["that","what","which","how"], cn:"她似乎忘记了她的包。", tip:"It seems that... 形式主语句型"},
+  {q:"_____ she comes or not doesn't matter.", a:"Whether", opts:["Whether","What","That","How"], cn:"她来不来无所谓。", tip:"whether 引导主语从句，表是否"},
+  {q:"He suggested _____ we should leave early.", a:"that", opts:["that","what","whether","which"], cn:"他建议我们应该早点离开。", tip:"that 引导宾语从句"},
+  {q:"She discovered _____ the key was under the mat.", a:"that", opts:["that","what","whether","which"], cn:"她发现钥匙在门垫下面。", tip:"that 引导宾语从句"},
+  {q:"It is a pity _____ you can't come.", a:"that", opts:["that","what","which","how"], cn:"很遗憾你不能来。", tip:"It is a pity that... 形式主语句型"},
+  {q:"I can't decide _____ to take the job or not.", a:"whether", opts:["whether","that","what","if"], cn:"我无法决定是否接受这份工作。", tip:"whether + to do，表是否"},
+  {q:"The thought _____ he might fail worried him.", a:"that", opts:["that","which","what","whether"], cn:"他可能会失败的想法让他很担心。", tip:"that 引导同位语从句"},
+  {q:"Do you think _____ he is right?", a:"that", opts:["that","what","whether","which"], cn:"你认为他说得对吗？", tip:"that 引导宾语从句，可省略"},
+  {q:"_____ surprised me was how fast she ran.", a:"What", opts:["What","That","Which","How"], cn:"让我惊讶的是她跑得多快。", tip:"what 引导主语从句"},
+  {q:"She could see _____ he was upset.", a:"that", opts:["that","what","whether","which"], cn:"她能看出他很不开心。", tip:"that 引导宾语从句"},
+  {q:"The belief _____ hard work pays off is universal.", a:"that", opts:["that","which","what","whether"], cn:"努力工作会有回报的信念是普遍的。", tip:"that 引导同位语从句"},
+  {q:"I wonder _____ he knows about this.", a:"if", opts:["if","that","what","how"], cn:"我想知道他是否知道这件事。", tip:"wonder 后接 if/whether 表是否"},
+  {q:"Please confirm _____ the meeting is at 9 am.", a:"whether", opts:["whether","that","what","if"], cn:"请确认会议是否在早上9点。", tip:"whether 引导宾语从句，表是否"},
+  {q:"It is clear _____ more study is needed.", a:"that", opts:["that","what","which","how"], cn:"很明显需要更多的学习。", tip:"It is clear that..."},
+  {q:"The truth _____ he had cheated disappointed us.", a:"that", opts:["that","which","what","whether"], cn:"他作弊的事实让我们失望。", tip:"that 引导同位语从句"},
+  {q:"She didn't tell me _____ she was upset.", a:"why", opts:["why","what","how","that"], cn:"她没有告诉我她为什么难过。", tip:"why 引导宾语从句，表原因"},
+  {q:"_____ he spends his free time is his own business.", a:"How", opts:["How","What","That","Whether"], cn:"他如何度过空闲时间是他自己的事。", tip:"how 引导主语从句，表方式"},
+  {q:"I don't care _____ he thinks of me.", a:"what", opts:["what","that","whether","which"], cn:"我不在乎他怎么看我。", tip:"what 引导宾语从句"},
+  {q:"The announcement _____ the school would close shocked us.", a:"that", opts:["that","which","what","whether"], cn:"学校将关闭的公告让我们震惊。", tip:"that 引导同位语从句"},
+  {q:"She believes _____ kindness can change the world.", a:"that", opts:["that","what","whether","which"], cn:"她相信善良可以改变世界。", tip:"that 引导宾语从句"},
+  {q:"He asked me _____ I had eaten lunch.", a:"whether", opts:["whether","that","what","if"], cn:"他问我是否吃过午饭。", tip:"whether/if 引导宾语从句，表是否"},
+  {q:"_____ he forgot her name upset her.", a:"That", opts:["That","What","Whether","How"], cn:"他忘了她的名字让她很难过。", tip:"that 引导主语从句"},
+  {q:"It is known _____ exercise is good for health.", a:"that", opts:["that","what","which","how"], cn:"众所周知，锻炼有益健康。", tip:"It is known that... 形式主语句型"},
+  {q:"She reported _____ the results were positive.", a:"that", opts:["that","what","whether","which"], cn:"她报告说结果是积极的。", tip:"that 引导宾语从句"},
+  {q:"I found it hard to understand _____ she had done that.", a:"why", opts:["why","what","how","that"], cn:"我发现很难理解她为什么那样做。", tip:"why 引导宾语从句，表原因"},
+  {q:"The decision _____ to cancel the event was difficult.", a:"whether", opts:["whether","that","what","which"], cn:"是否取消活动的决定很难做。", tip:"whether 引导同位语从句"},
+  {q:"_____ she did surprised everyone in the room.", a:"What", opts:["What","That","Which","How"], cn:"她所做的事令房间里的每个人都感到惊讶。", tip:"what 引导主语从句"},
+  {q:"He insisted _____ he was telling the truth.", a:"that", opts:["that","what","whether","which"], cn:"他坚持说他在说真话。", tip:"that 引导宾语从句"},
+  {q:"She never imagined _____ she would become a teacher.", a:"that", opts:["that","what","whether","which"], cn:"她从没想过自己会成为一名老师。", tip:"that 引导宾语从句"},
+  {q:"_____ you choose, I will support you.", a:"Whatever", opts:["Whatever","However","Whenever","Wherever"], cn:"无论你选择什么，我都会支持你。", tip:"whatever 引导名词性从句，表任何事"},
+  {q:"It was announced _____ the results would be delayed.", a:"that", opts:["that","what","which","whether"], cn:"宣布结果将被推迟。", tip:"that 引导主语从句（It is announced that）"},
+  {q:"He was not aware _____ he had offended her.", a:"that", opts:["that","what","whether","which"], cn:"他没有意识到他冒犯了她。", tip:"that 引导宾语从句"},
+  {q:"_____ they argue about doesn't matter.", a:"What", opts:["What","That","Which","How"], cn:"他们争论的内容无关紧要。", tip:"what 引导主语从句"},
+  {q:"I asked her _____ she wanted to join us.", a:"if", opts:["if","that","what","how"], cn:"我问她是否想加入我们。", tip:"if/whether 引导宾语从句"},
+  {q:"She explained _____ she had been late.", a:"why", opts:["why","what","how","that"], cn:"她解释了为什么她迟到了。", tip:"why 引导宾语从句"},
+  {q:"The idea _____ everyone should read more is popular.", a:"that", opts:["that","which","what","whether"], cn:"每个人都应该多读书的想法很受欢迎。", tip:"that 引导同位语从句"},
+  {q:"It doesn't matter _____ you agree with me.", a:"whether", opts:["whether","that","what","if"], cn:"你是否同意我无关紧要。", tip:"whether 引导主语从句，表是否"},
+  {q:"She couldn't work out _____ he had left.", a:"why", opts:["why","what","how","that"], cn:"她无法弄清楚他为什么离开了。", tip:"why 引导宾语从句，表原因"},
+  {q:"The message _____ the school was open arrived yesterday.", a:"that", opts:["that","which","what","whether"], cn:"学校开门的消息昨天到达了。", tip:"that 引导同位语从句"},
+  {q:"He was surprised _____ she had remembered his name.", a:"that", opts:["that","what","whether","which"], cn:"他很惊讶她还记得他的名字。", tip:"that 引导宾语从句"},
+  {q:"_____ they decide will affect us all.", a:"What", opts:["What","That","Which","Whether"], cn:"他们所决定的事将影响我们所有人。", tip:"what 引导主语从句"},
+  {q:"She knows _____ she wants to do in life.", a:"what", opts:["what","that","whether","which"], cn:"她知道她在生活中想做什么。", tip:"what 引导宾语从句"},
+  {q:"He confirmed _____ he would attend the event.", a:"that", opts:["that","what","whether","which"], cn:"他确认他会参加活动。", tip:"that 引导宾语从句"},
+  {q:"It is essential _____ everyone attends the meeting.", a:"that", opts:["that","what","which","how"], cn:"每个人都参加会议是必要的。", tip:"It is essential that... 形式主语句型"},
+  {q:"She wanted to know _____ her friends had arrived.", a:"whether", opts:["whether","that","what","if"], cn:"她想知道她的朋友是否已经到达。", tip:"whether 表是否"},
+  {q:"_____ a person chooses to read reveals their character.", a:"What", opts:["What","That","Which","Whether"], cn:"一个人选择读什么揭示了他的性格。", tip:"what 引导主语从句"},
+  {q:"I noticed _____ something was wrong.", a:"that", opts:["that","what","whether","which"], cn:"我注意到有些不对劲。", tip:"that 引导宾语从句"},
+  {q:"He couldn't explain _____ he had done it.", a:"why", opts:["why","what","how","that"], cn:"他无法解释他为什么这样做了。", tip:"why 引导宾语从句，表原因"},
+  {q:"The plan _____ they split into groups worked well.", a:"that", opts:["that","which","what","whether"], cn:"他们分成小组的计划很有效。", tip:"that 引导同位语从句"},
+  {q:"She wasn't told _____ the project had been cancelled.", a:"that", opts:["that","what","whether","which"], cn:"她没有被告知项目已经被取消了。", tip:"that 引导宾语从句"},
+  {q:"_____ she has achieved is remarkable.", a:"What", opts:["What","That","Which","How"], cn:"她所取得的成就是非凡的。", tip:"what 引导主语从句"},
+  {q:"He doubted _____ she was telling the truth.", a:"whether", opts:["whether","that","what","if"], cn:"他怀疑她是否在说真话。", tip:"whether 表是否"},
+  {q:"It is obvious _____ he is talented.", a:"that", opts:["that","what","which","how"], cn:"很明显他很有才华。", tip:"It is obvious that..."},
+  {q:"She wanted to know _____ he felt about the decision.", a:"how", opts:["how","what","that","whether"], cn:"她想知道他对这个决定有何感受。", tip:"how 引导宾语从句，表方式/感受"},
+  {q:"_____ frightens me is the thought of failure.", a:"What", opts:["What","That","Which","Whether"], cn:"让我害怕的是失败的想法。", tip:"what 引导主语从句"},
+  {q:"He reported _____ all systems were working normally.", a:"that", opts:["that","what","whether","which"], cn:"他报告说所有系统运行正常。", tip:"that 引导宾语从句"},
+];
+
+const ATTRIBUTIVE_QUESTIONS = [
+  {q:"This is the school _____ I studied ten years ago.", a:"where", opts:["where","which","that","when"], cn:"这是我十年前就读的学校。", tip:"where 引导定语从句修饰地点名词"},
+  {q:"The book _____ I borrowed is very interesting.", a:"that", opts:["that","what","who","whom"], cn:"我借的那本书非常有趣。", tip:"that 引导定语从句，修饰物"},
+  {q:"The day _____ we met was very special.", a:"when", opts:["when","which","where","that"], cn:"我们相遇的那天非常特别。", tip:"when 引导定语从句修饰时间名词"},
+  {q:"This is the reason _____ he was late.", a:"why", opts:["why","which","that","where"], cn:"这就是他迟到的原因。", tip:"why 引导定语从句修饰reason"},
+  {q:"The student _____ answered first got a prize.", a:"who", opts:["who","which","where","when"], cn:"第一个回答的学生得到了奖励。", tip:"who 引导定语从句修饰人"},
+  {q:"The city _____ she grew up is very beautiful.", a:"where", opts:["where","which","that","when"], cn:"她长大的那座城市非常美丽。", tip:"where 引导定语从句修饰地点"},
+  {q:"She is the girl _____ I told you about.", a:"whom", opts:["whom","which","who","that"], cn:"她就是我告诉过你的那个女孩。", tip:"whom 引导定语从句，是宾语，修饰人"},
+  {q:"The laptop _____ I bought last year still works well.", a:"which", opts:["which","who","where","when"], cn:"我去年买的笔记本电脑仍然运行良好。", tip:"which 引导定语从句，修饰物"},
+  {q:"I still remember the day _____ I started school.", a:"when", opts:["when","which","that","where"], cn:"我仍然记得我开始上学的那天。", tip:"when 修饰时间名词day"},
+  {q:"The teacher _____ teaches us English is very kind.", a:"who", opts:["who","which","whom","that"], cn:"教我们英语的老师非常亲切。", tip:"who 引导定语从句，做主语，修饰人"},
+  {q:"The town _____ he was born is now very modern.", a:"where", opts:["where","which","when","that"], cn:"他出生的小镇现在非常现代化。", tip:"where 引导定语从句修饰地点名词"},
+  {q:"He is the person _____ helped me most.", a:"who", opts:["who","which","whom","whose"], cn:"他是帮了我最多的人。", tip:"who 引导定语从句做主语"},
+  {q:"The year _____ she graduated was 2020.", a:"when", opts:["when","which","that","where"], cn:"她毕业的那年是2020年。", tip:"when 修饰表示时间的名词year"},
+  {q:"Is there a place _____ I can charge my phone?", a:"where", opts:["where","which","that","when"], cn:"有可以给我手机充电的地方吗？", tip:"where 引导定语从句修饰place"},
+  {q:"The film _____ we watched last night was amazing.", a:"which", opts:["which","who","where","when"], cn:"我们昨晚看的那部电影很精彩。", tip:"which 引导定语从句，修饰film"},
+  {q:"She has a friend _____ speaks five languages.", a:"who", opts:["who","which","whose","whom"], cn:"她有一个会说五种语言的朋友。", tip:"who 做主语引导定语从句"},
+  {q:"The reason _____ she cried is unknown.", a:"why", opts:["why","that","which","where"], cn:"她哭泣的原因不得而知。", tip:"why 引导定语从句修饰reason"},
+  {q:"That is the museum _____ we visited last summer.", a:"which", opts:["which","where","when","who"], cn:"那是我们去年夏天参观的博物馆。", tip:"which 引导定语从句做宾语"},
+  {q:"I met a boy _____ father is a famous doctor.", a:"whose", opts:["whose","who","which","whom"], cn:"我遇到了一个父亲是著名医生的男孩。", tip:"whose 表所属，引导定语从句"},
+  {q:"The book _____ cover is blue belongs to me.", a:"whose", opts:["whose","which","that","who"], cn:"封面是蓝色的那本书是我的。", tip:"whose 引导定语从句，表所属关系"},
+  {q:"The moment _____ I saw her, I knew she was special.", a:"when", opts:["when","which","that","where"], cn:"当我看到她的那一刻，我就知道她与众不同。", tip:"when 引导定语从句修饰时间名词moment"},
+  {q:"She lives in a house _____ was built 100 years ago.", a:"that", opts:["that","which","who","where"], cn:"她住在一栋建于100年前的房子里。", tip:"that/which 均可引导定语从句修饰物"},
+  {q:"This is the hotel _____ we stayed last summer.", a:"where", opts:["where","which","that","when"], cn:"这是我们去年夏天住的酒店。", tip:"where 引导定语从句修饰地点"},
+  {q:"The scientist _____ discovered this theory won a Nobel Prize.", a:"who", opts:["who","which","whom","whose"], cn:"发现这个理论的科学家获得了诺贝尔奖。", tip:"who 做主语引导定语从句"},
+  {q:"I can't find the file _____ I saved yesterday.", a:"that", opts:["that","what","which","who"], cn:"我找不到我昨天保存的文件了。", tip:"that/which 均可，that 更常见"},
+  {q:"The period _____ you study hardest matters most.", a:"when", opts:["when","which","where","that"], cn:"你最努力学习的时期最重要。", tip:"when 引导定语从句修饰时间名词period"},
+  {q:"She is the only student _____ passed the test.", a:"who", opts:["who","that","which","whom"], cn:"她是唯一通过考试的学生。", tip:"修饰人用who/that，先行词有only时常用that"},
+  {q:"That is the street _____ the accident happened.", a:"where", opts:["where","when","which","that"], cn:"那就是事故发生的街道。", tip:"where 修饰表地点的名词street"},
+  {q:"He is a man _____ you can always trust.", a:"whom", opts:["whom","who","which","whose"], cn:"他是一个你始终可以信任的人。", tip:"whom 引导定语从句做宾语，修饰人"},
+  {q:"The day _____ I first flew a kite was unforgettable.", a:"when", opts:["when","which","where","that"], cn:"我第一次放风筝的那天令人难忘。", tip:"when 修饰时间名词day"},
+  {q:"She works for a company _____ makes cars.", a:"that", opts:["that","which","who","where"], cn:"她在一家制造汽车的公司工作。", tip:"that/which 引导定语从句修饰公司（物）"},
+  {q:"I know a girl _____ can play three instruments.", a:"who", opts:["who","which","whom","whose"], cn:"我认识一个会演奏三种乐器的女孩。", tip:"who 引导定语从句修饰人"},
+  {q:"The office _____ she works is very modern.", a:"where", opts:["where","which","that","when"], cn:"她工作的办公室非常现代。", tip:"where 引导定语从句修饰place"},
+  {q:"He has a brother _____ works in London.", a:"who", opts:["who","which","whom","whose"], cn:"他有一个在伦敦工作的哥哥。", tip:"who 引导定语从句修饰人"},
+  {q:"She bought a dress _____ she had seen in the shop window.", a:"that", opts:["that","which","who","whom"], cn:"她买了一件她在橱窗里看到的裙子。", tip:"that/which 均可，修饰物"},
+  {q:"The children _____ are playing outside are my students.", a:"who", opts:["who","which","that","whose"], cn:"在外面玩耍的孩子们是我的学生。", tip:"who 引导定语从句修饰人"},
+  {q:"This is the bag _____ I was looking for.", a:"that", opts:["that","which","who","where"], cn:"这就是我一直在找的包。", tip:"that/which 引导定语从句做宾语"},
+  {q:"I remember the time _____ we first met.", a:"when", opts:["when","which","where","that"], cn:"我记得我们第一次见面的时候。", tip:"when 修饰时间名词time"},
+  {q:"The country _____ she grew up is very different from here.", a:"where", opts:["where","which","that","when"], cn:"她成长的国家与这里非常不同。", tip:"where 引导定语从句修饰地点"},
+  {q:"Is that the man _____ wife works at the hospital?", a:"whose", opts:["whose","who","which","whom"], cn:"那是妻子在医院工作的那个男人吗？", tip:"whose 引导定语从句，表所属"},
+  {q:"The machine _____ broke down has now been repaired.", a:"that", opts:["that","which","who","where"], cn:"那台坏掉的机器现在已经修好了。", tip:"that/which 修饰物"},
+  {q:"She is the singer _____ voice I love most.", a:"whose", opts:["whose","who","which","whom"], cn:"她是我最爱的声音的歌手。", tip:"whose 引导定语从句，表所属"},
+  {q:"The village _____ I was born has changed a lot.", a:"where", opts:["where","which","that","when"], cn:"我出生的村庄已经变化了很多。", tip:"where 修饰地点名词village"},
+  {q:"He is an artist _____ everyone admires.", a:"whom", opts:["whom","who","which","whose"], cn:"他是一位每个人都钦佩的艺术家。", tip:"whom 宾语引导定语从句修饰人"},
+  {q:"The book _____ is on the table is mine.", a:"that", opts:["that","which","who","where"], cn:"桌上的那本书是我的。", tip:"that/which 主语引导定语从句"},
+  {q:"She visited the place _____ the disaster happened.", a:"where", opts:["where","which","that","when"], cn:"她参观了灾难发生的地方。", tip:"where 修饰地点名词place"},
+  {q:"Those _____ arrive early will get better seats.", a:"who", opts:["who","which","that","whose"], cn:"那些早到的人会得到更好的座位。", tip:"those who 引导定语从句修饰人"},
+  {q:"The era _____ she lived was full of challenges.", a:"when", opts:["when","which","where","that"], cn:"她生活的时代充满了挑战。", tip:"when 修饰时间名词era"},
+  {q:"She is the teacher _____ I respect most.", a:"whom", opts:["whom","who","which","whose"], cn:"她是我最尊敬的老师。", tip:"whom 宾语引导定语从句修饰人"},
+  {q:"Is this the bag _____ you lost?", a:"that", opts:["that","which","who","where"], cn:"这是你丢失的包吗？", tip:"that/which 修饰物"},
+  {q:"He told me about a restaurant _____ the food is excellent.", a:"where", opts:["where","which","that","when"], cn:"他告诉我一家食物很棒的餐厅。", tip:"where 修饰地点名词restaurant"},
+  {q:"The man _____ car was stolen reported it to the police.", a:"whose", opts:["whose","who","which","whom"], cn:"车被盗的那个男人向警察报案了。", tip:"whose 引导定语从句，表所属"},
+  {q:"She is looking for someone _____ can help her.", a:"who", opts:["who","which","that","whose"], cn:"她正在寻找能帮助她的人。", tip:"who 引导定语从句修饰人"},
+  {q:"The year _____ the earthquake struck was terrible.", a:"when", opts:["when","which","that","where"], cn:"地震发生的那年非常可怕。", tip:"when 修饰时间名词year"},
+  {q:"These are the books _____ the teacher recommended.", a:"that", opts:["that","which","who","whose"], cn:"这些是老师推荐的书。", tip:"that/which 修饰物"},
+  {q:"She found the key _____ she had been looking for.", a:"that", opts:["that","which","who","where"], cn:"她找到了她一直在找的那把钥匙。", tip:"that/which 修饰物"},
+  {q:"The person _____ gave me this book is my teacher.", a:"who", opts:["who","which","that","whose"], cn:"给我这本书的人是我的老师。", tip:"who 主语引导定语从句修饰人"},
+  {q:"This is the town _____ I spent my childhood.", a:"where", opts:["where","which","that","when"], cn:"这是我度过童年的小镇。", tip:"where 修饰地点名词town"},
+  {q:"He is exactly the kind of person _____ I admire.", a:"whom", opts:["whom","who","which","whose"], cn:"他正是我钦佩的那种人。", tip:"whom 宾语引导定语从句"},
+  {q:"The time _____ they had dinner together was special.", a:"when", opts:["when","which","where","that"], cn:"他们一起吃晚饭的那段时光很特别。", tip:"when 修饰时间名词time"},
+  {q:"She read the letter _____ he had written.", a:"that", opts:["that","which","who","where"], cn:"她读了他写的那封信。", tip:"that/which 修饰物"},
+  {q:"The company _____ he works is very successful.", a:"where", opts:["where","which","that","when"], cn:"他工作的公司非常成功。", tip:"where 修饰地点名词company（工作地点）"},
+  {q:"She is the student _____ essay won first prize.", a:"whose", opts:["whose","who","which","whom"], cn:"她是文章获得一等奖的学生。", tip:"whose 引导定语从句，表所属"},
+  {q:"The subject _____ I enjoy most is English.", a:"that", opts:["that","which","who","where"], cn:"我最喜欢的科目是英语。", tip:"that/which 修饰物"},
+  {q:"All _____ glitters is not gold.", a:"that", opts:["that","which","who","what"], cn:"发光的不一定都是金子。", tip:"all that，先行词为all时用that"},
+  {q:"The movie _____ we saw yesterday was exciting.", a:"that", opts:["that","which","who","where"], cn:"我们昨天看的电影很精彩。", tip:"that/which 修饰物"},
+  {q:"He has the qualities _____ make a good leader.", a:"that", opts:["that","which","who","whose"], cn:"他具备成为优秀领导者的品质。", tip:"that/which 修饰物"},
+  {q:"The hospital _____ she was born is no longer there.", a:"where", opts:["where","which","that","when"], cn:"她出生的医院已经不在了。", tip:"where 修饰地点名词hospital"},
+  {q:"That is the problem _____ has been troubling me.", a:"that", opts:["that","which","who","where"], cn:"这就是一直困扰我的问题。", tip:"that/which 修饰物"},
+  {q:"The students _____ study hard will succeed.", a:"who", opts:["who","which","that","whose"], cn:"努力学习的学生会成功。", tip:"who 引导定语从句修饰人"},
+  {q:"She described the place _____ she had always dreamed of.", a:"that", opts:["that","which","who","where"], cn:"她描述了她一直梦寐以求的地方。", tip:"that/which 修饰物"},
+  {q:"This is the first time _____ I have seen snow.", a:"that", opts:["that","when","where","which"], cn:"这是我第一次见到雪。", tip:"the first time that 固定结构"},
+  {q:"He is a man _____ everyone looks up to.", a:"whom", opts:["whom","who","which","whose"], cn:"他是一个每个人都仰视的人。", tip:"whom 宾语引导定语从句"},
+  {q:"The song _____ she sang was beautiful.", a:"that", opts:["that","which","who","where"], cn:"她唱的那首歌很美。", tip:"that/which 修饰物"},
+  {q:"She is looking for a flat _____ has two bedrooms.", a:"that", opts:["that","which","who","where"], cn:"她在找一套有两间卧室的公寓。", tip:"that/which 修饰物"},
+  {q:"He pointed to the building _____ had been damaged.", a:"that", opts:["that","which","who","where"], cn:"他指向被损坏的那栋建筑。", tip:"that/which 修饰物"},
+  {q:"This is the pen _____ my grandmother gave me.", a:"that", opts:["that","which","who","where"], cn:"这是我祖母给我的笔。", tip:"that/which 修饰物"},
+  {q:"She is the kind of person _____ never gives up.", a:"who", opts:["who","which","that","whose"], cn:"她是那种从不放弃的人。", tip:"who 引导定语从句修饰人"},
+  {q:"The exhibition _____ opened last week is very popular.", a:"that", opts:["that","which","who","where"], cn:"上周开幕的展览非常受欢迎。", tip:"that/which 修饰物"},
+  {q:"He showed me the photos _____ he had taken on holiday.", a:"that", opts:["that","which","who","where"], cn:"他给我看了他假期拍的照片。", tip:"that/which 修饰物"},
+  {q:"I admire people _____ are honest and hardworking.", a:"who", opts:["who","which","that","whose"], cn:"我敬佩诚实和勤劳的人。", tip:"who 引导定语从句修饰人"},
+  {q:"The road _____ leads to the school is under repair.", a:"that", opts:["that","which","who","where"], cn:"通往学校的道路正在维修。", tip:"that/which 修饰物"},
+  {q:"She told me about the problem _____ was affecting her work.", a:"that", opts:["that","which","who","where"], cn:"她告诉我影响她工作的问题。", tip:"that/which 修饰物"},
+  {q:"The teacher praised the students _____ had improved most.", a:"who", opts:["who","which","that","whose"], cn:"老师表扬了进步最大的学生。", tip:"who 引导定语从句修饰人"},
+  {q:"These are the photos _____ you asked for.", a:"that", opts:["that","which","who","whose"], cn:"这些是你要求的照片。", tip:"that/which 修饰物"},
+  {q:"The neighbourhood _____ she lives is very quiet.", a:"where", opts:["where","which","that","when"], cn:"她居住的社区非常安静。", tip:"where 修饰地点名词neighbourhood"},
+  {q:"He is the athlete _____ broke the world record.", a:"who", opts:["who","which","that","whose"], cn:"他是打破世界纪录的那位运动员。", tip:"who 引导定语从句修饰人"},
+  {q:"I will never forget the kindness _____ you showed me.", a:"that", opts:["that","which","who","where"], cn:"我永远不会忘记你对我表现出的善意。", tip:"that/which 修饰抽象名词"},
+  {q:"The novel _____ she wrote became a bestseller.", a:"that", opts:["that","which","who","whose"], cn:"她写的那本小说成为了畅销书。", tip:"that/which 修饰物"},
+  {q:"This is the moment _____ everything changed.", a:"when", opts:["when","which","where","that"], cn:"这就是一切改变的那个时刻。", tip:"when 修饰时间名词moment"},
+  {q:"He is one of those people _____ is always cheerful.", a:"who", opts:["who","which","that","whose"], cn:"他是那些总是开朗的人之一。", tip:"who 引导定语从句修饰人"},
+  {q:"She showed me the letter _____ she had received.", a:"that", opts:["that","which","who","where"], cn:"她给我看了她收到的信。", tip:"that/which 修饰物"},
+  {q:"The team _____ won the championship trained very hard.", a:"that", opts:["that","which","who","whose"], cn:"赢得冠军的那支队伍训练非常努力。", tip:"that/which 修饰集体名词"},
+  {q:"She is exactly the kind of friend _____ I needed.", a:"that", opts:["that","who","which","whose"], cn:"她正是我需要的那种朋友。", tip:"先行词前有修饰时常用that"},
+  {q:"The mountain _____ we climbed last summer is 3000m high.", a:"that", opts:["that","which","who","where"], cn:"我们去年夏天攀登的那座山海拔3000米。", tip:"that/which 修饰物"},
+  {q:"She is the professor _____ research I most admire.", a:"whose", opts:["whose","who","which","whom"], cn:"她是我最钦佩其研究的教授。", tip:"whose 引导定语从句，表所属"},
+  {q:"The concert _____ we attended last week was fantastic.", a:"that", opts:["that","which","who","where"], cn:"我们上周参加的音乐会非常棒。", tip:"that/which 修饰物"},
+  {q:"I enjoy talking to people _____ have different opinions.", a:"who", opts:["who","which","that","whose"], cn:"我喜欢和有不同意见的人交谈。", tip:"who 引导定语从句修饰人"},
+  {q:"The town _____ the festival is held attracts many visitors.", a:"where", opts:["where","which","that","when"], cn:"举办节日的小镇吸引了许多游客。", tip:"where 修饰地点名词town"},
+  {q:"The invention _____ changed the world was the internet.", a:"that", opts:["that","which","who","where"], cn:"改变世界的发明是互联网。", tip:"that/which 修饰物"},
+  {q:"She is a person _____ I can truly trust.", a:"whom", opts:["whom","who","which","whose"], cn:"她是一个我可以真正信任的人。", tip:"whom 宾语引导定语从句修饰人"},
+  {q:"The reason _____ he left is still unknown.", a:"why", opts:["why","that","which","where"], cn:"他离开的原因至今不明。", tip:"why 修饰reason"},
+  {q:"He keeps a diary _____ records his daily thoughts.", a:"that", opts:["that","which","who","where"], cn:"他记着一本记录日常想法的日记。", tip:"that/which 修饰物"},
+  {q:"She is looking for a teacher _____ can teach Spanish.", a:"who", opts:["who","which","that","whose"], cn:"她在寻找一位能教西班牙语的老师。", tip:"who 引导定语从句修饰人"},
+  {q:"The café _____ we have our meetings is very cosy.", a:"where", opts:["where","which","that","when"], cn:"我们开会的那家咖啡馆非常舒适。", tip:"where 修饰地点名词café"},
+  {q:"He sold the house _____ he had lived in for 20 years.", a:"that", opts:["that","which","who","where"], cn:"他卖掉了他住了20年的那所房子。", tip:"that/which 修饰物"},
+  {q:"I know someone _____ can fix your computer.", a:"who", opts:["who","which","that","whose"], cn:"我认识一个可以修你电脑的人。", tip:"who 引导定语从句修饰人"},
+  {q:"The prize _____ she won surprised everyone.", a:"that", opts:["that","which","who","where"], cn:"她赢得的奖励让所有人都感到惊讶。", tip:"that/which 修饰物"},
+  {q:"The time _____ he spent abroad was very valuable.", a:"that", opts:["that","which","when","where"], cn:"他在国外度过的时间非常宝贵。", tip:"that/which 修饰物"},
+  {q:"The place _____ dreams come true is in your mind.", a:"where", opts:["where","which","that","when"], cn:"梦想成真的地方在你心中。", tip:"where 修饰地点名词place"},
+  {q:"She wants to live in a house _____ has a big garden.", a:"that", opts:["that","which","who","where"], cn:"她想住在一所有大花园的房子里。", tip:"that/which 修饰物"},
+  {q:"He wrote a report _____ described the results clearly.", a:"that", opts:["that","which","who","where"], cn:"他写了一份清楚描述结果的报告。", tip:"that/which 修饰物"},
+  {q:"Is this the bicycle _____ was stolen last week?", a:"that", opts:["that","which","who","where"], cn:"这是上周被盗的自行车吗？", tip:"that/which 修饰物"},
+  {q:"The map _____ she drew helped us find our way.", a:"that", opts:["that","which","who","where"], cn:"她画的那张地图帮助我们找到了路。", tip:"that/which 修饰物"},
+  {q:"She is the leader _____ everyone trusts.", a:"whom", opts:["whom","who","which","whose"], cn:"她是每个人都信任的领导者。", tip:"whom 宾语引导定语从句修饰人"},
+  {q:"The restaurant _____ serves Italian food is around the corner.", a:"that", opts:["that","which","who","where"], cn:"供应意大利菜的餐厅就在拐角处。", tip:"that/which 修饰物"},
+  {q:"This is the most interesting book _____ I have ever read.", a:"that", opts:["that","which","who","where"], cn:"这是我读过的最有趣的书。", tip:"最高级/序数词后引导定语从句用that"},
+  {q:"He remembers the day _____ he passed his driving test.", a:"when", opts:["when","which","where","that"], cn:"他还记得通过驾驶考试的那天。", tip:"when 修饰时间名词day"},
+  {q:"She chose the dress _____ was the cheapest.", a:"that", opts:["that","which","who","where"], cn:"她选了那件最便宜的裙子。", tip:"that/which 修饰物"},
+  {q:"The professor _____ lectures I attended was brilliant.", a:"whose", opts:["whose","who","which","whom"], cn:"我参加其讲座的那位教授非常出色。", tip:"whose 引导定语从句，表所属"},
+  {q:"He is the kind of student _____ always asks questions.", a:"who", opts:["who","which","that","whose"], cn:"他是那种总是提问题的学生。", tip:"who 引导定语从句修饰人"},
+  {q:"The dish _____ she cooked smelled delicious.", a:"that", opts:["that","which","who","where"], cn:"她做的那道菜闻起来很香。", tip:"that/which 修饰物"},
+  {q:"There is nothing _____ I can do to help.", a:"that", opts:["that","which","who","what"], cn:"我能做什么来帮忙的事什么都没有。", tip:"nothing 后用that引导定语从句"},
+  {q:"She is the woman _____ kindness touched everyone.", a:"whose", opts:["whose","who","which","whom"], cn:"她是那位善良感动了所有人的女士。", tip:"whose 引导定语从句，表所属"},
+  {q:"The computer _____ she is using is very fast.", a:"that", opts:["that","which","who","where"], cn:"她正在使用的电脑非常快。", tip:"that/which 修饰物"},
+  {q:"He described the moment _____ he realised his dream.", a:"when", opts:["when","which","where","that"], cn:"他描述了他意识到自己梦想的那一刻。", tip:"when 修饰时间名词moment"},
+  {q:"I still have the letter _____ you wrote to me years ago.", a:"that", opts:["that","which","who","where"], cn:"我仍然保存着你多年前写给我的那封信。", tip:"that/which 修饰物"},
+  {q:"She is the type of person _____ makes everyone feel welcome.", a:"who", opts:["who","which","that","whose"], cn:"她是那种让每个人都感到受欢迎的人。", tip:"who 引导定语从句修饰人"},
+  {q:"The museum _____ we visited was closed on Mondays.", a:"that", opts:["that","which","who","where"], cn:"我们参观的博物馆周一不开放。", tip:"that/which 修饰物"},
+  {q:"He remembered the summer _____ he first learnt to swim.", a:"when", opts:["when","which","where","that"], cn:"他记得他第一次学会游泳的那个夏天。", tip:"when 修饰时间名词summer"},
+  {q:"The volunteers _____ helped at the event were amazing.", a:"who", opts:["who","which","that","whose"], cn:"在活动中帮忙的志愿者们非常出色。", tip:"who 引导定语从句修饰人"},
+  {q:"The island _____ they filmed the movie is in the Pacific.", a:"where", opts:["where","which","that","when"], cn:"他们拍摄这部电影的岛屿位于太平洋。", tip:"where 修饰地点名词island"},
+  {q:"She is the author _____ book I just finished.", a:"whose", opts:["whose","who","which","whom"], cn:"她是我刚刚读完书的那位作者。", tip:"whose 引导定语从句，表所属"},
+  {q:"The era _____ kings ruled absolutely has passed.", a:"when", opts:["when","which","where","that"], cn:"国王绝对统治的时代已经过去了。", tip:"when 修饰时间名词era"},
+  {q:"I read the article _____ described the new discovery.", a:"that", opts:["that","which","who","where"], cn:"我读了描述新发现的那篇文章。", tip:"that/which 修饰物"},
+  {q:"He told a story _____ no one believed.", a:"that", opts:["that","which","who","where"], cn:"他讲了一个没有人相信的故事。", tip:"that/which 修饰物"},
+  {q:"She is always the first _____ arrives at school.", a:"who", opts:["who","which","that","whose"], cn:"她总是第一个到学校的人。", tip:"who/that 均可，序数词后两者皆可"},
+  {q:"This is the only solution _____ works.", a:"that", opts:["that","which","who","where"], cn:"这是唯一有效的解决方案。", tip:"only 后引导定语从句用that"},
+  {q:"The city _____ the conference will be held is Shanghai.", a:"where", opts:["where","which","that","when"], cn:"将举办会议的城市是上海。", tip:"where 修饰地点名词city"},
+  {q:"He is someone _____ I have always looked up to.", a:"whom", opts:["whom","who","which","whose"], cn:"他是我一直仰视的人。", tip:"whom 宾语引导定语从句"},
+  {q:"The document _____ you need is on my desk.", a:"that", opts:["that","which","who","where"], cn:"你需要的文件在我的桌上。", tip:"that/which 修饰物"},
+  {q:"She recalled the night _____ the storm hit.", a:"when", opts:["when","which","where","that"], cn:"她回忆起暴风雨来袭的那个夜晚。", tip:"when 修饰时间名词night"},
+  {q:"Everything _____ he said was correct.", a:"that", opts:["that","which","who","what"], cn:"他说的一切都是正确的。", tip:"everything 后用that引导定语从句"},
+  {q:"The idea _____ she proposed was brilliant.", a:"that", opts:["that","which","who","where"], cn:"她提出的那个主意非常出色。", tip:"that/which 修饰物"},
+  {q:"This is the key _____ unlocks the door.", a:"that", opts:["that","which","who","where"], cn:"这是打开这扇门的钥匙。", tip:"that/which 修饰物"},
+  {q:"He showed me a place _____ I had never been before.", a:"that", opts:["that","which","where","when"], cn:"他给我看了一个我以前从未去过的地方。", tip:"that/which 做宾语修饰物"},
+  {q:"The first film _____ I ever saw was in black and white.", a:"that", opts:["that","which","who","where"], cn:"我看过的第一部电影是黑白片。", tip:"序数词first后用that引导定语从句"},
+  {q:"She is always helping people _____ are in need.", a:"who", opts:["who","which","that","whose"], cn:"她总是帮助有需要的人。", tip:"who 引导定语从句修饰人"},
+  {q:"The bridge _____ connects the two cities was just built.", a:"that", opts:["that","which","who","where"], cn:"连接两座城市的那座桥刚刚建成。", tip:"that/which 修饰物"},
+  {q:"He shared memories from the years _____ he had lived abroad.", a:"when", opts:["when","which","where","that"], cn:"他分享了他旅居海外那些年的回忆。", tip:"when 修饰时间名词years"},
+  {q:"She told us about the book _____ changed her life.", a:"that", opts:["that","which","who","where"], cn:"她告诉我们改变了她生活的那本书。", tip:"that/which 修饰物"},
+  {q:"I know the student _____ won the competition.", a:"who", opts:["who","which","that","whose"], cn:"我认识赢得比赛的那个学生。", tip:"who 引导定语从句修饰人"},
+  {q:"The result _____ surprised everyone was a tie.", a:"that", opts:["that","which","who","where"], cn:"让所有人惊讶的结果是平局。", tip:"that/which 修饰物"},
+  {q:"She showed the teacher the essay _____ she had corrected.", a:"that", opts:["that","which","who","where"], cn:"她把她改过的作文拿给老师看。", tip:"that/which 修饰物"},
+  {q:"He bought a car _____ he had always wanted.", a:"that", opts:["that","which","who","where"], cn:"他买了一辆他一直想要的车。", tip:"that/which 修饰物"},
+  {q:"The scientist _____ we heard about won a prize.", a:"whom", opts:["whom","who","which","whose"], cn:"我们听说过的那位科学家获奖了。", tip:"whom 宾语引导定语从句修饰人"},
+  {q:"She chose the moment _____ everyone was paying attention.", a:"when", opts:["when","which","where","that"], cn:"她选择了所有人都在注意的那一刻。", tip:"when 修饰时间名词moment"},
+  {q:"He made a decision _____ affected everyone.", a:"that", opts:["that","which","who","where"], cn:"他做了一个影响所有人的决定。", tip:"that/which 修饰物"},
+  {q:"The forest _____ they got lost was very dense.", a:"where", opts:["where","which","that","when"], cn:"他们迷路的森林非常茂密。", tip:"where 修饰地点名词forest"},
+  {q:"She is the woman _____ gave me this advice.", a:"who", opts:["who","which","that","whose"], cn:"她是给我这个建议的那位女士。", tip:"who 主语引导定语从句修饰人"},
+  {q:"The flowers _____ she planted are blooming.", a:"that", opts:["that","which","who","where"], cn:"她种的花正在开花。", tip:"that/which 修饰物"},
+  {q:"He is reading a book _____ his teacher recommended.", a:"that", opts:["that","which","who","where"], cn:"他在读一本他老师推荐的书。", tip:"that/which 修饰物"},
+  {q:"The mountain path _____ they took was very steep.", a:"that", opts:["that","which","who","where"], cn:"他们走的那条山路非常陡峭。", tip:"that/which 修饰物"},
+  {q:"She remembered the night _____ her child was born.", a:"when", opts:["when","which","where","that"], cn:"她记得她孩子出生的那个夜晚。", tip:"when 修饰时间名词night"},
+  {q:"The novel _____ he wrote in three weeks became famous.", a:"that", opts:["that","which","who","where"], cn:"他三周内写成的那部小说成名了。", tip:"that/which 修饰物"},
+  {q:"I have met the author _____ books inspire millions.", a:"whose", opts:["whose","who","which","whom"], cn:"我见过了那位书籍激励了数百万人的作者。", tip:"whose 引导定语从句，表所属"},
+  {q:"The city _____ she was born looks very different now.", a:"where", opts:["where","which","that","when"], cn:"她出生的城市现在看起来非常不同。", tip:"where 修饰地点名词city"},
+  {q:"She wore the necklace _____ her mother had given her.", a:"that", opts:["that","which","who","where"], cn:"她戴着母亲给她的那条项链。", tip:"that/which 修饰物"},
+  {q:"The candidate _____ got the most votes was elected.", a:"who", opts:["who","which","that","whose"], cn:"得票最多的候选人当选了。", tip:"who 引导定语从句修饰人"},
+  {q:"This is one of the films _____ I enjoy most.", a:"that", opts:["that","which","who","where"], cn:"这是我最喜欢的电影之一。", tip:"that/which 修饰物"},
+  {q:"He owns a business _____ exports products worldwide.", a:"that", opts:["that","which","who","where"], cn:"他拥有一家向全球出口产品的企业。", tip:"that/which 修饰物"},
+  {q:"The woman _____ I spoke to was very helpful.", a:"whom", opts:["whom","who","which","whose"], cn:"我与之交谈的那位女士非常乐于助人。", tip:"whom 宾语引导定语从句修饰人"},
+  {q:"She recalled the month _____ she had started her new job.", a:"when", opts:["when","which","where","that"], cn:"她回忆起她开始新工作的那个月份。", tip:"when 修饰时间名词month"},
+  {q:"The clothes _____ she was wearing were very stylish.", a:"that", opts:["that","which","who","where"], cn:"她穿的衣服非常时尚。", tip:"that/which 修饰物"},
+  {q:"He thanked the friends _____ had supported him.", a:"who", opts:["who","which","that","whose"], cn:"他感谢了支持他的朋友们。", tip:"who 引导定语从句修饰人"},
+  {q:"The technique _____ she used was very effective.", a:"that", opts:["that","which","who","where"], cn:"她使用的技术非常有效。", tip:"that/which 修饰物"},
+  {q:"The summer _____ we became friends seems so long ago.", a:"when", opts:["when","which","where","that"], cn:"我们成为朋友的那个夏天似乎已经很久远了。", tip:"when 修饰时间名词summer"},
+  {q:"She is exactly the kind of student _____ every teacher wants.", a:"that", opts:["that","whom","which","whose"], cn:"她正是每位老师都想要的那种学生。", tip:"先行词前有every时常用that"},
+  {q:"The painting _____ hung in the hall was very old.", a:"that", opts:["that","which","who","where"], cn:"挂在大厅里的那幅画非常古老。", tip:"that/which 修饰物"},
+];
+
+const PREPOSITION_QUESTIONS = [
+  {q:"We had a discussion _____ the movie.", a:"about", opts:["about","on","of","for"], cn:"我们就这部电影进行了讨论。", tip:"about 表相关性"},
+  {q:"She is curious _____ other cultures.", a:"about", opts:["about","of","in","at"], cn:"她对其他文化感到好奇。", tip:"curious about 对...好奇"},
+  {q:"He knows a lot _____ history.", a:"about", opts:["about","of","in","at"], cn:"他对历史了解很多。", tip:"know about 了解相关情况"},
+  {q:"They argued _____ the plan.", a:"about", opts:["about","on","over","for"], cn:"他们就这个计划争论起来。", tip:"argue about 就...争论"},
+  {q:"I am worried _____ the exam results.", a:"about", opts:["about","of","for","at"], cn:"我很担心考试成绩。", tip:"be worried about 担心"},
+  {q:"The plane is flying _____ the clouds.", a:"above", opts:["above","over","under","below"], cn:"飞机正在云层上方飞行。", tip:"above 垂直向上，不接触"},
+  {q:"The temperature is _____ 30 degrees today.", a:"above", opts:["above","over","under","below"], cn:"今天温度超过30度。", tip:"above 超过（用于数值）"},
+  {q:"Her score was _____ the class average.", a:"above", opts:["above","over","under","below"], cn:"她的分数高于班级平均分。", tip:"above 高于平均水平"},
+  {q:"She walked _____ the street carefully.", a:"across", opts:["across","through","along","over"], cn:"她小心地穿过街道。", tip:"across 从一边到另一边"},
+  {q:"The bridge stretches _____ the river.", a:"across", opts:["across","through","along","over"], cn:"桥横跨河流两岸。", tip:"across 横跨"},
+  {q:"He swam _____ the lake.", a:"across", opts:["across","through","along","over"], cn:"他游过了湖。", tip:"across 从一端到另一端"},
+  {q:"We will have dinner _____ the movie.", a:"after", opts:["after","before","during","since"], cn:"我们将在电影结束后吃晚饭。", tip:"after 在...之后"},
+  {q:"She came third _____ Mary and John.", a:"after", opts:["after","before","behind","below"], cn:"她在玛丽和约翰之后排第三。", tip:"after 序位，排在...之后"},
+  {q:"He ran _____ the bus but missed it.", a:"after", opts:["after","before","behind","for"], cn:"他追赶公共汽车但没追上。", tip:"run after 追赶"},
+  {q:"He leaned _____ the wall tiredly.", a:"against", opts:["against","on","at","to"], cn:"他疲倦地靠在墙上。", tip:"against 表接触和对抗"},
+  {q:"She is _____ the new policy.", a:"against", opts:["against","for","with","to"], cn:"她反对新政策。", tip:"be against 反对"},
+  {q:"They competed _____ each other.", a:"against", opts:["against","with","for","to"], cn:"他们相互竞争。", tip:"compete against 对抗"},
+  {q:"They walked _____ the beach at sunset.", a:"along", opts:["along","across","through","beside"], cn:"他们在日落时沿着海滩散步。", tip:"along 沿着线"},
+  {q:"Trees are planted _____ the road.", a:"along", opts:["along","across","beside","near"], cn:"树木种植在道路沿线。", tip:"along 沿着"},
+  {q:"The book is _____ the other books on the shelf.", a:"among", opts:["among","between","beside","with"], cn:"这本书在书架上的其他书籍中。", tip:"among 众多之中"},
+  {q:"She is popular _____ her classmates.", a:"among", opts:["among","between","with","in"], cn:"她在同学中很受欢迎。", tip:"among 在...之中（多者）"},
+  {q:"He found his keys _____ the things in his bag.", a:"among", opts:["among","between","inside","through"], cn:"他在包里的东西中找到了钥匙。", tip:"among 在众多事物中"},
+  {q:"The children are playing _____ the tree.", a:"around", opts:["around","near","beside","along"], cn:"孩子们在树旁玩耍。", tip:"around 绕着"},
+  {q:"She wrapped a scarf _____ her neck.", a:"around", opts:["around","on","over","through"], cn:"她把围巾围在脖子上。", tip:"around 环绕"},
+  {q:"They travelled _____ the world last year.", a:"around", opts:["around","through","across","along"], cn:"他们去年环游世界。", tip:"around the world 环游世界"},
+  {q:"We will meet _____ the park at 3 PM.", a:"at", opts:["at","in","on","to"], cn:"我们下午三点在公园见面。", tip:"at 在某地点（点上）"},
+  {q:"She is very good _____ playing the piano.", a:"at", opts:["at","in","on","for"], cn:"她非常擅长弹钢琴。", tip:"be good at 擅长"},
+  {q:"He arrived _____ school at 8 o'clock.", a:"at", opts:["at","in","to","for"], cn:"他八点钟到达学校。", tip:"arrive at 到达（小地点）"},
+  {q:"She is looking _____ the stars.", a:"at", opts:["at","on","in","to"], cn:"她正在看星星。", tip:"look at 注视"},
+  {q:"I was surprised _____ his answer.", a:"at", opts:["at","by","with","from"], cn:"他的回答让我很惊讶。", tip:"be surprised at 对...感到惊讶"},
+  {q:"The students laughed _____ his joke.", a:"at", opts:["at","on","about","with"], cn:"学生们被他的笑话逗乐了。", tip:"laugh at 嘲笑/对...发笑"},
+  {q:"The passengers climbed _____ the ship.", a:"aboard", opts:["aboard","on","into","onto"], cn:"乘客们登上了船。", tip:"aboard 登上（船/飞机）"},
+  {q:"All crew members must be _____ before departure.", a:"aboard", opts:["aboard","on","in","at"], cn:"所有船员必须在出发前登船。", tip:"aboard 在船/飞机上"},
+  {q:"The cat walked _____ the dog to the park.", a:"alongside", opts:["alongside","beside","near","with"], cn:"猫和狗一起走向公园。", tip:"alongside 并排跟着"},
+  {q:"She worked _____ experienced teachers for a year.", a:"alongside", opts:["alongside","with","near","beside"], cn:"她和经验丰富的老师一起工作了一年。", tip:"alongside 与...一起并列工作"},
+  {q:"She works _____ a teacher at the local school.", a:"as", opts:["as","like","for","of"], cn:"她在当地学校担任教师。", tip:"as 以...身份，表角色"},
+  {q:"He was elected _____ class president.", a:"as", opts:["as","to","for","like"], cn:"他被选为班长。", tip:"as 以...身份，担任职位"},
+  {q:"She used her jacket _____ a pillow.", a:"as", opts:["as","like","for","of"], cn:"她把夹克当枕头用。", tip:"as 当作，作为"},
+  {q:"The treasure is buried _____ the tree.", a:"beneath", opts:["beneath","below","under","beside"], cn:"宝藏埋在树下。", tip:"beneath 深埋，看不见"},
+  {q:"The city lay _____ a thick layer of snow.", a:"beneath", opts:["beneath","below","under","beside"], cn:"城市被厚厚的雪层覆盖。", tip:"beneath 在...之下"},
+  {q:"She sat _____ her best friend.", a:"beside", opts:["beside","besides","near","next"], cn:"她坐在最好朋友旁边。", tip:"beside 紧邻在...旁边"},
+  {q:"The hotel is _____ the river.", a:"beside", opts:["beside","near","along","by"], cn:"酒店在河边。", tip:"beside 紧靠着"},
+  {q:"The cat is lying _____ the two pillows.", a:"between", opts:["between","among","beside","through"], cn:"猫躺在两个枕头之间。", tip:"between 两者之间"},
+  {q:"She chose _____ the two options carefully.", a:"between", opts:["between","among","from","through"], cn:"她仔细地在两个选项之间做出选择。", tip:"choose between 在两者之间选择"},
+  {q:"The secret stayed _____ the two of us.", a:"between", opts:["between","among","with","from"], cn:"这个秘密只在我们两人之间。", tip:"between 两人之间"},
+  {q:"They arrived _____ the dinner rush.", a:"before", opts:["before","after","during","since"], cn:"他们在晚餐高峰期之前到达。", tip:"before 在...之前"},
+  {q:"She thinks carefully _____ speaking.", a:"before", opts:["before","after","while","since"], cn:"她在说话之前仔细思考。", tip:"before speaking 说话之前"},
+  {q:"The cat hid _____ the couch when scared.", a:"behind", opts:["behind","under","beside","below"], cn:"猫受惊时躲到了沙发后面。", tip:"behind 在...后面（空间）"},
+  {q:"He is always _____ schedule.", a:"behind", opts:["behind","after","below","under"], cn:"他总是落后于进度。", tip:"behind schedule 落后于计划"},
+  {q:"The treasure is hidden _____ the old bridge.", a:"beyond", opts:["beyond","behind","over","past"], cn:"宝藏藏在旧桥那边。", tip:"beyond 超出范围，够不到"},
+  {q:"This task is _____ my ability.", a:"beyond", opts:["beyond","above","over","past"], cn:"这项任务超出了我的能力范围。", tip:"beyond one's ability 超出能力"},
+  {q:"Everyone passed the test _____ one student.", a:"but", opts:["but","except","besides","without"], cn:"除一名学生外，所有人都通过了考试。", tip:"but 除外，= except"},
+  {q:"She likes everything _____ spicy food.", a:"but", opts:["but","except","besides","without"], cn:"她喜欢除辣食之外的一切。", tip:"but 除了...之外"},
+  {q:"The painting was created _____ a famous artist.", a:"by", opts:["by","from","with","of"], cn:"这幅画是由一位著名艺术家创作的。", tip:"by 被动语态，表施动者"},
+  {q:"She went to Beijing _____ train.", a:"by", opts:["by","with","on","in"], cn:"她乘火车去了北京。", tip:"by + 交通工具（不加冠词）"},
+  {q:"He learned French _____ watching films.", a:"by", opts:["by","from","through","with"], cn:"他通过看电影学了法语。", tip:"by + v-ing 通过...方式"},
+  {q:"Please finish the work _____ Friday.", a:"by", opts:["by","before","until","on"], cn:"请在周五之前完成工作。", tip:"by 截止时间，到...之前"},
+  {q:"She stood _____ the window watching the rain.", a:"by", opts:["by","at","near","beside"], cn:"她站在窗边看雨。", tip:"by 紧靠在...旁边"},
+  {q:"The letter contained information _____ the upcoming event.", a:"concerning", opts:["concerning","about","regarding","of"], cn:"信件包含有关即将到来活动的信息。", tip:"concerning 关于，正式用语"},
+  {q:"He had concerns _____ the safety of the bridge.", a:"concerning", opts:["concerning","about","regarding","with"], cn:"他对这座桥的安全有顾虑。", tip:"concerning = about，较正式"},
+  {q:"_____ the rain, they continued the outdoor party.", a:"Despite", opts:["Despite","Although","Because of","Since"], cn:"尽管下雨，他们还是继续了户外派对。", tip:"despite + 名词，引导让步"},
+  {q:"_____ feeling ill, she went to work.", a:"Despite", opts:["Despite","Although","Because of","In spite of"], cn:"尽管感到不舒服，她还是去上班了。", tip:"despite = in spite of，尽管"},
+  {q:"She won the race _____ a bad start.", a:"despite", opts:["despite","although","because of","in spite"], cn:"尽管开局不好，她还是赢得了比赛。", tip:"despite + 名词，尽管"},
+  {q:"He read a book _____ the flight.", a:"during", opts:["during","while","for","in"], cn:"他在飞行途中读了一本书。", tip:"during 在...期间"},
+  {q:"She slept _____ the lecture.", a:"during", opts:["during","while","for","in"], cn:"她在讲课期间睡着了。", tip:"during 在某段时间内"},
+  {q:"The shop was busy _____ the holiday season.", a:"during", opts:["during","for","while","in"], cn:"这家商店在假日季节很忙碌。", tip:"during 在...期间"},
+  {q:"The kite slowly floated _____ to the ground.", a:"down", opts:["down","up","over","along"], cn:"风筝慢慢地飘落到地面。", tip:"down 向下"},
+  {q:"She walked _____ the stairs carefully.", a:"down", opts:["down","up","along","through"], cn:"她小心地走下楼梯。", tip:"down 向下"},
+  {q:"Everyone was invited _____ Tom.", a:"except", opts:["except","but","besides","without"], cn:"除了汤姆，每个人都被邀请了。", tip:"except 除...之外（排除在外）"},
+  {q:"She eats everything _____ meat.", a:"except", opts:["except","but","besides","without"], cn:"她除了肉什么都吃。", tip:"except 除...之外"},
+  {q:"She bought a gift _____ her sister's birthday.", a:"for", opts:["for","to","of","at"], cn:"她为姐姐的生日买了礼物。", tip:"for 为了，表目的"},
+  {q:"He has been studying _____ three hours.", a:"for", opts:["for","since","during","in"], cn:"他已经学习了三个小时了。", tip:"for + 时间段，表持续时长"},
+  {q:"She thanked him _____ his help.", a:"for", opts:["for","to","with","at"], cn:"她感谢他的帮助。", tip:"thank sb. for sth."},
+  {q:"He is responsible _____ the whole team.", a:"for", opts:["for","to","of","with"], cn:"他对整个团队负责。", tip:"be responsible for 对...负责"},
+  {q:"I am looking _____ my keys.", a:"for", opts:["for","at","after","to"], cn:"我在找我的钥匙。", tip:"look for 寻找"},
+  {q:"The train arrived _____ the neighboring city.", a:"from", opts:["from","at","in","to"], cn:"火车从邻近城市来到了这里。", tip:"from 来自...方向"},
+  {q:"She is _____ China originally.", a:"from", opts:["from","of","in","at"], cn:"她原本来自中国。", tip:"from 表来源"},
+  {q:"He suffers _____ allergies every spring.", a:"from", opts:["from","of","with","by"], cn:"他每年春天都患过敏症。", tip:"suffer from 患...病症"},
+  {q:"The cat found a cozy spot _____ the box.", a:"inside", opts:["inside","in","within","into"], cn:"猫在盒子里找到了一个舒适的地方。", tip:"inside 在里面"},
+  {q:"She works _____ a large company.", a:"inside", opts:["inside","in","within","at"], cn:"她在一家大公司工作。", tip:"inside 在...内部"},
+  {q:"She dived _____ the pool to cool off.", a:"into", opts:["into","in","to","inside"], cn:"她跳进泳池降温。", tip:"into 表方向，进入"},
+  {q:"He looked _____ the mirror.", a:"into", opts:["into","in","at","to"], cn:"他照着镜子。", tip:"look into 往里看/调查"},
+  {q:"She translated the poem _____ English.", a:"into", opts:["into","to","in","for"], cn:"她把这首诗翻译成英语。", tip:"translate into 翻译成"},
+  {q:"The cake tastes _____ chocolate.", a:"like", opts:["like","as","of","similar"], cn:"这个蛋糕尝起来像巧克力。", tip:"like 像，类似于（名词后）"},
+  {q:"She sings _____ a professional.", a:"like", opts:["like","as","similar","of"], cn:"她唱得像专业人士一样。", tip:"like 像（表相似）"},
+  {q:"There is a park _____ their house.", a:"near", opts:["near","nearby","close","beside"], cn:"他们家附近有一个公园。", tip:"near 靠近，距离短"},
+  {q:"The school is _____ the library.", a:"near", opts:["near","next","beside","at"], cn:"学校在图书馆附近。", tip:"near 附近"},
+  {q:"The book is _____ the table.", a:"on", opts:["on","in","at","above"], cn:"书在桌子上。", tip:"on 在...上面，接触表面"},
+  {q:"They are working _____ a new project.", a:"on", opts:["on","in","at","for"], cn:"他们正在做一个新项目。", tip:"work on 致力于"},
+  {q:"She has been living here _____ Monday.", a:"since", opts:["since","on","for","from"], cn:"她从周一起就一直住在这里。", tip:"since + 时间点"},
+  {q:"The store is _____ the corner of the street.", a:"on", opts:["on","at","in","by"], cn:"商店在街角。", tip:"on the corner 在街角"},
+  {q:"He congratulated me _____ passing the exam.", a:"on", opts:["on","for","at","with"], cn:"他祝贺我通过了考试。", tip:"congratulate sb. on sth."},
+  {q:"He went _____ the room to get fresh air.", a:"out of", opts:["out of","out","outside","from"], cn:"他走出房间呼吸新鲜空气。", tip:"out of 从...里面出来"},
+  {q:"She ran _____ breath after the race.", a:"out of", opts:["out of","without","outside","beyond"], cn:"比赛后她跑到气喘吁吁。", tip:"out of breath 上气不接下气"},
+  {q:"The bookshelf is full _____ books.", a:"of", opts:["of","with","in","by"], cn:"书架上摆满了书。", tip:"be full of 充满"},
+  {q:"She is the leader _____ the team.", a:"of", opts:["of","in","for","to"], cn:"她是这个团队的领导者。", tip:"leader of 团队的领导者"},
+  {q:"He is afraid _____ making mistakes.", a:"of", opts:["of","at","in","for"], cn:"他害怕犯错误。", tip:"be afraid of 害怕"},
+  {q:"She dreamed _____ becoming a doctor.", a:"of", opts:["of","about","for","in"], cn:"她梦想成为一名医生。", tip:"dream of 梦想"},
+  {q:"He is capable _____ doing better work.", a:"of", opts:["of","in","at","for"], cn:"他有能力做得更好。", tip:"be capable of 有能力做"},
+  {q:"She is proud _____ her achievements.", a:"of", opts:["of","at","in","for"], cn:"她为自己的成就感到自豪。", tip:"be proud of 为...自豪"},
+  {q:"He fell _____ the bike but wasn't hurt.", a:"off", opts:["off","from","out of","over"], cn:"他从自行车上摔下来，但没有受伤。", tip:"fall off 从...上掉落"},
+  {q:"She took her shoes _____ at the door.", a:"off", opts:["off","out","from","away"], cn:"她在门口脱下鞋子。", tip:"take off 脱下"},
+  {q:"Turn _____ the lights before you leave.", a:"off", opts:["off","out","down","away"], cn:"离开之前关灯。", tip:"turn off 关闭"},
+  {q:"She climbed _____ the roof to fix the antenna.", a:"onto", opts:["onto","on","to","up"], cn:"她爬上屋顶修天线。", tip:"onto 到...上面（有方向有接触）"},
+  {q:"He jumped _____ the stage.", a:"onto", opts:["onto","on","to","up"], cn:"他跳上舞台。", tip:"jump onto 跳到...上"},
+  {q:"The bakery is located _____ the grocery store.", a:"opposite", opts:["opposite","across","beside","near"], cn:"面包店位于杂货店对面。", tip:"opposite 在...对面"},
+  {q:"She sat _____ him during the meeting.", a:"opposite", opts:["opposite","beside","near","across"], cn:"会议期间她坐在他对面。", tip:"opposite 面对面，在...对面"},
+  {q:"The kids played _____ in the backyard.", a:"outside", opts:["outside","out","outdoors","beyond"], cn:"孩子们在后院外面玩耍。", tip:"outside 在外面"},
+  {q:"There was a crowd _____ the stadium.", a:"outside", opts:["outside","beside","near","around"], cn:"体育场外面有一群人。", tip:"outside 在...外面"},
+  {q:"The plane flew _____ the mountains.", a:"over", opts:["over","above","across","through"], cn:"飞机飞越了山脉。", tip:"over 从上方越过，跨越"},
+  {q:"She spread a blanket _____ the sleeping child.", a:"over", opts:["over","on","above","across"], cn:"她在熟睡的孩子身上盖了一条毯子。", tip:"over 覆盖在...上方"},
+  {q:"He thought it _____ carefully.", a:"over", opts:["over","about","through","on"], cn:"他仔细考虑了一下。", tip:"think over 仔细考虑"},
+  {q:"They walked _____ the old church on their way home.", a:"past", opts:["past","by","through","along"], cn:"他们回家途中走过了那座古老的教堂。", tip:"past 经过，从旁边走过"},
+  {q:"It's already _____ midnight.", a:"past", opts:["past","after","over","beyond"], cn:"已经过了午夜了。", tip:"past 超过（时间）"},
+  {q:"The price is $10 _____ item.", a:"per", opts:["per","for","each","on"], cn:"价格是每件10美元。", tip:"per 每一，单价"},
+  {q:"She earns $15 _____ hour.", a:"per", opts:["per","for","each","an"], cn:"她每小时赚15美元。", tip:"per 每（单位时间/数量）"},
+  {q:"He has a question _____ the homework assignment.", a:"regarding", opts:["regarding","about","concerning","of"], cn:"他对家庭作业有个问题。", tip:"regarding 关于（正式）"},
+  {q:"Please contact us _____ any issues.", a:"regarding", opts:["regarding","about","concerning","for"], cn:"请就任何问题与我们联系。", tip:"regarding 关于，正式文件用语"},
+  {q:"He has been playing the guitar _____ he was a child.", a:"since", opts:["since","for","when","until"], cn:"他从小就一直在弹吉他。", tip:"since + 时间点（现在完成时）"},
+  {q:"She has been living here _____ 2015.", a:"since", opts:["since","for","from","during"], cn:"她自2015年以来一直住在这里。", tip:"since + 具体时间点"},
+  {q:"The hikers walked _____ the dense forest.", a:"through", opts:["through","across","along","past"], cn:"徒步者穿过了茂密的森林。", tip:"through 从中间穿过"},
+  {q:"She got the job _____ a recommendation.", a:"through", opts:["through","by","from","with"], cn:"她通过推荐获得了这份工作。", tip:"through 通过某种途径"},
+  {q:"Light passes _____ glass.", a:"through", opts:["through","across","over","past"], cn:"光线穿过玻璃。", tip:"through 穿过"},
+  {q:"The festival lasts _____ the weekend.", a:"throughout", opts:["throughout","through","during","for"], cn:"节日持续整个周末。", tip:"throughout 贯穿，从头至尾"},
+  {q:"She remained calm _____ the crisis.", a:"throughout", opts:["throughout","during","through","for"], cn:"她在整个危机中保持冷静。", tip:"throughout 始终贯穿某时期"},
+  {q:"They will stay at the hotel _____ the end of the month.", a:"till", opts:["till","until","to","by"], cn:"他们将在酒店住到月底。", tip:"till = until，到...为止"},
+  {q:"She waited _____ he came back.", a:"until", opts:["until","till","to","by"], cn:"她等到他回来。", tip:"until 到...时为止"},
+  {q:"We are going _____ the park.", a:"to", opts:["to","at","toward","for"], cn:"我们正去公园。", tip:"to 表方向，前往"},
+  {q:"She is looking forward _____ the holiday.", a:"to", opts:["to","for","at","about"], cn:"她期待着假期的到来。", tip:"look forward to + n./doing"},
+  {q:"He spoke _____ the crowd confidently.", a:"to", opts:["to","at","with","for"], cn:"他自信地向人群讲话。", tip:"speak to 对...讲话"},
+  {q:"She is married _____ a doctor.", a:"to", opts:["to","with","for","by"], cn:"她嫁给了一位医生。", tip:"be married to 嫁给/娶"},
+  {q:"The birds flew _____ the setting sun.", a:"toward", opts:["toward","to","at","for"], cn:"鸟儿朝着落日飞去。", tip:"toward 朝向，表方向"},
+  {q:"She walked _____ the exit.", a:"toward", opts:["toward","to","at","for"], cn:"她走向出口。", tip:"toward 朝向（但未到达）"},
+  {q:"The balloon floated _____ in the sky.", a:"up", opts:["up","above","over","high"], cn:"气球在天空中升起。", tip:"up 向上"},
+  {q:"She looked _____ at the stars.", a:"up", opts:["up","above","to","over"], cn:"她仰望星空。", tip:"look up 抬头看"},
+  {q:"He worked hard and moved _____ in the company.", a:"up", opts:["up","above","over","out"], cn:"他努力工作，在公司晋升了。", tip:"move up 晋升，向上走"},
+  {q:"The cat hid _____ the bed during the storm.", a:"under", opts:["under","below","beneath","underneath"], cn:"暴风雨期间猫躲在床下。", tip:"under 在...正下方，不接触"},
+  {q:"She is _____ a lot of pressure now.", a:"under", opts:["under","below","beneath","with"], cn:"她现在压力很大。", tip:"under pressure 在压力下"},
+  {q:"The project is _____ review.", a:"under", opts:["under","in","at","on"], cn:"这个项目正在审查中。", tip:"under review 在审查中"},
+  {q:"The keys were found _____ the sofa.", a:"underneath", opts:["underneath","below","beneath","under"], cn:"钥匙被发现在沙发下面（紧贴着）。", tip:"underneath 紧贴下方，接触且看不见"},
+  {q:"_____ her siblings, she enjoys cooking.", a:"Unlike", opts:["Unlike","Like","As","Besides"], cn:"与她的兄弟姐妹不同，她喜欢烹饪。", tip:"unlike 不像，表对比"},
+  {q:"_____ last year, this summer is very hot.", a:"Unlike", opts:["Unlike","Like","As","Despite"], cn:"不像去年，今年夏天非常热。", tip:"unlike 表对比"},
+  {q:"The movie will run _____ late in the evening.", a:"until", opts:["until","till","to","by"], cn:"这部电影将一直放映到深夜。", tip:"until 到...为止"},
+  {q:"She didn't stop _____ she finished the work.", a:"until", opts:["until","till","when","before"], cn:"她一直没停，直到完成工作。", tip:"not...until 直到...才"},
+  {q:"The treasure was handed _____ the king.", a:"unto", opts:["unto","to","toward","for"], cn:"宝藏被移交给了国王。", tip:"unto 古语，= to，表面向"},
+  {q:"_____ arrival, they were greeted warmly.", a:"Upon", opts:["Upon","On","At","After"], cn:"他们一到达，就受到了热情接待。", tip:"upon arrival = as soon as they arrived"},
+  {q:"She acted _____ his advice immediately.", a:"upon", opts:["upon","on","by","from"], cn:"她立即按照他的建议行事。", tip:"act upon = act on 按照...行事"},
+  {q:"The final match will be India _____ Australia.", a:"versus", opts:["versus","against","with","and"], cn:"决赛将是印度对阵澳大利亚。", tip:"versus = vs 对阵"},
+  {q:"They communicated _____ email.", a:"via", opts:["via","by","through","with"], cn:"他们通过电子邮件进行交流。", tip:"via 通过某种媒介"},
+  {q:"She flew to Paris _____ London.", a:"via", opts:["via","through","by","from"], cn:"她经由伦敦飞往巴黎。", tip:"via 经由某地"},
+  {q:"She went to the park _____ her friends.", a:"with", opts:["with","and","beside","along"], cn:"她和朋友们去了公园。", tip:"with 伴随，和...一起"},
+  {q:"She is familiar _____ this topic.", a:"with", opts:["with","to","about","of"], cn:"她对这个话题很熟悉。", tip:"be familiar with 熟悉"},
+  {q:"He wrote the letter _____ a pen.", a:"with", opts:["with","by","using","through"], cn:"他用笔写了这封信。", tip:"with 用（工具）"},
+  {q:"The package will arrive _____ two days.", a:"within", opts:["within","in","by","for"], cn:"包裹将在两天内到达。", tip:"within 在...之内（时间限度）"},
+  {q:"She lives _____ walking distance of the school.", a:"within", opts:["within","in","at","near"], cn:"她住在步行可到学校的范围内。", tip:"within 在...范围之内"},
+  {q:"He did it _____ any help.", a:"without", opts:["without","with","no","not"], cn:"他没有任何帮助就完成了。", tip:"without 没有，表缺少"},
+  {q:"She left _____ saying goodbye.", a:"without", opts:["without","not","except","besides"], cn:"她没有道别就离开了。", tip:"without + v-ing，不...而"},
+  {q:"The bird flew _____ _____ the cage.", a:"out of", opts:["out of","away from","outside of","from"], cn:"鸟从笼子里飞了出来。", tip:"out of 从里面出来"},
+  {q:"The offer is valid _____ _____ the end of the month.", a:"up to", opts:["up to","until","by","till"], cn:"这个优惠在月底前有效。", tip:"up to 表截止，直到"},
+  {q:"The cat sat _____ _____ _____ the refrigerator.", a:"on top of", opts:["on top of","above the","over the","on the top"], cn:"猫坐在冰箱上面俯视一切。", tip:"on top of 在...顶上"},
+  {q:"She saved money _____ her future education.", a:"for", opts:["for","to","of","about"], cn:"她为未来的教育存钱。", tip:"for 表目的"},
+  {q:"He is known _____ his kindness.", a:"for", opts:["for","by","to","of"], cn:"他以善良著称。", tip:"be known for 以...著称"},
+  {q:"We depend _____ each other in a team.", a:"on", opts:["on","in","at","for"], cn:"我们在团队中互相依赖。", tip:"depend on 依靠"},
+  {q:"He apologized _____ being late.", a:"for", opts:["for","about","to","of"], cn:"他为迟到道歉了。", tip:"apologize for 为...道歉"},
+  {q:"The students are divided _____ five groups.", a:"into", opts:["into","in","to","by"], cn:"学生被分成五组。", tip:"be divided into 被分成"},
+  {q:"She has been living here _____ 2015.", a:"since", opts:["since","for","from","during"], cn:"她自2015年以来一直住在这里。", tip:"since + 时间点"},
+  {q:"He succeeded _____ passing the driving test.", a:"in", opts:["in","at","on","for"], cn:"他成功通过了驾驶考试。", tip:"succeed in doing 成功做某事"},
+  {q:"She is interested _____ learning new languages.", a:"in", opts:["in","at","on","for"], cn:"她对学习新语言感兴趣。", tip:"be interested in 对...感兴趣"},
+  {q:"He was born _____ a small town in 1999.", a:"in", opts:["in","at","on","from"], cn:"他1999年出生于一个小镇。", tip:"be born in 出生于（较大地点）"},
+  {q:"The conference will be held _____ the 5th of June.", a:"on", opts:["on","at","in","by"], cn:"会议将于6月5日举行。", tip:"on + 具体日期"},
+  {q:"She has improved greatly _____ practice.", a:"through", opts:["through","by","with","from"], cn:"她通过练习有了很大提高。", tip:"through 通过某种方式"},
+  {q:"He is always _____ time for meetings.", a:"on", opts:["on","in","at","for"], cn:"他开会总是准时。", tip:"on time 准时"},
+];
+
+const TENSE_QUESTIONS = [
+  {q:"The sun _____ (rise) in the east every day.", a:"rises", opts:["rises","is rising","rose","has risen"], cn:"太阳每天从东方升起。", tip:"客观规律 → 一般现在时"},
+  {q:"Water _____ (boil) at 100 degrees Celsius.", a:"boils", opts:["boils","is boiling","boiled","has boiled"], cn:"水在100摄氏度时沸腾。", tip:"科学事实 → 一般现在时"},
+  {q:"She _____ (study) English every evening.", a:"studies", opts:["studies","is studying","studied","has studied"], cn:"她每天晚上学英语。", tip:"习惯性动作 → 一般现在时"},
+  {q:"He _____ (not like) spicy food.", a:"doesn't like", opts:["doesn't like","isn't liking","didn't like","hasn't liked"], cn:"他不喜欢辛辣食物。", tip:"习惯喜好 → 一般现在时"},
+  {q:"The train _____ (leave) at 9 am every morning.", a:"leaves", opts:["leaves","is leaving","left","has left"], cn:"火车每天早上9点出发。", tip:"时刻表规律 → 一般现在时"},
+  {q:"She _____ (teach) maths at a high school.", a:"teaches", opts:["teaches","is teaching","taught","has taught"], cn:"她在一所高中教数学。", tip:"职业状态 → 一般现在时"},
+  {q:"Light _____ (travel) faster than sound.", a:"travels", opts:["travels","is travelling","travelled","has travelled"], cn:"光比声音传播得更快。", tip:"科学事实 → 一般现在时"},
+  {q:"He _____ (go) to the gym three times a week.", a:"goes", opts:["goes","is going","went","has gone"], cn:"他每周去健身房三次。", tip:"习惯性动作 → 一般现在时"},
+  {q:"The shop _____ (open) at 9 and _____ (close) at 6.", a:"opens...closes", opts:["opens...closes","is opening...closing","opened...closed","has opened...closed"], cn:"商店9点开门，6点关门。", tip:"规律性时间 → 一般现在时"},
+  {q:"She _____ (not speak) German very well.", a:"doesn't speak", opts:["doesn't speak","isn't speaking","didn't speak","hasn't spoken"], cn:"她德语说得不太好。", tip:"能力描述 → 一般现在时"},
+  {q:"Look! The children _____ (play) in the garden.", a:"are playing", opts:["are playing","play","played","have played"], cn:"看！孩子们正在花园里玩。", tip:"look 提示 → 现在进行时"},
+  {q:"Listen! Someone _____ (knock) at the door.", a:"is knocking", opts:["is knocking","knocks","knocked","has knocked"], cn:"听！有人在敲门。", tip:"listen 提示 → 现在进行时"},
+  {q:"She _____ (read) a book at the moment.", a:"is reading", opts:["is reading","reads","read","has read"], cn:"她此刻正在读书。", tip:"at the moment → 现在进行时"},
+  {q:"They _____ (build) a new shopping centre in our town.", a:"are building", opts:["are building","build","built","have built"], cn:"他们正在我们镇上建一个新的购物中心。", tip:"正在进行的工程 → 现在进行时"},
+  {q:"He _____ (not work) today — it's his day off.", a:"is not working", opts:["is not working","doesn't work","didn't work","hasn't worked"], cn:"他今天不上班——是他的休息日。", tip:"今天的临时状态 → 现在进行时"},
+  {q:"What _____ you _____ (do) right now?", a:"are...doing", opts:["are...doing","do...do","did...do","have...done"], cn:"你现在正在做什么？", tip:"right now → 现在进行时"},
+  {q:"The baby _____ (sleep) , so please be quiet.", a:"is sleeping", opts:["is sleeping","sleeps","slept","has slept"], cn:"宝宝正在睡觉，请安静。", tip:"正在进行的动作 → 现在进行时"},
+  {q:"More and more people _____ (use) public transport.", a:"are using", opts:["are using","use","used","have used"], cn:"越来越多的人正在使用公共交通。", tip:"变化趋势 → 现在进行时"},
+  {q:"She _____ (always complain) about the weather!", a:"is always complaining", opts:["is always complaining","always complains","always complained","has always complained"], cn:"她总是在抱怨天气！", tip:"always + 进行时表示带有感情色彩的习惯"},
+  {q:"I _____ (study) for the exam all week.", a:"have been studying", opts:["have been studying","am studying","studied","was studying"], cn:"我整个星期都在学习备考。", tip:"all week 强调持续 → 现在完成进行时"},
+  {q:"She _____ (not see) that film yet.", a:"hasn't seen", opts:["hasn't seen","didn't see","won't see","doesn't see"], cn:"她还没有看过那部电影。", tip:"yet 现在完成时否定"},
+  {q:"He _____ (just finish) his homework.", a:"has just finished", opts:["has just finished","just finished","is just finishing","had just finished"], cn:"他刚刚完成了作业。", tip:"just → 现在完成时"},
+  {q:"I _____ (read) this book three times so far.", a:"have read", opts:["have read","read","am reading","had read"], cn:"到目前为止，我已经读了这本书三遍了。", tip:"so far → 现在完成时"},
+  {q:"She _____ (study) English for three years.", a:"has studied", opts:["has studied","studied","is studying","had studied"], cn:"她已经学英语三年了。", tip:"for + 时间段 → 现在完成时"},
+  {q:"She _____ (not eat) anything since morning.", a:"has not eaten", opts:["has not eaten","did not eat","is not eating","had not eaten"], cn:"她从早上起就没有吃任何东西。", tip:"since + 时间点 → 现在完成时"},
+  {q:"She _____ (write) three letters so far today.", a:"has written", opts:["has written","wrote","is writing","had written"], cn:"她今天到目前为止已经写了三封信。", tip:"so far today → 现在完成时"},
+  {q:"He _____ (live) in Shanghai since he was born.", a:"has lived", opts:["has lived","lived","is living","had lived"], cn:"他从出生起就住在上海。", tip:"since he was born → 现在完成时"},
+  {q:"I _____ (see) this movie before, so I know the ending.", a:"have seen", opts:["have seen","saw","see","had seen"], cn:"我以前看过这部电影，所以我知道结局。", tip:"before + 完成含义 → 现在完成时"},
+  {q:"_____ you ever _____ (visit) Paris?", a:"Have...visited", opts:["Have...visited","Did...visit","Do...visit","Had...visited"], cn:"你去过巴黎吗？", tip:"ever 经历 → 现在完成时"},
+  {q:"They _____ (already announce) the results.", a:"have already announced", opts:["have already announced","already announced","are already announcing","had already announced"], cn:"他们已经宣布了结果。", tip:"already → 现在完成时"},
+  {q:"She _____ (recently move) to a new apartment.", a:"has recently moved", opts:["has recently moved","recently moved","is recently moving","had recently moved"], cn:"她最近搬进了一套新公寓。", tip:"recently → 现在完成时"},
+  {q:"The team _____ (not win) a single game this season.", a:"hasn't won", opts:["hasn't won","didn't win","doesn't win","hadn't won"], cn:"这支队伍本赛季一场都没赢。", tip:"this season + 否定 → 现在完成时"},
+  {q:"He _____ (break) his leg and is in hospital now.", a:"has broken", opts:["has broken","broke","is breaking","had broken"], cn:"他摔断了腿，现在在医院。", tip:"结果对现在有影响 → 现在完成时"},
+  {q:"I _____ (lose) my keys — can you help me find them?", a:"have lost", opts:["have lost","lost","lose","had lost"], cn:"我把钥匙丢了——你能帮我找吗？", tip:"对现在有影响 → 现在完成时"},
+  {q:"She _____ (be) very busy lately.", a:"has been", opts:["has been","was","is","had been"], cn:"她最近一直很忙。", tip:"lately → 现在完成时"},
+  {q:"She _____ (learn) French when she was young.", a:"learned", opts:["learned","has learned","was learning","had learned"], cn:"她年轻的时候学过法语。", tip:"过去特定时间 → 一般过去时"},
+  {q:"He _____ (call) me yesterday.", a:"called", opts:["called","has called","was calling","had called"], cn:"他昨天给我打电话了。", tip:"yesterday → 一般过去时"},
+  {q:"She _____ (graduate) from university in 2018.", a:"graduated", opts:["graduated","has graduated","was graduating","had graduated"], cn:"她2018年从大学毕业。", tip:"具体年份 → 一般过去时"},
+  {q:"They _____ (meet) for the first time last summer.", a:"met", opts:["met","have met","were meeting","had met"], cn:"他们去年夏天第一次见面。", tip:"last summer → 一般过去时"},
+  {q:"He _____ (not go) to school yesterday because he was ill.", a:"didn't go", opts:["didn't go","hasn't gone","wasn't going","hadn't gone"], cn:"他昨天因为生病没有去上学。", tip:"yesterday → 一般过去时"},
+  {q:"She _____ (win) first prize at the competition last year.", a:"won", opts:["won","has won","was winning","had won"], cn:"她去年在比赛中赢得了一等奖。", tip:"last year → 一般过去时"},
+  {q:"When _____ he _____ (start) learning English?", a:"did...start", opts:["did...start","has...started","was...starting","had...started"], cn:"他是什么时候开始学英语的？", tip:"when 疑问 + 过去动作 → 一般过去时"},
+  {q:"They _____ (live) in Beijing for ten years before moving.", a:"lived", opts:["lived","have lived","were living","had lived"], cn:"他们搬走前在北京住了十年。", tip:"before moving 强调过去完成动作"},
+  {q:"She _____ (decide) to change careers last month.", a:"decided", opts:["decided","has decided","was deciding","had decided"], cn:"她上个月决定转换职业。", tip:"last month → 一般过去时"},
+  {q:"He _____ (see) that film three times when it was in cinemas.", a:"saw", opts:["saw","has seen","was seeing","had seen"], cn:"这部电影在影院上映时他看了三遍。", tip:"when it was in cinemas 特定过去时段 → 一般过去时"},
+  {q:"While she _____ (cook), the phone rang.", a:"was cooking", opts:["was cooking","cooked","is cooking","had cooked"], cn:"她正在做饭的时候，电话响了。", tip:"while + 进行中的背景动作 → 过去进行时"},
+  {q:"She _____ (study) when her mother called.", a:"was studying", opts:["was studying","studied","has studied","had studied"], cn:"她妈妈打电话来时，她正在学习。", tip:"when + 打断 → 过去进行时"},
+  {q:"They _____ (have) dinner when the lights went out.", a:"were having", opts:["were having","had","have had","had had"], cn:"灯突然熄灭时，他们正在吃晚饭。", tip:"when + 打断 → 过去进行时"},
+  {q:"He _____ (not pay) attention when the teacher explained the rule.", a:"was not paying", opts:["was not paying","didn't pay","hasn't paid","hadn't paid"], cn:"老师解释规则时，他没有集中注意力。", tip:"过去某时刻的进行状态 → 过去进行时"},
+  {q:"What _____ you _____ (do) at 8 pm last night?", a:"were...doing", opts:["were...doing","did...do","have...done","had...done"], cn:"你昨晚8点在做什么？", tip:"at 8 pm last night 过去某时刻 → 过去进行时"},
+  {q:"She _____ (work) at the library while he was studying.", a:"was working", opts:["was working","worked","has worked","had worked"], cn:"他在学习的时候，她在图书馆工作。", tip:"while 表示同时进行的两个过去动作 → 过去进行时"},
+  {q:"It _____ (rain) when I left the house this morning.", a:"was raining", opts:["was raining","rained","has rained","had rained"], cn:"我今天早上离开家的时候正在下雨。", tip:"when I left 打断 → 过去进行时"},
+  {q:"When I arrived, he _____ (leave) already.", a:"had left", opts:["had left","has left","left","was leaving"], cn:"当我到达时，他已经离开了。", tip:"主句过去时 + 从句更早 → 过去完成时"},
+  {q:"He _____ (finish) his homework before dinner yesterday.", a:"had finished", opts:["had finished","finished","has finished","was finishing"], cn:"他昨天在晚饭前完成了作业。", tip:"before dinner yesterday → 过去完成时"},
+  {q:"By the time he arrived, the meeting _____ (start).", a:"had started", opts:["had started","started","has started","was starting"], cn:"当他到达时，会议已经开始了。", tip:"by the time + 过去时 → 过去完成时"},
+  {q:"He _____ (already leave) when I got there.", a:"had already left", opts:["had already left","already left","has already left","was already leaving"], cn:"我到那里时，他已经离开了。", tip:"already + 过去完成时"},
+  {q:"I _____ (never visit) Paris before this trip.", a:"had never visited", opts:["had never visited","never visited","have never visited","never visit"], cn:"在这次旅行之前，我从未去过巴黎。", tip:"before this trip → 过去完成时"},
+  {q:"By the time we arrived, they _____ (eat) all the food.", a:"had eaten", opts:["had eaten","ate","have eaten","were eating"], cn:"我们到达时，他们已经吃完了所有食物。", tip:"by the time + 过去时 → 过去完成时"},
+  {q:"She _____ (not sleep) well the night before the exam.", a:"had not slept", opts:["had not slept","didn't sleep","hasn't slept","wasn't sleeping"], cn:"考试前一天晚上她没睡好。", tip:"the night before 表示更早 → 过去完成时"},
+  {q:"She told me she _____ (see) the film before.", a:"had seen", opts:["had seen","saw","has seen","was seeing"], cn:"她告诉我她以前看过这部电影。", tip:"过去的过去 → 过去完成时"},
+  {q:"He _____ (never hear) such a beautiful song before that day.", a:"had never heard", opts:["had never heard","never heard","has never heard","never hears"], cn:"在那天之前，他从未听过如此美丽的歌曲。", tip:"before that day → 过去完成时"},
+  {q:"The concert _____ (start) by the time we arrived.", a:"had already started", opts:["had already started","already started","has already started","was already starting"], cn:"我们到达时，音乐会已经开始了。", tip:"by the time + 过去时 → 过去完成时"},
+  {q:"By next year, she _____ (live) here for ten years.", a:"will have lived", opts:["will have lived","will live","has lived","lived"], cn:"到明年，她在这里将已经住了十年了。", tip:"by next year → 将来完成时"},
+  {q:"At this time tomorrow, she _____ (fly) to London.", a:"will be flying", opts:["will be flying","will fly","flies","is flying"], cn:"明天这个时候，她将正在飞往伦敦的途中。", tip:"at this time tomorrow → 将来进行时"},
+  {q:"He told me that he _____ (go) to Beijing the next day.", a:"would go", opts:["would go","will go","went","had gone"], cn:"他告诉我他第二天要去北京。", tip:"宾语从句主句是过去时 → will变would"},
+  {q:"She _____ (finish) her homework before dinner tonight.", a:"will have finished", opts:["will have finished","will finish","finishes","is finishing"], cn:"她今晚将在晚饭前完成作业。", tip:"before dinner tonight → 将来完成时"},
+  {q:"This time next week, they _____ (travel) around Europe.", a:"will be travelling", opts:["will be travelling","will travel","are travelling","travel"], cn:"下周这个时候，他们将正在欧洲旅行。", tip:"this time next week → 将来进行时"},
+  {q:"By the time she arrives, we _____ (wait) for two hours.", a:"will have been waiting", opts:["will have been waiting","will have waited","will wait","are waiting"], cn:"等她到达时，我们将已经等了两个小时了。", tip:"将来完成进行时，强调持续"},
+  {q:"The flight _____ (depart) at 7 am tomorrow morning.", a:"departs", opts:["departs","will depart","is departing","departed"], cn:"明天早上7点航班出发。", tip:"时刻表中的将来 → 一般现在时表将来"},
+  {q:"She _____ (work) in the new office starting from next Monday.", a:"will be working", opts:["will be working","will work","works","has worked"], cn:"从下周一开始，她将在新办公室工作。", tip:"将来某时段正在进行 → 将来进行时"},
+  {q:"They _____ (work) on this project for two months.", a:"have been working", opts:["have been working","have worked","worked","are working"], cn:"他们已经在这个项目上工作了两个月了。", tip:"现在完成进行时 → 强调持续进行"},
+  {q:"She _____ (study) for hours — she looks exhausted.", a:"has been studying", opts:["has been studying","has studied","studied","is studying"], cn:"她已经学了好几个小时了——她看起来精疲力竭。", tip:"结果对现在的影响 → 现在完成进行时"},
+  {q:"He _____ (practise) the guitar every day since last month.", a:"has been practising", opts:["has been practising","has practised","practised","is practising"], cn:"他从上个月起每天都在练习吉他。", tip:"since + 持续动作 → 现在完成进行时"},
+  {q:"I _____ (wait) for her for over an hour!", a:"have been waiting", opts:["have been waiting","have waited","waited","am waiting"], cn:"我已经等她超过一个小时了！", tip:"强调等待的持续 → 现在完成进行时"},
+  {q:"She _____ (feel) unwell all day.", a:"has been feeling", opts:["has been feeling","has felt","felt","is feeling"], cn:"她整天都感觉不舒服。", tip:"all day 强调持续 → 现在完成进行时"},
+  {q:"If she _____ (study) harder, she will pass.", a:"studies", opts:["studies","studied","has studied","will study"], cn:"如果她更努力学习，她就会通过。", tip:"真实条件句 if + 一般现在时，主句用will"},
+  {q:"If he _____ (be) here, he would help us.", a:"were", opts:["were","is","was","has been"], cn:"如果他在这里，他会帮助我们的。", tip:"虚拟条件句（与现在相反）if + were"},
+  {q:"If she had known, she _____ (come).", a:"would have come", opts:["would have come","would come","will come","came"], cn:"如果她知道的话，她就会来了。", tip:"与过去相反的虚拟条件句"},
+  {q:"If you _____ (mix) blue and yellow, you get green.", a:"mix", opts:["mix","mixed","will mix","are mixing"], cn:"如果你把蓝色和黄色混合，你会得到绿色。", tip:"零条件句（科学事实）"},
+  {q:"If I _____ (be) you, I would apologise immediately.", a:"were", opts:["were","am","was","would be"], cn:"如果我是你，我会立即道歉。", tip:"虚拟条件句 if + were，固定搭配"},
+  {q:"I _____ (be) tired, so I went to bed early last night.", a:"was", opts:["was","am","have been","had been"], cn:"我很累，所以昨晚早早上床睡觉了。", tip:"last night 明确过去 → 一般过去时"},
+  {q:"She _____ (not finish) yet. Give her more time.", a:"hasn't finished", opts:["hasn't finished","didn't finish","won't finish","doesn't finish"], cn:"她还没完成。给她更多时间。", tip:"yet 提示 → 现在完成时否定"},
+  {q:"By the time he retired, he _____ (work) for the company for 30 years.", a:"had worked", opts:["had worked","has worked","worked","was working"], cn:"他退休时，已经为公司工作了30年了。", tip:"by the time he retired → 过去完成时"},
+  {q:"The results _____ (announce) tomorrow.", a:"will be announced", opts:["will be announced","will announce","are announced","are being announced"], cn:"结果将于明天公布。", tip:"被动语态 + 将来时"},
+  {q:"He _____ (read) the book three times since he bought it.", a:"has read", opts:["has read","read","is reading","was reading"], cn:"自从他买了这本书，他已经读了三遍了。", tip:"since he bought → 现在完成时"},
+  {q:"She _____ (study) medicine — that's her plan.", a:"is going to study", opts:["is going to study","studies","will be studying","has studied"], cn:"她打算学医——那是她的计划。", tip:"计划/打算 → be going to"},
+  {q:"He said he _____ (try) his best.", a:"would try", opts:["would try","will try","tried","has tried"], cn:"他说他会尽力而为的。", tip:"间接引语，过去时主句 → will变would"},
+  {q:"She _____ (see) him every day at school.", a:"sees", opts:["sees","is seeing","saw","has seen"], cn:"她每天在学校见到他。", tip:"习惯性 → 一般现在时"},
+  {q:"By 2030, scientists _____ (discover) many new medicines.", a:"will have discovered", opts:["will have discovered","will discover","discover","are discovering"], cn:"到2030年，科学家将已经发现了许多新药物。", tip:"by + 将来时间 → 将来完成时"},
+  {q:"She _____ (just leave) when I arrived.", a:"had just left", opts:["had just left","just left","has just left","was just leaving"], cn:"我到达时，她刚刚离开。", tip:"just + 过去完成时"},
+  {q:"He _____ (work) here for five years when he was promoted.", a:"had worked", opts:["had worked","has worked","worked","was working"], cn:"他在这里工作了五年后得到晋升。", tip:"when he was promoted 时间点 → 过去完成时"},
+  {q:"_____ you _____ (hear) the news? It's amazing!", a:"Have...heard", opts:["Have...heard","Did...hear","Do...hear","Had...heard"], cn:"你听说这个消息了吗？太棒了！", tip:"刚发生的消息 → 现在完成时"},
+  {q:"She _____ (sleep) when the alarm went off.", a:"was sleeping", opts:["was sleeping","slept","has slept","had slept"], cn:"闹钟响起时，她正在睡觉。", tip:"when + 打断 → 过去进行时"},
+  {q:"The children _____ (play) outside since lunch.", a:"have been playing", opts:["have been playing","have played","played","are playing"], cn:"孩子们从午饭后就一直在外面玩。", tip:"since lunch + 持续 → 现在完成进行时"},
+  {q:"I _____ (not see) him for ages!", a:"haven't seen", opts:["haven't seen","didn't see","don't see","hadn't seen"], cn:"我好久没见到他了！", tip:"for ages → 现在完成时"},
+  {q:"By the time you read this, I _____ (leave).", a:"will have left", opts:["will have left","will leave","am leaving","have left"], cn:"等你读到这封信的时候，我已经离开了。", tip:"by the time + 将来时间 → 将来完成时"},
+  {q:"She _____ (teach) at this school since 2010.", a:"has been teaching", opts:["has been teaching","has taught","taught","is teaching"], cn:"她自2010年以来一直在这所学校任教。", tip:"since 2010 + 持续 → 现在完成进行时"},
+  {q:"He _____ (work) all night and felt exhausted.", a:"had worked", opts:["had worked","has worked","worked","was working"], cn:"他工作了一整夜，感到精疲力竭。", tip:"过去完成时表先于另一过去动作"},
+  {q:"This time next month, I _____ (sit) on a beach.", a:"will be sitting", opts:["will be sitting","will sit","sit","am sitting"], cn:"下个月这个时候，我将坐在海滩上。", tip:"this time next month → 将来进行时"},
+  {q:"She _____ (not come) to the party because she was busy.", a:"didn't come", opts:["didn't come","hasn't come","won't come","wasn't coming"], cn:"她没有来参加聚会，因为她很忙。", tip:"过去事实 → 一般过去时"},
+  {q:"He _____ (practise) the speech before he gave it.", a:"had practised", opts:["had practised","practised","has practised","was practising"], cn:"他在演讲之前练习过。", tip:"演讲之前的更早动作 → 过去完成时"},
+  {q:"They _____ (finish) by the time we get there.", a:"will have finished", opts:["will have finished","will finish","are finishing","finish"], cn:"等我们到达时，他们将已经完成了。", tip:"by the time we get there → 将来完成时"},
+  {q:"She _____ (not eat) meat for ten years.", a:"has not eaten", opts:["has not eaten","didn't eat","doesn't eat","hadn't eaten"], cn:"她已经十年没有吃肉了。", tip:"for ten years + 现在影响 → 现在完成时"},
+  {q:"He looked tired because he _____ (work) all day.", a:"had been working", opts:["had been working","had worked","was working","has been working"], cn:"他看起来很累，因为他工作了一整天。", tip:"过去完成进行时，强调原因"},
+  {q:"She _____ (live) alone ever since she moved to the city.", a:"has been living", opts:["has been living","has lived","lived","is living"], cn:"自从她搬到城市后，她就一直独自生活。", tip:"ever since → 现在完成进行时"},
+  {q:"By the end of this month, she _____ (complete) the course.", a:"will have completed", opts:["will have completed","will complete","completes","is completing"], cn:"到这个月底，她将完成这门课程。", tip:"by the end of this month → 将来完成时"},
+  {q:"He _____ (never meet) anyone so talented before.", a:"had never met", opts:["had never met","never met","has never met","never meets"], cn:"在那之前，他从未遇见过如此有才华的人。", tip:"before 暗示 → 过去完成时"},
+  {q:"I _____ (think) about this problem all day but can't solve it.", a:"have been thinking", opts:["have been thinking","have thought","thought","am thinking"], cn:"我整天都在思考这个问题，但无法解决。", tip:"all day + 持续 → 现在完成进行时"},
+  {q:"The manager _____ (already approve) the proposal when we arrived.", a:"had already approved", opts:["had already approved","already approved","has already approved","was already approving"], cn:"我们到达时，经理已经批准了这个提案。", tip:"when we arrived 时间点 → 过去完成时"},
+  {q:"She _____ (know) him for years before they became close friends.", a:"had known", opts:["had known","has known","knew","was knowing"], cn:"在他们成为亲密朋友之前，她已经认识他多年了。", tip:"before they became 时间点 → 过去完成时"},
+  {q:"By the time the ambulance arrived, he _____ (recover) slightly.", a:"had recovered", opts:["had recovered","has recovered","recovered","was recovering"], cn:"救护车到达时，他已经稍微恢复了一些。", tip:"by the time → 过去完成时"},
+  {q:"She _____ (just send) the email when the phone rang.", a:"had just sent", opts:["had just sent","just sent","has just sent","was just sending"], cn:"电话响起时，她刚刚发送了电子邮件。", tip:"just + 过去完成时"},
+  {q:"He _____ (work) in three countries by the time he was 30.", a:"had worked", opts:["had worked","has worked","worked","was working"], cn:"到30岁时，他已经在三个国家工作过了。", tip:"by the time he was 30 → 过去完成时"},
+  {q:"She _____ (not eat) anything since breakfast.", a:"has not eaten", opts:["has not eaten","did not eat","is not eating","hadn't eaten"], cn:"她自早餐以来什么都没吃。", tip:"since breakfast → 现在完成时"},
+];
+
+const PASSIVE_QUESTIONS = [
+  {q:"The windows _____ (clean) every week.", a:"are cleaned", opts:["are cleaned","clean","were cleaned","have been cleaned"], cn:"窗户每周都被清洁一次。", tip:"被动语态一般现在时：am/is/are + 过去分词"},
+  {q:"English _____ (speak) all over the world.", a:"is spoken", opts:["is spoken","speaks","was spoken","has been spoken"], cn:"英语在全世界被使用。", tip:"客观事实的被动语态 → is/are + pp"},
+  {q:"The mail _____ (deliver) every morning.", a:"is delivered", opts:["is delivered","delivers","was delivered","has been delivered"], cn:"邮件每天早上被送达。", tip:"习惯性被动语态 → is + pp"},
+  {q:"Cars _____ (manufacture) in this factory.", a:"are manufactured", opts:["are manufactured","manufacture","were manufactured","have been manufactured"], cn:"汽车在这家工厂制造。", tip:"一般现在时被动语态 → are + pp"},
+  {q:"The results _____ (announce) every Friday.", a:"are announced", opts:["are announced","announce","were announced","have been announced"], cn:"结果每周五公布。", tip:"规律性被动语态 → are + pp"},
+  {q:"The report _____ (write) in English.", a:"is written", opts:["is written","writes","was written","has been written"], cn:"这份报告用英语写成。", tip:"状态被动语态 → is + pp"},
+  {q:"The exam papers _____ (mark) by the teacher.", a:"are marked", opts:["are marked","mark","were marked","have been marked"], cn:"试卷由老师批改。", tip:"被动语态 by 引出施动者"},
+  {q:"That song _____ (sing) at every concert.", a:"is sung", opts:["is sung","sings","was sung","has been sung"], cn:"那首歌在每场音乐会上都被演唱。", tip:"一般现在时被动语态 → is + pp"},
+  {q:"The children _____ (teach) maths every morning.", a:"are taught", opts:["are taught","teach","were taught","have been taught"], cn:"孩子们每天早上学数学。", tip:"teach的不规则过去分词taught"},
+  {q:"New students _____ (welcome) at the start of each term.", a:"are welcomed", opts:["are welcomed","welcome","were welcomed","have been welcomed"], cn:"每学期初新生受到欢迎。", tip:"一般现在时被动语态"},
+  {q:"The painting _____ (create) by a famous artist.", a:"was created", opts:["was created","created","is created","has been created"], cn:"这幅画是由一位著名艺术家创作的。", tip:"一般过去时被动语态：was/were + pp"},
+  {q:"The bridge _____ (build) in 1990.", a:"was built", opts:["was built","built","is built","has been built"], cn:"这座桥建于1990年。", tip:"过去时间 → was/were + pp"},
+  {q:"The letters _____ (send) yesterday.", a:"were sent", opts:["were sent","sent","are sent","have been sent"], cn:"这些信昨天被寄出了。", tip:"yesterday → 过去时被动语态"},
+  {q:"The window _____ (break) during the storm.", a:"was broken", opts:["was broken","broke","is broken","has been broken"], cn:"窗户在暴风雨中被打破了。", tip:"过去时被动语态 → was + pp"},
+  {q:"He _____ (tell) the news last night.", a:"was told", opts:["was told","told","is told","has been told"], cn:"他昨晚得知了这个消息。", tip:"过去时被动语态"},
+  {q:"The documents _____ (sign) by the manager.", a:"were signed", opts:["were signed","signed","are signed","have been signed"], cn:"文件由经理签署了。", tip:"过去时被动语态 were + pp"},
+  {q:"The suspect _____ (arrest) by police this morning.", a:"was arrested", opts:["was arrested","arrested","is arrested","has been arrested"], cn:"嫌疑人今天早上被警察逮捕了。", tip:"this morning → 过去时被动语态"},
+  {q:"The match _____ (cancel) because of rain.", a:"was cancelled", opts:["was cancelled","cancelled","is cancelled","has been cancelled"], cn:"比赛因为下雨被取消了。", tip:"过去时被动语态 was + pp"},
+  {q:"The students _____ (give) extra homework last week.", a:"were given", opts:["were given","gave","are given","have been given"], cn:"学生们上周布置了额外的作业。", tip:"give的被动语态 were given"},
+  {q:"The ancient temple _____ (destroy) in the war.", a:"was destroyed", opts:["was destroyed","destroyed","is destroyed","has been destroyed"], cn:"古老的寺庙在战争中被摧毁了。", tip:"过去时被动语态 was + pp"},
+  {q:"The project _____ (complete) ahead of schedule.", a:"has been completed", opts:["has been completed","completed","is completed","was completed"], cn:"这个项目提前完成了。", tip:"现在完成时被动语态：has/have + been + pp"},
+  {q:"All the tickets _____ (sell) out.", a:"have been sold", opts:["have been sold","sold","are sold","were sold"], cn:"所有的票都已经售完了。", tip:"现在完成时被动语态 have + been + pp"},
+  {q:"She _____ (invite) to three parties this month.", a:"has been invited", opts:["has been invited","invited","is invited","was invited"], cn:"她这个月已经被邀请参加了三次派对。", tip:"this month → 现在完成时被动语态"},
+  {q:"The new rule _____ (introduce) recently.", a:"has been introduced", opts:["has been introduced","introduced","is introduced","was introduced"], cn:"这项新规则最近被引入了。", tip:"recently → 现在完成时被动语态"},
+  {q:"The phone _____ (fix).", a:"has been fixed", opts:["has been fixed","fixed","is fixed","was fixed"], cn:"手机已经被修好了。", tip:"结果 → 现在完成时被动语态"},
+  {q:"Several mistakes _____ (find) in the report.", a:"have been found", opts:["have been found","found","are found","were found"], cn:"报告中发现了几处错误。", tip:"现在完成时被动语态 have been + pp"},
+  {q:"The letter _____ (not send) yet.", a:"has not been sent", opts:["has not been sent","was not sent","is not sent","did not send"], cn:"这封信还没有被发送。", tip:"yet + 完成时被动语态否定"},
+  {q:"Three new schools _____ (open) in our city this year.", a:"have been opened", opts:["have been opened","opened","are opened","were opened"], cn:"今年我们市开了三所新学校。", tip:"this year → 现在完成时被动语态"},
+  {q:"The criminal _____ (catch) finally.", a:"has been caught", opts:["has been caught","caught","is caught","was caught"], cn:"罪犯终于被抓获了。", tip:"结果 → 现在完成时被动语态"},
+  {q:"The ancient city _____ (rediscover) by archaeologists.", a:"has been rediscovered", opts:["has been rediscovered","rediscovered","is rediscovered","was rediscovered"], cn:"古城被考古学家重新发现了。", tip:"现在完成时被动语态"},
+  {q:"The report _____ (submit) before the deadline.", a:"had been submitted", opts:["had been submitted","submitted","has been submitted","was submitted"], cn:"报告在截止日期前已经提交了。", tip:"过去完成时被动语态：had + been + pp"},
+  {q:"By the time we arrived, the food _____ (eat).", a:"had been eaten", opts:["had been eaten","ate","has been eaten","was eaten"], cn:"我们到达时，食物已经被吃完了。", tip:"by the time → 过去完成时被动语态"},
+  {q:"The letter _____ (write) before he left.", a:"had been written", opts:["had been written","wrote","was written","has been written"], cn:"他离开之前，信已经写好了。", tip:"before he left → 过去完成时被动语态"},
+  {q:"All the preparations _____ (make) before the ceremony.", a:"had been made", opts:["had been made","made","were made","have been made"], cn:"仪式开始前，所有的准备工作都已经做好了。", tip:"before the ceremony → 过去完成时被动语态"},
+  {q:"She didn't know that a prize _____ (award) to her.", a:"had been awarded", opts:["had been awarded","awarded","was awarded","has been awarded"], cn:"她不知道一个奖项已经颁给她了。", tip:"过去完成时被动语态 had + been + pp"},
+  {q:"The results _____ (announce) tomorrow.", a:"will be announced", opts:["will be announced","announce","are announced","were announced"], cn:"结果明天将被公布。", tip:"将来时被动语态：will + be + pp"},
+  {q:"The new building _____ (complete) next year.", a:"will be completed", opts:["will be completed","completes","is completed","was completed"], cn:"新大楼明年将竣工。", tip:"将来时被动语态 will be + pp"},
+  {q:"All students _____ (test) before the holiday.", a:"will be tested", opts:["will be tested","test","are tested","were tested"], cn:"假期前所有学生将接受测试。", tip:"将来时被动语态"},
+  {q:"The book _____ (publish) next month.", a:"will be published", opts:["will be published","publishes","is published","was published"], cn:"这本书将于下个月出版。", tip:"将来时被动语态 will be + pp"},
+  {q:"The new policy _____ (implement) from January.", a:"will be implemented", opts:["will be implemented","implements","is implemented","was implemented"], cn:"新政策将从一月份起实施。", tip:"将来时被动语态"},
+  {q:"The injured players _____ (treat) immediately.", a:"will be treated", opts:["will be treated","treat","are treated","were treated"], cn:"受伤的球员将立即接受治疗。", tip:"将来时被动语态"},
+  {q:"The data _____ (collect) over the next six months.", a:"will be collected", opts:["will be collected","collects","is collected","was collected"], cn:"数据将在接下来的六个月内收集。", tip:"将来时被动语态 will be + pp"},
+  {q:"This form _____ (fill in) in black ink.", a:"must be filled in", opts:["must be filled in","must fill in","should fill in","can fill in"], cn:"这张表格必须用黑色墨水填写。", tip:"情态动词被动语态：modal + be + pp"},
+  {q:"Mistakes _____ (avoid) at all costs.", a:"should be avoided", opts:["should be avoided","should avoid","must avoid","can be avoid"], cn:"错误应该不惜一切代价避免。", tip:"should + be + pp"},
+  {q:"The package _____ (handle) with care.", a:"must be handled", opts:["must be handled","must handle","should handle","can handle"], cn:"包裹必须小心处理。", tip:"must + be + pp"},
+  {q:"Children _____ (supervise) at all times.", a:"should be supervised", opts:["should be supervised","should supervise","must supervise","can supervise"], cn:"孩子们应该随时被监督。", tip:"should + be + pp"},
+  {q:"This medicine _____ (take) three times a day.", a:"should be taken", opts:["should be taken","should take","must take","can take"], cn:"这种药应该一天服用三次。", tip:"should + be + pp"},
+  {q:"The problem _____ (solve) immediately.", a:"must be solved", opts:["must be solved","must solve","should solve","can solve"], cn:"这个问题必须立即解决。", tip:"must + be + pp"},
+  {q:"Phones _____ (turn off) during the exam.", a:"must be turned off", opts:["must be turned off","must turn off","should turn off","can turn off"], cn:"考试期间手机必须关闭。", tip:"情态动词被动语态"},
+  {q:"All homework _____ (hand in) by Friday.", a:"must be handed in", opts:["must be handed in","must hand in","should hand in","can hand in"], cn:"所有作业必须在周五前上交。", tip:"must + be + pp"},
+  {q:"These flowers _____ (water) every day.", a:"should be watered", opts:["should be watered","should water","must water","can water"], cn:"这些花每天都应该浇水。", tip:"should + be + pp"},
+  {q:"The broken equipment _____ (replace) soon.", a:"should be replaced", opts:["should be replaced","should replace","must replace","can replace"], cn:"损坏的设备应该尽快更换。", tip:"should + be + pp"},
+  {q:"The road _____ (repair) at the moment.", a:"is being repaired", opts:["is being repaired","is repaired","was repaired","has been repaired"], cn:"这条路目前正在维修中。", tip:"现在进行时被动语态：is/are + being + pp"},
+  {q:"A new school _____ (build) in our town.", a:"is being built", opts:["is being built","is built","was built","has been built"], cn:"我们镇上正在建一所新学校。", tip:"is being + pp 表示正在进行的被动动作"},
+  {q:"The patients _____ (examine) right now.", a:"are being examined", opts:["are being examined","are examined","were examined","have been examined"], cn:"病人现在正在接受检查。", tip:"are being + pp 现在进行时被动语态"},
+  {q:"The form _____ (process) as we speak.", a:"is being processed", opts:["is being processed","is processed","was processed","has been processed"], cn:"表格正在处理中。", tip:"is being + pp"},
+  {q:"New apartments _____ (construct) along the river.", a:"are being constructed", opts:["are being constructed","are constructed","were constructed","have been constructed"], cn:"沿河正在建造新公寓。", tip:"are being + pp"},
+  {q:"The house _____ (paint) when I visited.", a:"was being painted", opts:["was being painted","was painted","has been painted","is being painted"], cn:"我去参观时，房子正在粉刷中。", tip:"过去进行时被动语态：was/were + being + pp"},
+  {q:"The streets _____ (clean) all night.", a:"were being cleaned", opts:["were being cleaned","were cleaned","have been cleaned","are being cleaned"], cn:"街道整夜都在被清扫。", tip:"were being + pp 过去进行时被动语态"},
+  {q:"New policies _____ (discuss) at the time.", a:"were being discussed", opts:["were being discussed","were discussed","have been discussed","are being discussed"], cn:"那时正在讨论新政策。", tip:"were being + pp"},
+  {q:"The experiment _____ (conduct) when the power went out.", a:"was being conducted", opts:["was being conducted","was conducted","has been conducted","is being conducted"], cn:"停电时实验正在进行中。", tip:"过去进行时被动语态 was being + pp"},
+  {q:"The teacher explained the rule. → The rule _____ by the teacher.", a:"was explained", opts:["was explained","explained","is explained","has been explained"], cn:"老师解释了规则。→ 规则被老师解释了。", tip:"主动变被动：过去时 → was/were + pp"},
+  {q:"Someone has stolen my bike. → My bike _____.", a:"has been stolen", opts:["has been stolen","was stolen","is stolen","had been stolen"], cn:"有人偷了我的自行车。→ 我的自行车被偷了。", tip:"现在完成时主动变被动 → has been + pp"},
+  {q:"They will hold the meeting tomorrow. → The meeting _____ tomorrow.", a:"will be held", opts:["will be held","is held","was held","has been held"], cn:"他们明天将举行会议。→ 会议将于明天举行。", tip:"将来时主动变被动 → will be + pp"},
+  {q:"She is writing the report now. → The report _____ now.", a:"is being written", opts:["is being written","is written","was written","has been written"], cn:"她现在正在写报告。→ 报告现在正在被写。", tip:"现在进行时主动变被动 → is being + pp"},
+  {q:"They were building the bridge last year. → The bridge _____ last year.", a:"was being built", opts:["was being built","was built","has been built","is being built"], cn:"他们去年正在建桥。→ 去年桥正在被建造。", tip:"过去进行时主动变被动 → was being + pp"},
+  {q:"The chef cooked the meal. → The meal _____ by the chef.", a:"was cooked", opts:["was cooked","cooked","is cooked","has been cooked"], cn:"厨师做了这顿饭。→ 这顿饭由厨师做的。", tip:"过去时主动变被动"},
+  {q:"People speak French in Quebec. → French _____ in Quebec.", a:"is spoken", opts:["is spoken","speaks","was spoken","has been spoken"], cn:"人们在魁北克说法语。→ 在魁北克法语被使用。", tip:"一般现在时主动变被动 → is + pp"},
+  {q:"Has she finished the project? → Has the project _____?", a:"been finished", opts:["been finished","finished","been finishing","being finished"], cn:"她完成了这个项目吗？→ 这个项目完成了吗？", tip:"完成时疑问被动语态"},
+  {q:"The novel _____ (write) _____ Charles Dickens.", a:"was written...by", opts:["was written...by","wrote...by","is written...by","has been written...by"], cn:"这部小说是由查尔斯·狄更斯写的。", tip:"被动语态 by 引出施动者"},
+  {q:"The invention _____ (make) _____ a young scientist.", a:"was made...by", opts:["was made...by","made...by","is made...by","has been made...by"], cn:"这项发明是由一位年轻科学家做出的。", tip:"was + pp + by"},
+  {q:"The children _____ (look after) _____ their grandmother.", a:"were looked after...by", opts:["were looked after...by","looked after...by","are looked after...by","have been looked after...by"], cn:"孩子们由祖母照看。", tip:"短语动词被动语态 look after → be looked after"},
+  {q:"The award _____ (present) _____ the mayor.", a:"was presented...by", opts:["was presented...by","presented...by","is presented...by","has been presented...by"], cn:"奖项由市长颁发。", tip:"was + pp + by"},
+  {q:"He _____ (fire) last week.", a:"got fired", opts:["got fired","was fired","fired","has been fired"], cn:"他上周被解雇了。", tip:"get + pp，口语被动语态"},
+  {q:"She _____ (hurt) in the accident.", a:"got hurt", opts:["got hurt","was hurt","hurt","has been hurt"], cn:"她在事故中受伤了。", tip:"get + pp 表示受到伤害"},
+  {q:"They _____ (lost) in the forest.", a:"got lost", opts:["got lost","were lost","lost","have been lost"], cn:"他们在森林里迷路了。", tip:"get lost 固定表达"},
+  {q:"He _____ (pay) at the end of the month.", a:"gets paid", opts:["gets paid","is paid","paid","has been paid"], cn:"他在月底领工资。", tip:"gets paid 口语被动"},
+  {q:"_____ that he is the best student in school.", a:"It is said", opts:["It is said","It says","It has been said","They say"], cn:"据说他是学校里最好的学生。", tip:"It is said that... 被动语态报道"},
+  {q:"He _____ to be very talented.", a:"is believed", opts:["is believed","believes","has been believed","was believed"], cn:"人们相信他非常有才华。", tip:"be believed to 被认为"},
+  {q:"The thief _____ to have escaped abroad.", a:"is reported", opts:["is reported","reports","was reported","has been reported"], cn:"据报道，小偷已逃往国外。", tip:"is reported to 据报道"},
+  {q:"The new treatment _____ to be very effective.", a:"is claimed", opts:["is claimed","claims","was claimed","has been claimed"], cn:"据称这种新疗法非常有效。", tip:"is claimed to 据声称"},
+  {q:"_____ that the economy will improve soon.", a:"It is expected", opts:["It is expected","It expects","It was expected","People expect"], cn:"预计经济将很快好转。", tip:"It is expected that... 被动语态"},
+  {q:"The teacher gave her a prize. → She _____ a prize.", a:"was given", opts:["was given","gave","is given","has been given"], cn:"老师给了她一个奖励。→ 她被给予了一个奖励。", tip:"双宾语句子变被动，人作主语"},
+  {q:"They offered him a job. → He _____ a job.", a:"was offered", opts:["was offered","offered","is offered","has been offered"], cn:"他们给他提供了一份工作。→ 他被给予了一份工作。", tip:"offer的双宾语被动语态"},
+  {q:"She showed them the results. → They _____ the results.", a:"were shown", opts:["were shown","showed","are shown","have been shown"], cn:"她向他们展示了结果。→ 他们被展示了结果。", tip:"show的双宾语被动语态"},
+  {q:"He sent her a message. → She _____ a message.", a:"was sent", opts:["was sent","sent","is sent","has been sent"], cn:"他给她发了一条消息。→ 她收到了一条消息。", tip:"send的双宾语被动语态"},
+  {q:"The work _____ (finish) by the time they left.", a:"had been finished", opts:["had been finished","finished","was finished","has been finished"], cn:"他们离开时，工作已经完成了。", tip:"by the time → 过去完成时被动语态"},
+  {q:"Dinner _____ (serve) when we arrived.", a:"was being served", opts:["was being served","was served","is served","has been served"], cn:"我们到达时，晚餐正在供应。", tip:"when → 过去进行时被动语态"},
+  {q:"The bridge _____ (not finish) yet — workers are still there.", a:"has not been finished", opts:["has not been finished","was not finished","is not finished","did not finish"], cn:"桥还没完工——工人仍在那里。", tip:"yet → 现在完成时被动语态否定"},
+  {q:"He _____ (tell) the same story many times.", a:"has been told", opts:["has been told","told","is told","was told"], cn:"他被讲了很多次同样的故事。", tip:"现在完成时被动语态"},
+  {q:"New laws _____ (introduce) to protect the environment.", a:"have been introduced", opts:["have been introduced","introduced","are introduced","were introduced"], cn:"已经引入新法律来保护环境。", tip:"现在完成时被动语态 have been + pp"},
+  {q:"The letter _____ (not open) yet — it's still sealed.", a:"has not been opened", opts:["has not been opened","was not opened","is not opened","did not open"], cn:"这封信还没有被打开——仍然密封着。", tip:"yet → 现在完成时被动否定"},
+  {q:"By 2025, the new hospital _____ (complete).", a:"will have been completed", opts:["will have been completed","will be completed","is completed","was completed"], cn:"到2025年，新医院将已建成。", tip:"by + 将来时间 → 将来完成时被动语态"},
+  {q:"She _____ (not inform) about the changes until yesterday.", a:"was not informed", opts:["was not informed","has not been informed","is not informed","did not inform"], cn:"她直到昨天才被告知这些变化。", tip:"until yesterday → 过去时被动语态"},
+  {q:"This song _____ (record) in just one day.", a:"was recorded", opts:["was recorded","recorded","is recorded","has been recorded"], cn:"这首歌仅在一天内录制完成。", tip:"过去时被动语态"},
+  {q:"The meeting _____ (postpone) due to bad weather.", a:"was postponed", opts:["was postponed","postponed","is postponed","has been postponed"], cn:"会议因天气不好而被推迟了。", tip:"过去时被动语态"},
+  {q:"Thousands of books _____ (sell) since the shop opened.", a:"have been sold", opts:["have been sold","were sold","are sold","sold"], cn:"自商店开业以来，已售出数千本书。", tip:"since → 现在完成时被动语态"},
+  {q:"The students _____ (give) their marks next week.", a:"will be given", opts:["will be given","are given","were given","give"], cn:"学生们下周将收到他们的分数。", tip:"将来时被动语态"},
+  {q:"The injured bird _____ (take care of) by volunteers.", a:"was being taken care of", opts:["was being taken care of","was taken care of","is taken care of","has been taken care of"], cn:"受伤的鸟正在被志愿者照顾。", tip:"过去进行时被动语态 was being + pp"},
+  {q:"All flights _____ (cancel) because of the storm.", a:"were cancelled", opts:["were cancelled","cancelled","are cancelled","have been cancelled"], cn:"所有航班因暴风雨而被取消。", tip:"过去时被动语态"},
+  {q:"The equipment _____ (repair) when I arrived.", a:"was being repaired", opts:["was being repaired","was repaired","has been repaired","is being repaired"], cn:"我到达时，设备正在维修中。", tip:"when → 过去进行时被动语态"},
+];
+
+const DOUBLE_CONSONANT_QUESTIONS = [
+  {q:"She _____ (prefer) staying at home to going out.", a:"preferred", opts:["preferred","prefered","preferrd","preferrred"], cn:"她更喜欢待在家里而不是出去。", tip:"prefer→preferred：重读闭音节，双写r再加-ed"},
+  {q:"The doctor _____ (refer) her to a specialist last week.", a:"referred", opts:["referred","refered","referrd","refferred"], cn:"上周医生把她转介给了专科医生。", tip:"refer→referred：重读闭音节，双写r再加-ed"},
+  {q:"The meeting has been _____ (plan) for next Monday.", a:"planned", opts:["planned","planed","plannd","planned"], cn:"会议已定于下周一举行。", tip:"plan→planned：重读闭音节，双写n再加-ed"},
+  {q:"The bus _____ (stop) suddenly in the middle of the road.", a:"stopped", opts:["stopped","stoped","stoppd","stopted"], cn:"公共汽车突然停在路中间。", tip:"stop→stopped：重读闭音节，双写p再加-ed"},
+  {q:"She _____ (admit) that she had made a mistake.", a:"admitted", opts:["admitted","admited","admittd","admitting"], cn:"她承认自己犯了一个错误。", tip:"admit→admitted：重读闭音节，双写t再加-ed"},
+  {q:"The ball _____ (drop) to the floor with a loud bang.", a:"dropped", opts:["dropped","droped","dropted","droppped"], cn:"球哐当一声掉到了地板上。", tip:"drop→dropped：重读闭音节，双写p再加-ed"},
+  {q:"He _____ (regret) not studying harder for the exam.", a:"regretted", opts:["regretted","regreted","regretd","regretedd"], cn:"他后悔没有更努力地复习考试。", tip:"regret→regretted：重读闭音节，双写t再加-ed"},
+  {q:"The soldiers were _____ (equip) with the latest weapons.", a:"equipped", opts:["equipped","equiped","equipt","equippd"], cn:"士兵们配备了最新式的武器。", tip:"equip→equipped：重读闭音节，双写p再加-ed"},
+  {q:"Power was _____ (transfer) to the new government.", a:"transferred", opts:["transferred","transfered","transferrd","transfered"], cn:"权力移交给了新政府。", tip:"transfer→transferred：重读闭音节，双写r再加-ed"},
+  {q:"The scientist _____ (infer) that the climate was changing.", a:"inferred", opts:["inferred","infered","inferrd","infferred"], cn:"科学家推断气候正在变化。", tip:"infer→inferred：重读闭音节，双写r再加-ed"},
+  {q:"The teacher is _____ (control) the noise in the classroom.", a:"controlling", opts:["controlling","controling","controling","controllling"], cn:"老师正在控制教室里的噪音。", tip:"control→controlling：重读闭音节，双写l再加-ing"},
+  {q:"She is _____ (prefer) tea over coffee these days.", a:"preferring", opts:["preferring","prefering","preferrring","prefferring"], cn:"她最近更喜欢喝茶而不是咖啡。", tip:"prefer→preferring：重读闭音节，双写r再加-ing"},
+  {q:"He _____ (nod) politely when the teacher called his name.", a:"nodded", opts:["nodded","noded","nodd","nodedded"], cn:"老师叫他名字时，他礼貌地点了点头。", tip:"nod→nodded：重读闭音节，双写d再加-ed"},
+  {q:"The children were _____ (beg) their parents for more pocket money.", a:"begging", opts:["begging","beging","begged","beggs"], cn:"孩子们正在向父母要更多的零花钱。", tip:"beg→begging：重读闭音节，双写g再加-ing"},
+  {q:"She _____ (wrap) the gift carefully before putting it under the tree.", a:"wrapped", opts:["wrapped","wraped","wrapping","wrappped"], cn:"她在把礼物放到树下之前仔细包装好了。", tip:"wrap→wrapped：重读闭音节，双写p再加-ed"},
+  {q:"The coin _____ (slip) out of his hand and rolled under the table.", a:"slipped", opts:["slipped","sliped","slipd","slipping"], cn:"硬币从他手中滑落，滚到了桌子下面。", tip:"slip→slipped：重读闭音节，双写p再加-ed"},
+  {q:"He _____ (pat) the dog gently on the head.", a:"patted", opts:["patted","pated","patd","pattted"], cn:"他轻轻地拍了拍狗的头。", tip:"pat→patted：重读闭音节，双写t再加-ed"},
+  {q:"She was _____ (drag) her heavy suitcase through the airport.", a:"dragging", opts:["dragging","draging","draggging","draggng"], cn:"她拖着沉重的行李箱穿越机场。", tip:"drag→dragging：重读闭音节，双写g再加-ing"},
+  {q:"The new rule _____ (permit) students to use phones at lunch.", a:"permitted", opts:["permitted","permited","permittd","permitd"], cn:"新规定允许学生在午餐时使用手机。", tip:"permit→permitted：重读闭音节，双写t再加-ed"},
+  {q:"The problem _____ (occur) because of a simple misunderstanding.", a:"occurred", opts:["occurred","occured","occurrd","occurrred"], cn:"问题的出现是因为一个简单的误会。", tip:"occur→occurred：重读闭音节，双写r再加-ed"},
+];
+
+/* ═══ 完型填空题库 ═══ */
+const CLOZE_QUESTIONS = [
+  {q:"Tom had studied hard all semester. When results came out, he was excited to see his _____ — he had scored 98 out of 100.", a:"score", opts:["score","record","mark","report"], cn:"他看到自己的成绩，非常兴奋。", tip:"score 指考试得分，是最自然的搭配；record 侧重历史记录"},
+  {q:"The little girl stood at the door, afraid to knock. She took a deep _____, gathered her courage, and finally raised her hand.", a:"breath", opts:["breath","moment","silence","sense"], cn:"她深吸一口气，鼓起勇气，终于抬起了手。", tip:"take a deep breath（深吸一口气）是紧张前鼓起勇气的固定搭配"},
+  {q:"After years of hard work, the young athlete stood on the highest step of the podium, arms raised in _____. The crowd went wild.", a:"victory", opts:["victory","competition","independence","encouragement"], cn:"经过多年努力，这位年轻运动员站上了领奖台最高级。", tip:"victory（胜利）与领奖台、观众欢呼的语境高度一致"},
+  {q:"My grandmother always said that a good _____ is more valuable than talent. If you wake up at the same time every day, success will come.", a:"habit", opts:["habit","ability","decision","instruction"], cn:"我奶奶常说，好习惯比天赋更宝贵。", tip:"整段强调坚持规律作息的力量，habit（习惯）是核心词"},
+  {q:"She didn't want to go to the party, but her friend kept persuading her. In the end, she agreed — she didn't want to _____ her friend's feelings.", a:"embarrass", opts:["embarrass","complain","remind","congratulate"], cn:"最终她同意了——她不想让朋友难堪。", tip:"embarrass（使尴尬/难堪）最贴近语境；complain 是抱怨，remind 是提醒"},
+  {q:"The teacher asked the class a difficult question. The room fell into complete _____. Nobody dared to speak.", a:"silence", opts:["silence","darkness","breath","moment"], cn:"教室陷入了完全的寂静，没有人敢说话。", tip:"fall into silence（陷入沉默）是固定搭配，描述无人回答的场景"},
+  {q:"The volunteers worked day and night to collect clothes and food for flood victims. Their _____ showed how much people cared about each other.", a:"support", opts:["support","competition","discussion","management"], cn:"志愿者彻夜收集衣物和食物，他们的支持展示了人们的关爱。", tip:"support（支持/援助）与收集物资帮助灾民的语境完全吻合"},
+  {q:"I had planned to finish the project by Friday, but I completely underestimated how long it would take. I _____ to meet the deadline.", a:"failed", opts:["failed","refused","doubted","complained"], cn:"我没能在截止日期前完成项目。", tip:"fail to do sth（未能做到）是固定搭配；refuse 是主动拒绝，与语境不符"},
+  {q:"When the coach announced that Mike had made the team, his classmates burst into cheers to _____ him on his achievement.", a:"congratulate", opts:["congratulate","remind","celebrate","praise"], cn:"同学们爆发出欢呼声，祝贺他取得的成就。", tip:"congratulate sb on sth（祝贺某人某事）是固定搭配，后有 on his achievement 作线索"},
+  {q:"The old man sat on the bench, watching children play. A warm smile _____ across his face as he remembered his own childhood.", a:"spread", opts:["spread","covered","filled","appeared"], cn:"一抹温暖的微笑蔓延在他脸上，他想起了自己的童年。", tip:"spread across one's face（笑容蔓延在脸上）是文学描写的高频固定搭配"},
+  {q:"Scientists are studying how _____ change affects the migration patterns of birds. Rising temperatures have caused many species to shift their routes.", a:"climate", opts:["climate","science","information","discussion"], cn:"科学家研究气候变化如何影响鸟类迁徙模式。", tip:"climate change（气候变化）是固定术语，与 rising temperatures 构成完整学术语境"},
+  {q:"After the game, the coach pulled Kevin aside. 'You made an _____ pass in the final minute,' he said kindly. 'Next time, look left before you throw.'", a:"incorrect", opts:["incorrect","unexpected","exact","final"], cn:"教练指出他在最后一分钟传球失误。", tip:"incorrect（错误的）与后文「下次要注意」形成建议结构，expect 意思相反"},
+  {q:"I had planned to arrive early, but the traffic was terrible. I was worried I would be _____ for the important meeting.", a:"late", opts:["late","direct","active","silent"], cn:"我担心自己会迟到，错过这次重要会议。", tip:"be late for（迟到）是固定搭配，与前文 traffic was terrible 形成因果"},
+  {q:"He went _____ to the library every day after school, telling no one about his plans to win the reading competition.", a:"privately", opts:["privately","widely","partly","seriously"], cn:"他每天放学后悄悄去图书馆，没有告诉任何人他的计划。", tip:"privately（私下地）与 telling no one 的语境一致；widely 指广泛地"},
+  {q:"The doctor said the patient's condition was _____. He needed to be hospitalized immediately.", a:"serious", opts:["serious","crazy","silent","normal"], cn:"医生说病情严重，需要立即住院。", tip:"serious（严重的）用于描述病情，与 hospitalized immediately 因果对应；normal 语义相反"},
+  {q:"She is one of the most _____ teachers in school — every student wants to be in her class.", a:"popular", opts:["popular","proper","active","direct"], cn:"她是学校里最受欢迎的老师之一。", tip:"popular（受欢迎的）与 every student wants to be in her class 直接对应"},
+  {q:"It seemed _____ to finish all the homework in one hour, but he tried anyway.", a:"impossible", opts:["impossible","useless","improper","unexpected"], cn:"一小时内完成所有作业似乎是不可能的，但他还是尝试了。", tip:"impossible（不可能的）直接描述任务难度，与 but he tried anyway 形成转折"},
+  {q:"My grandfather is a very _____ man. He always listens carefully before giving advice.", a:"wise", opts:["wise","talkative","impatient","lazy"], cn:"我祖父是个很睿智的人，他总是认真听完再给出建议。", tip:"wise（睿智）与 listens carefully before giving advice（深思熟虑）完全吻合；impatient 语义相反"},
+  {q:"Jake had been practising piano for six years. When he performed on stage, the audience sat in silence. Then they rose to their feet and _____ his incredible performance.", a:"praised", opts:["praised","refused","doubted","ignored"], cn:"他演奏完毕，观众起立，热情称赞了他精彩的表演。", tip:"语篇逻辑：六年苦练→精彩表演→观众起立→高度赞扬。refused/doubted/ignored 均与正面结局矛盾"},
+  {q:"The teacher had spent weeks preparing the surprise. On the last day of class, she brought in a cake and asked everyone to _____. The room filled with laughter.", a:"celebrate", opts:["celebrate","complain","compete","repeat"], cn:"老师带来了蛋糕，让大家一起庆祝。教室里充满了欢声笑语。", tip:"语篇情感：惊喜→蛋糕→欢笑，celebrate（庆祝）是唯一符合温馨结局的动词"},
+  {q:"When Anna heard that her best friend was moving away, her heart sank. She walked home _____, not saying a word to anyone.", a:"silently", opts:["silently","bravely","actively","politely"], cn:"安娜得知好友要搬走，心情低落，一言不发地走回家。", tip:"silently（沉默地）与 not saying a word 呼应；bravely/actively 与低落情绪矛盾"},
+  {q:"The project had failed twice. But this time, the team listened to each other and made a _____ to never give up. Three months later, they succeeded.", a:"promise", opts:["promise","record","report","complaint"], cn:"团队立下承诺绝不放弃，三个月后终于成功。", tip:"make a promise（立下承诺）是推动情节发展的关键词；record/report/complaint 无法构成励志叙事的转折点"},
+  {q:"The young boy had never spoken in front of a crowd. His hands trembled. But he stood tall and spoke _____, refusing to let fear stop him.", a:"bravely", opts:["bravely","privately","partly","politely"], cn:"男孩双手颤抖，但他勇敢地站起来发言，拒绝让恐惧阻止他。", tip:"语篇情感：第一次演讲→颤抖→but（转折）→refusing to let fear stop him；bravely 是 but 后的情感落点"},
+  {q:"The rescue team worked through the night in freezing rain. By morning, they had saved twelve people from the collapsed building. The whole city was moved by their _____ effort.", a:"brave", opts:["brave","lazy","private","normal"], cn:"救援队彻夜冒雨工作，救出了12人，全城为他们的勇敢行动所感动。", tip:"语篇逻辑：彻夜救援→拯救12人→全城感动。brave（勇敢的）是对救援队的最高评价"},
+  {q:"Mark had always been quiet. But the day he stood up to defend his friend from bullying, everyone saw a different side of him. From that day on, they treated him with great _____.", a:"respect", opts:["respect","silence","competition","doubt"], cn:"马克勇敢为朋友出头，从此大家对他充满了尊重。", tip:"语篇情感弧线：沉默→勇敢站出来→大家刮目相看→尊重；silence/competition/doubt 均与正面转变矛盾"},
+  {q:"The speaker's _____ answer surprised everyone — he got straight to the point without any hesitation.", a:"direct", opts:["direct","polite","active","proper"], cn:"发言者直接的回答让所有人大吃一惊——他毫不犹豫地直奔主题。", tip:"direct（直接的）与 got straight to the point（开门见山）完全呼应；polite 是礼貌的，不强调「直白」"},
+  {q:"The children were so _____ during the long flight — they sat quietly and didn't complain once.", a:"patient", opts:["patient","talkative","lazy","impatient"], cn:"孩子们在漫长的飞行中非常有耐心，安静地坐着，一声不抱怨。", tip:"patient（耐心的）与 sat quietly and didn't complain 完全吻合；impatient 语义相反"},
+  {q:"Lisa was nervous before her speech. But the moment she stepped onto the stage and saw the friendly faces, she felt _____ enough to begin.", a:"brave", opts:["brave","silent","patient","lazy"], cn:"丽莎看到台下友善的面孔，感到足够勇敢，开始了她的演讲。", tip:"看到友善面孔后鼓起勇气开口，brave（勇敢的）最符合语境逻辑；silent/lazy 与语境矛盾"},
+  {q:"After the marathon, Emma's legs were shaking. But she kept going — her _____ to finish the race was stronger than the pain.", a:"goal", opts:["goal","decision","ability","progress"], cn:"艾玛的双腿颤抖，但她心中完成比赛的目标比疼痛更强大。", tip:"goal（目标）指终点线，与 finish the race 直接呼应；decision 是已做出的决定，非持续动力"},
+  {q:"Instead of giving up when things got difficult, she chose to see every challenge as a chance to grow. That _____ helped her become one of the most successful people in her field.", a:"decision", opts:["decision","experience","progress","risk"], cn:"她选择将每个挑战视为成长机会，这个选择帮助她成为领域内最成功的人之一。", tip:"decision（决定/选择）最准确地指代前句描述的「主动选择」；experience 是经历，progress 是进步"},
+];
+
+/* ═══ LEADERBOARD SECTION ═══ */
+function LeaderboardSection({ currentUserId }) {
+  const [board, setBoard] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.getLeaderboard().then(data => {
+      setBoard(Array.isArray(data) ? data : []);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const medals = ["🥇","🥈","🥉"];
+
+  return (
+    <div style={{background:C.card,borderRadius:20,padding:"20px",boxShadow:"0 4px 16px rgba(0,0,0,0.04)",marginTop:0}}>
+      <div style={{fontSize:14,fontWeight:800,color:C.tm,marginBottom:14}}>🏆 挑战赛排行榜</div>
+      {loading ? (
+        <div style={{textAlign:"center",color:C.tl,fontSize:13,padding:"12px 0"}}>加载中...</div>
+      ) : board.length === 0 ? (
+        <div style={{textAlign:"center",color:C.tl,fontSize:13,padding:"12px 0"}}>还没有排行榜数据，完成挑战赛后上榜！</div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {board.slice(0,10).map((entry, i) => {
+            const name = entry.profiles?.username || "匿名";
+            const isMe = entry.user_id === currentUserId;
+            return (
+              <div key={i} style={{
+                display:"flex",alignItems:"center",gap:10,
+                padding:"10px 14px",borderRadius:12,
+                background: isMe ? `${C.primary}12` : "transparent",
+                border: isMe ? `1.5px solid ${C.primary}33` : "1.5px solid transparent",
+              }}>
+                <span style={{fontSize:18,width:24,textAlign:"center"}}>{medals[i] || `${i+1}`}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,fontWeight:700,color:isMe?C.primary:C.text}}>
+                    {name}{isMe&&<span style={{fontSize:11,marginLeft:4,color:C.primary}}>(我)</span>}
+                  </div>
+                  {entry.profiles?.class_name && (
+                    <div style={{fontSize:11,color:C.tl}}>{entry.profiles.class_name}</div>
+                  )}
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:16,fontWeight:900,color:C.gold}}>⚡ {entry.score}</div>
+                  <div style={{fontSize:11,color:C.tl}}>{entry.correct}/20题</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ═══ TEACHER DASHBOARD ═══ */
+function TeacherDashboard({ onClose, authUser }) {
+  const [tab, setTab] = useState("classes");
+  const [classes, setClasses] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [selectedClass, setSelectedClass] = useState(null);
+  const [newClassName, setNewClassName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [customLists, setCustomLists] = useState([]);
+  const [quizTitle, setQuizTitle] = useState("");
+  const [quizInput, setQuizInput] = useState("");
+  const [quizWords, setQuizWords] = useState([]);
+  const [shareCode, setShareCode] = useState(null);
+  const [msg, setMsg] = useState("");
+  const [genCount, setGenCount] = useState(5);
+  const [genType, setGenType] = useState("year");
+  const [genNote, setGenNote] = useState("");
+  const [generatedCodes, setGeneratedCodes] = useState([]);
+  const [allCodes, setAllCodes] = useState([]);
+
+  useEffect(() => {
+    supabase.getMyClasses().then(d => setClasses(Array.isArray(d)?d:[])).catch(()=>{});
+    supabase.getMyCustomLists().then(d => setCustomLists(Array.isArray(d)?d:[])).catch(()=>{});
+  }, []);
+
+  const loadStudents = async (cls) => {
+    setSelectedClass(cls);
+    setLoading(true);
+    const d = await supabase.getClassStudents(cls.id).catch(()=>[]);
+    setStudents(Array.isArray(d)?d:[]);
+    setLoading(false);
+  };
+
+  const createClass = async () => {
+    if (!newClassName.trim()) return;
+    setLoading(true);
+    const cls = await supabase.createClass(newClassName.trim()).catch(()=>null);
+    if (cls?.id) {
+      setClasses(prev => [...prev, cls]);
+      setNewClassName("");
+      setMsg("班级创建成功！邀请码：" + cls.invite_code);
+    }
+    setLoading(false);
+  };
+
+  const parseQuizWords = async () => {
+    const words = quizInput.split(/[,，\s]+/)
+      .map(w => w.trim().toLowerCase())
+      .filter(w => w.length > 0);
+    // Match against VOCAB
+    const matched = words.map(w => {
+      const found = VOCAB.find(v => v.word === w);
+      return found ? { ...found, source: "vocab" } : { word: w, cn: "（加载中...）", en: w, source: "custom", lv:"intermediate", pos:"n", phrases:[], ex:`Use ${w} in a sentence.`, syn:[], ant:[] };
+    });
+    setQuizWords(matched);
+    // For custom words, fetch definitions from Claude API
+    const customWords = matched.filter(w => w.source === "custom");
+    if (customWords.length === 0) return;
+    setLoading(true);
+    try {
+      const wordList = customWords.map(w => w.word).join(", ");
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          messages: [{
+            role: "user",
+            content: `For each of these English words: ${wordList}
+Return ONLY a JSON array (no markdown, no explanation) like:
+[{"word":"reek","cn":"发臭；充满（难闻气味）","en":"to have a strong unpleasant smell","ex":"The rubbish bin reeks of rotten food.","phrases":["reek of","reek with"],"pos":"v"},...]
+Include: word, cn (Chinese meaning), en (English definition), ex (example sentence), phrases (2 common collocations), pos (n/v/adj/adv)`
+          }]
+        })
+      });
+      const data = await response.json();
+      const text = data.content?.[0]?.text || "[]";
+      const clean = text.replace(/\`\`\`json|\`\`\`/g, "").trim();
+      const definitions = JSON.parse(clean);
+      setQuizWords(prev => prev.map(w => {
+        if (w.source !== "custom") return w;
+        const def = definitions.find(d => d.word.toLowerCase() === w.word.toLowerCase());
+        if (!def) return w;
+        return {
+          ...w,
+          cn: def.cn || w.cn,
+          en: def.en || w.en,
+          ex: def.ex || w.ex,
+          pos: def.pos || w.pos,
+          phrases: (def.phrases || []).map(p => ({ phrase: p, sent: `${p}.`, sentCn: "" })),
+        };
+      }));
+    } catch(e) {
+      console.log("AI definition error:", e);
+    }
+    setLoading(false);
+  };
+
+  const createQuiz = async () => {
+    if (!quizTitle || quizWords.length === 0) { setMsg("请填写标题并添加词汇"); return; }
+    setLoading(true);
+    const list = await supabase.createCustomList(quizTitle, quizWords, selectedClass?.id).catch(()=>null);
+    if (list?.share_code) {
+      setShareCode(list.share_code);
+      setCustomLists(prev => [list, ...prev]);
+      setMsg("创建成功！");
+    }
+    setLoading(false);
+  };
+
+  const inp = { background:"#F0F7FF", border:"1.5px solid #D8EEFF", borderRadius:12, padding:"10px 14px", fontSize:14, outline:"none", width:"100%", boxSizing:"border-box", color:"#1A1A2E", fontWeight:600 };
+  const btn = (color) => ({ background:color||C.primary, border:"none", color:"#fff", padding:"10px 20px", borderRadius:12, cursor:"pointer", fontSize:13, fontWeight:800 });
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1000,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"20px 0"}}>
+      <div style={{background:"#F7F9FF",borderRadius:24,width:"100%",maxWidth:500,margin:"0 16px",padding:"0 0 40px"}}>
+        {/* Header */}
+        <div style={{background:C.nav,borderRadius:"24px 24px 0 0",padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:11,color:"#4DB6FF",fontWeight:700,letterSpacing:3}}>TEACHER</div>
+            <div style={{fontSize:20,fontWeight:900,color:"#fff"}}>🏫 教师控制台</div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#fff",width:36,height:36,borderRadius:10,cursor:"pointer",fontSize:18}}>✕</button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{display:"flex",background:"#E8EEFF",margin:"16px 16px 0",borderRadius:14,padding:4}}>
+          {[["classes","🏫 班级"],["quiz","✏️ 出题"],["lists","📋 词单"],["codes","🔑 访问码"]].map(([t,l])=>(
+            <button key={t} onClick={()=>setTab(t)}
+              style={{flex:1,padding:"9px 4px",borderRadius:10,border:"none",cursor:"pointer",
+                background:tab===t?"#fff":"transparent",
+                color:tab===t?C.primary:"#8A9BBF",fontWeight:tab===t?800:600,fontSize:12,
+                boxShadow:tab===t?"0 2px 8px rgba(0,0,0,0.08)":"none",transition:"all 0.2s"}}>
+              {l}
+            </button>
+          ))}
+        </div>
+
+        <div style={{padding:"16px"}}>
+          {msg && <div style={{background:"#E8FFF4",borderRadius:12,padding:"10px 14px",fontSize:13,color:"#1A7A4A",fontWeight:700,marginBottom:12}}>{msg}</div>}
+
+          {/* ── 班级管理 ── */}
+          {tab==="classes" && (
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div style={{display:"flex",gap:8}}>
+                <input style={{...inp,flex:1}} placeholder="新班级名称（如：高三2班）" value={newClassName} onChange={e=>setNewClassName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&createClass()}/>
+                <button onClick={createClass} style={btn(C.accent)}>创建</button>
+              </div>
+              {classes.length===0 && <div style={{textAlign:"center",color:C.tl,fontSize:13,padding:20}}>还没有班级，创建第一个吧！</div>}
+              {classes.map(cls=>(
+                <div key={cls.id} style={{background:"#fff",borderRadius:16,padding:"14px 16px",border:"1px solid #E8EEFF"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <div>
+                      <div style={{fontSize:15,fontWeight:800,color:C.text}}>{cls.name}</div>
+                      <div style={{fontSize:12,color:C.tl}}>邀请码：<span style={{fontWeight:800,color:C.primary,letterSpacing:2}}>{cls.invite_code}</span></div>
+                    </div>
+                    <button onClick={()=>loadStudents(cls)} style={{...btn(C.secondary),padding:"6px 14px",fontSize:12}}>查看学生</button>
+                  </div>
+                  {selectedClass?.id===cls.id && (
+                    <div style={{marginTop:8,borderTop:"1px solid #E8EEFF",paddingTop:8}}>
+                      {loading ? <div style={{textAlign:"center",color:C.tl,fontSize:12}}>加载中...</div>
+                      : students.length===0 ? <div style={{textAlign:"center",color:C.tl,fontSize:12}}>还没有学生加入</div>
+                      : students.map((s,i)=>{
+                        const prog = s.progress?.[0] || s.progress || {};
+                        const name = s.profiles?.username || `学生${i+1}`;
+                        return (
+                          <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #F0F4FF"}}>
+                            <span style={{fontSize:13,fontWeight:700,color:C.text}}>👤 {name}</span>
+                            <div style={{display:"flex",gap:10,fontSize:11,color:C.tl}}>
+                              <span>⭐{prog.mastered_words?.length||0}词</span>
+                              <span>🔥{prog.best_streak||0}连击</span>
+                              <span>📝{prog.total_answered||0}题</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── 出题 ── */}
+          {tab==="quiz" && (
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <input style={inp} placeholder="词单标题（如：Unit 3 重点词汇）" value={quizTitle} onChange={e=>setQuizTitle(e.target.value)}/>
+              <textarea style={{...inp,minHeight:100,resize:"vertical",fontFamily:"inherit"}}
+                placeholder={"输入词汇（逗号分隔）：silence, awareness, progress"}
+                value={quizInput} onChange={e=>setQuizInput(e.target.value)}/>
+              <button onClick={parseQuizWords} style={btn(C.secondary)}>🔍 解析词汇</button>
+
+              {quizWords.length > 0 && (
+                <div style={{background:"#fff",borderRadius:14,padding:"12px 16px",border:"1px solid #E8EEFF"}}>
+                  <div style={{fontSize:13,fontWeight:800,color:C.tm,marginBottom:8}}>已解析 {quizWords.length} 个词：</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {quizWords.map((w,i)=>(
+                      <span key={i} style={{fontSize:12,padding:"3px 10px",borderRadius:20,
+                        background:w.source==="vocab"?`${C.primary}15`:"#FFE8E8",
+                        color:w.source==="vocab"?C.primary:"#CC2222",fontWeight:700}}>
+                        {w.word}
+                        {w.source==="vocab"?"":"*"}
+                      </span>
+                    ))}
+                  </div>
+                  {quizWords.some(w=>w.source==="custom") && <div style={{fontSize:11,color:C.tl,marginTop:6}}>*标注的词不在词库中，只会生成基础题型</div>}
+                </div>
+              )}
+
+              {classes.length > 0 && (
+                <select style={inp} onChange={e=>setSelectedClass(classes.find(c=>c.id===e.target.value))}>
+                  <option value="">不关联班级（生成通用链接）</option>
+                  {classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              )}
+
+              <button onClick={createQuiz} disabled={loading||!quizTitle||quizWords.length===0}
+                style={{...btn(C.grad1),background:C.grad1,opacity:loading||!quizTitle||quizWords.length===0?0.5:1,padding:"14px"}}>
+                {loading?"生成中...":"🚀 生成闯关词单"}
+              </button>
+
+              {shareCode && (
+                <div style={{background:"linear-gradient(135deg,#E8FFF4,#D8EEFF)",borderRadius:16,padding:"16px",textAlign:"center"}}>
+                  <div style={{fontSize:13,color:C.tm,marginBottom:8}}>分享码（发给学生）：</div>
+                  <div style={{fontSize:28,fontWeight:900,color:C.primary,letterSpacing:4}}>{shareCode}</div>
+                  <div style={{fontSize:12,color:C.tl,marginTop:8}}>学生在设置页面输入分享码即可开始练习</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── 已创建词单 ── */}
+          {tab==="lists" && (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {customLists.length===0 && <div style={{textAlign:"center",color:C.tl,fontSize:13,padding:20}}>还没有创建词单</div>}
+              {customLists.map((list,i)=>{
+                const words = typeof list.words === "string" ? JSON.parse(list.words||"[]") : (list.words||[]);
+                return (
+                  <div key={i} style={{background:"#fff",borderRadius:16,padding:"14px 16px",border:"1px solid #E8EEFF"}}>
+                    <div style={{fontWeight:800,color:C.text,fontSize:14,marginBottom:4}}>{list.title}</div>
+                    <div style={{fontSize:12,color:C.tl,marginBottom:8}}>{words.length}个词 · 分享码：<span style={{fontWeight:800,color:C.primary,letterSpacing:2}}>{list.share_code}</span></div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                      {words.slice(0,8).map((w,j)=>(
+                        <span key={j} style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:`${C.primary}12`,color:C.primary,fontWeight:700}}>{w.word||w}</span>
+                      ))}
+                      {words.length>8&&<span style={{fontSize:11,color:C.tl}}>+{words.length-8}个</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── 访问码管理 ── */}
+          {tab==="codes" && (
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              {/* 生成访问码 */}
+              <div style={{background:"#fff",borderRadius:16,padding:"16px",border:"1px solid #E8EEFF"}}>
+                <div style={{fontWeight:800,color:C.text,fontSize:14,marginBottom:12}}>🔑 生成访问码</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                  <div>
+                    <div style={{fontSize:12,color:C.tl,marginBottom:4}}>数量</div>
+                    <select value={genCount} onChange={e=>setGenCount(Number(e.target.value))}
+                      style={{width:"100%",padding:"8px 10px",borderRadius:10,border:"1.5px solid #E8EEFF",fontSize:14,fontWeight:700}}>
+                      {[1,5,10,20,50].map(n=><option key={n} value={n}>{n}个</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{fontSize:12,color:C.tl,marginBottom:4}}>有效期</div>
+                    <select value={genType} onChange={e=>setGenType(e.target.value)}
+                      style={{width:"100%",padding:"8px 10px",borderRadius:10,border:"1.5px solid #E8EEFF",fontSize:14,fontWeight:700}}>
+                      <option value="month">1个月 (30天)</option>
+                      <option value="year">1年 (365天)</option>
+                      <option value="lifetime">永久</option>
+                    </select>
+                  </div>
+                </div>
+                <input value={genNote} onChange={e=>setGenNote(e.target.value)}
+                  placeholder="备注（可选，如：小红书订单123）"
+                  style={{width:"100%",padding:"8px 12px",borderRadius:10,border:"1.5px solid #E8EEFF",fontSize:13,marginBottom:10,boxSizing:"border-box"}}/>
+                <button onClick={async()=>{
+                  setLoading(true);
+                  const days = genType==="month"?30:genType==="year"?365:99999;
+                  const codes = await supabase.generateCodes(genCount,genType,days,genNote).catch(()=>[]);
+                  setGeneratedCodes(Array.isArray(codes)?codes:[]);
+                  setLoading(false);
+                }} disabled={loading}
+                style={{width:"100%",padding:"12px",borderRadius:12,background:"#4DB6FF",border:"none",color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer"}}>
+                  {loading?"生成中...":` 生成 ${genCount} 个访问码`}
+                </button>
+              </div>
+
+              {/* 刚生成的码 */}
+              {generatedCodes.length>0&&(
+                <div style={{background:"#EDFAF3",borderRadius:16,padding:"16px",border:"1px solid #4CAF7D44"}}>
+                  <div style={{fontWeight:800,color:"#4CAF7D",fontSize:13,marginBottom:10}}>✅ 生成成功！复制发给买家</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {generatedCodes.map((c,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",borderRadius:10,padding:"8px 12px"}}>
+                        <span style={{flex:1,fontFamily:"monospace",fontSize:16,fontWeight:900,letterSpacing:3,color:"#1A1A2E"}}>{c.code}</span>
+                        <span style={{fontSize:11,color:"#5A7A9A"}}>{c.type==="month"?"30天":c.type==="year"?"365天":"永久"}</span>
+                        <button onClick={()=>navigator.clipboard?.writeText(c.code)}
+                          style={{fontSize:11,padding:"3px 8px",borderRadius:6,border:"1px solid #4DB6FF",color:"#4DB6FF",background:"none",cursor:"pointer"}}>复制</button>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={()=>{
+                    const text = generatedCodes.map(c=>`${c.code} (${c.type==="month"?"30天":c.type==="year"?"365天":"永久"})`).join("\n");
+                    navigator.clipboard?.writeText(text);
+                  }} style={{marginTop:10,width:"100%",padding:"8px",borderRadius:10,background:"#4CAF7D",border:"none",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                    📋 一键复制全部
+                  </button>
+                </div>
+              )}
+
+              {/* 查看所有已生成的码 */}
+              <button onClick={async()=>{
+                const codes = await supabase.getAccessCodes().catch(()=>[]);
+                setAllCodes(Array.isArray(codes)?codes:[]);
+              }} style={{padding:"10px",borderRadius:12,border:"1.5px solid #E8EEFF",background:"#fff",color:C.text,fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                📋 查看所有访问码记录
+              </button>
+              {allCodes.length>0&&(
+                <div style={{background:"#fff",borderRadius:16,padding:"12px",border:"1px solid #E8EEFF",maxHeight:300,overflowY:"auto"}}>
+                  <div style={{fontSize:12,color:C.tl,marginBottom:8}}>共 {allCodes.length} 个码</div>
+                  {allCodes.map((c,i)=>(
+                    <div key={i} style={{display:"flex",gap:8,padding:"6px 0",borderBottom:"1px solid #f0f0f0",fontSize:12,alignItems:"center"}}>
+                      <span style={{fontFamily:"monospace",fontWeight:900,fontSize:13,flex:"0 0 90px"}}>{c.code}</span>
+                      <span style={{color:c.activated_by?"#4CAF7D":"#5A7A9A",flex:"0 0 40px"}}>{c.activated_by?"✅已用":"未用"}</span>
+                      <span style={{color:"#5A7A9A",flex:1}}>{c.type==="month"?"30天":c.type==="year"?"1年":"永久"}</span>
+                      {c.expires_at&&<span style={{color:"#5A7A9A",fontSize:11}}>{new Date(c.expires_at).toLocaleDateString("zh-CN")}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ STUDENT JOIN CLASS / CUSTOM QUIZ ═══ */
+function StudentPanel({ onClose, onStartCustomQuiz }) {
+  const [code, setCode] = useState("");
+  const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [quizData, setQuizData] = useState(null);
+
+  const joinClass = async () => {
+    if (!code.trim()) return;
+    setLoading(true);
+    try {
+      const cls = await supabase.joinClass(code.trim().toUpperCase());
+      setMsg(`✅ 成功加入：${cls.name}`);
+    } catch(e) { setMsg("❌ " + e.message); }
+    setLoading(false);
+  };
+
+  const loadQuiz = async () => {
+    if (!code.trim()) return;
+    setLoading(true);
+    try {
+      const list = await supabase.getCustomListByCode(code.trim());
+      if (!list) { setMsg("❌ 找不到对应词单"); setLoading(false); return; }
+      const words = typeof list.words === "string" ? JSON.parse(list.words||"[]") : (list.words||[]);
+      setQuizData({ title: list.title, words });
+      setMsg(`✅ 找到词单：${list.title}（${words.length}词）`);
+    } catch(e) { setMsg("❌ " + e.message); }
+    setLoading(false);
+  };
+
+  const inp = { background:"#F0F7FF", border:"1.5px solid #D8EEFF", borderRadius:12, padding:"12px 14px", fontSize:16, outline:"none", width:"100%", boxSizing:"border-box", color:"#1A1A2E", fontWeight:700, letterSpacing:2, textAlign:"center" };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#F7F9FF",borderRadius:24,width:"100%",maxWidth:400,padding:24}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <div style={{fontSize:18,fontWeight:900,color:C.text}}>🔑 输入邀请码</div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",fontSize:20,cursor:"pointer",color:C.tl}}>✕</button>
+        </div>
+        <input style={inp} placeholder="输入班级码或词单码" value={code} onChange={e=>setCode(e.target.value.toUpperCase())} maxLength={8}/>
+        {msg && <div style={{marginTop:12,fontSize:13,fontWeight:700,color:msg.startsWith("✅")?C.accent:C.error,textAlign:"center"}}>{msg}</div>}
+        <div style={{display:"flex",gap:10,marginTop:16}}>
+          <button onClick={joinClass} disabled={loading} style={{flex:1,background:C.secondary,border:"none",color:"#fff",padding:"13px",borderRadius:14,cursor:"pointer",fontSize:14,fontWeight:800}}>加入班级</button>
+          <button onClick={loadQuiz} disabled={loading} style={{flex:1,background:C.grad1,border:"none",color:"#fff",padding:"13px",borderRadius:14,cursor:"pointer",fontSize:14,fontWeight:800}}>获取词单</button>
+        </div>
+        {quizData && (
+          <button onClick={()=>{onStartCustomQuiz(quizData.words);onClose();}}
+            style={{width:"100%",marginTop:12,background:C.accent,border:"none",color:"#fff",padding:"14px",borderRadius:14,cursor:"pointer",fontSize:15,fontWeight:800}}>
+            🚀 开始练习「{quizData.title}」
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══ AUTH SCREEN ═══ */
+function AuthScreen({ onLogin }) {
+  const [mode, setMode] = useState("login"); // login | signup
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [className, setClassName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const handle = async () => {
+    setError(""); setSuccess("");
+    if (!email || !password) { setError("请填写邮箱和密码"); return; }
+    if (mode === "signup" && !username) { setError("请填写昵称"); return; }
+    setLoading(true);
+    try {
+      let result;
+      if (mode === "signup") {
+        result = await supabase.auth.signUp(email, password, username);
+        if (result.error) throw new Error(result.error.message || result.msg || "注册失败");
+        if (result.user || result.id) {
+          setSuccess("注册成功！请检查邮箱确认链接，然后登录。");
+          setMode("login"); setPassword("");
+        }
+      } else {
+        result = await supabase.auth.signIn(email, password);
+        if (result.error) throw new Error(result.error.message || result.msg || "登录失败，请检查邮箱和密码");
+        if (result.user) onLogin(result.user);
+      }
+    } catch(e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inp = {
+    background:"#F0F7FF", border:"2px solid #D8EEFF", borderRadius:14,
+    padding:"14px 16px", fontSize:15, outline:"none", width:"100%",
+    boxSizing:"border-box", fontWeight:600, color:"#1A1A2E"
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#EAF4FF,#EEE8FF)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#fff",borderRadius:28,padding:"36px 32px",maxWidth:400,width:"100%",boxShadow:"0 20px 60px rgba(77,182,255,0.15)"}}>
+        {/* Logo */}
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{fontSize:48,marginBottom:8}}>📚</div>
+          <h1 style={{fontSize:26,fontWeight:900,margin:"0 0 4px",color:"#1A1A2E"}}>词汇大师</h1>
+          <div style={{fontSize:13,color:"#8A8494"}}>VocabMaster · 高考英语词汇</div>
+        </div>
+
+        {/* Mode toggle */}
+        <div style={{display:"flex",background:"#EAE4FF",borderRadius:14,padding:4,marginBottom:24}}>
+          {[["login","登录"],["signup","注册"]].map(([m,l])=>(
+            <button key={m} onClick={()=>{setMode(m);setError("");setSuccess("");}}
+              style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
+                background:mode===m?"#fff":"transparent",
+                color:mode===m?"#4DB6FF":"#8A9BBF",
+                fontWeight:mode===m?800:600,fontSize:14,
+                boxShadow:mode===m?"0 2px 8px rgba(0,0,0,0.08)":"none",
+                transition:"all 0.2s"}}>
+              {l}
+            </button>
+          ))}
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {mode==="signup" && (
+            <>
+              <input style={inp} placeholder="昵称（学生姓名或学号）" value={username}
+                onChange={e=>setUsername(e.target.value)}/>
+              <input style={inp} placeholder="班级（如：高三2班，可不填）" value={className}
+                onChange={e=>setClassName(e.target.value)}/>
+            </>
+          )}
+          <input style={inp} type="email" placeholder="邮箱" value={email}
+            onChange={e=>setEmail(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&handle()}/>
+          <input style={inp} type="password" placeholder="密码（至少6位）" value={password}
+            onChange={e=>setPassword(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&handle()}/>
+
+          {error && <div style={{fontSize:13,color:"#CC2222",background:"#FFE8E8",borderRadius:10,padding:"10px 14px",fontWeight:600}}>{error}</div>}
+          {success && <div style={{fontSize:13,color:"#1A7A4A",background:"#E8FFF4",borderRadius:10,padding:"10px 14px",fontWeight:600}}>{success}</div>}
+
+          <button onClick={handle} disabled={loading}
+            style={{background:C.grad1,border:"none",color:"#fff",
+              padding:"16px",borderRadius:14,cursor:loading?"wait":"pointer",fontSize:16,fontWeight:800,
+              boxShadow:"0 6px 20px rgba(255,107,53,0.3)",marginTop:4,opacity:loading?0.7:1}}>
+            {loading?"请稍候...":(mode==="login"?"登录 →":"注册 →")}
+          </button>
+        </div>
+
+        <div style={{textAlign:"center",marginTop:16,fontSize:12,color:"#bbb"}}>
+          学生使用邮箱注册 · 老师账号请联系管理员
+        </div>
+        <div style={{textAlign:"center",marginTop:8,fontSize:11,color:"#9B6FFF",background:"#F0EBFF",borderRadius:10,padding:"8px 12px"}}>
+          📢 建议使用 <strong>Chrome浏览器</strong> 以获得最佳朗读效果
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ MAIN APP ═══ */
+const DAILY=5;
+
+// ── Helper: read current pet food from localStorage ──
+function getPetFood() {
+  try {
+    const raw = localStorage.getItem("vm_pet_v2");
+    if (raw) { const s = JSON.parse(raw); return s.food || 0; }
+  } catch(e) {}
+  return 0;
+}
+
+export default function VocabMaster() {
+  const [screen,setScreen]=useState("home");const [exs,setExs]=useState([]);const [idx,setIdx]=useState(0);
+  const [res,setRes]=useState([]);const [streak,setStreak]=useState(0);const [best,setBest]=useState(0);
+  const [total,setTotal]=useState(0);const [mastered,setMastered]=useState(new Set());const [daily,setDaily]=useState([]);
+  const [search,setSearch]=useState("");const [lvFilter,setLvFilter]=useState("all");const [posFilter,setPosFilter]=useState("all");const [expanded,setExpanded]=useState(null);
+  const [wordImages,setWordImages]=useState({}); // {word: imageUrl}
+  const UNSPLASH_KEY = "XSwLRejfuccusuV02R234-Hp-Z4K_xYT5iH02n47KVc";
+  const fetchWordImage = async (word) => {
+    if (wordImages[word]) return;
+    try {
+      const r = await fetch(`https://api.unsplash.com/search/photos?query=${encodeURIComponent(word)}&per_page=1&orientation=landscape&client_id=${UNSPLASH_KEY}`);
+      const d = await r.json();
+      const url = d?.results?.[0]?.urls?.small;
+      if (url) setWordImages(prev=>({...prev,[word]:url}));
+      else setWordImages(prev=>({...prev,[word]:"none"}));
+    } catch { setWordImages(prev=>({...prev,[word]:"none"})); }
+  };
+  const [showConfetti,setShowConfetti]=useState(false);
+  // ── Auth state ──
+  const [authUser, setAuthUser] = useState(() => supabase.auth.getUser());
+  const [profile, setProfile] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [isTeacher, setIsTeacher] = useState(false);
+  const [teacherScreen, setTeacherScreen] = useState(null); // null | "dashboard" | "quiz-builder"
+  const [myClasses, setMyClasses] = useState([]);
+  const [selectedClass, setSelectedClass] = useState(null);
+  const [classStudents, setClassStudents] = useState([]);
+  const [customLists, setCustomLists] = useState([]);
+  const [quizWords, setQuizWords] = useState([]);
+  const [quizInput, setQuizInput] = useState("");
+  const [quizTitle, setQuizTitle] = useState("");
+  const [createdShareCode, setCreatedShareCode] = useState(null);
+  const [joinCode, setJoinCode] = useState("");
+  const [joinMsg, setJoinMsg] = useState("");
+  const [showStudentPanel, setShowStudentPanel] = useState(false);
+
+  const [tab,setTab]=useState("today");
+  const [showGame,setShowGame]=useState(false);
+  const [showMovieRead,setShowMovieRead]=useState(false);
+  const [userAccess,setUserAccess]=useState(null);   // 用户访问权限
+  const [accessLoaded,setAccessLoaded]=useState(false);
+  const [accessCode,setAccessCode]=useState("");      // 输入框
+  const [accessMsg,setAccessMsg]=useState(null);      // {type:'ok'|'err', text}
+  const [accessLoading,setAccessLoading]=useState(false);
+  const [showCodeGen,setShowCodeGen]=useState(false); // 老师端生成码面板
+  const [genCount,setGenCount]=useState(5);
+  const [genType,setGenType]=useState("year");
+  const [genNote,setGenNote]=useState("");
+  const [generatedCodes,setGeneratedCodes]=useState([]);
+  const [allCodes,setAllCodes]=useState([]);
+  const [drillType,setDrillType]=useState(null); // 'conjunction'|'preposition'|'tense'
+  const [drillQuestions,setDrillQuestions]=useState([]);
+  const [drillIdx,setDrillIdx]=useState(0);
+  const [drillScore,setDrillScore]=useState(0);
+  const [drillSel,setDrillSel]=useState(null);
+  const [drillDone,setDrillDone]=useState(false);
+  const [drillCorrect,setDrillCorrect]=useState(0);
+  const [drillFinished,setDrillFinished]=useState(false);
+  const [answered,setAnswered]=useState(false); // true after student answers, waiting for Next
+  const [wrongQueue,setWrongQueue]=useState([]); // exercises answered wrong, to repeat
+  const [challengeScore,setChallengeScore]=useState(0);
+  const [challengeMode,setChallengeMode]=useState(false);
+  const [challengeFinalScore,setChallengeFinalScore]=useState(0); // true = challenge mode // bottom nav: today | words | progress | settings
+  // Deterministic word set for any date — same date always gives same 8 words
+  const getWordsForDate = (dateStr) => {
+    let h=0; for(const c of dateStr) h=(h*31+c.charCodeAt(0))>>>0;
+    const shuffled=[...VOCAB].sort(()=>((h=Math.imul(h^h>>>16,0x45d9f3b))&1)-0.5);
+    return shuffled.slice(0,5);
+  };
+  const [calendarDate, setCalendarDate] = useState(()=>{ const d=new Date(); d.setHours(0,0,0,0); return d; }); // which day is selected
+  const todayWords = getWordsForDate(calendarDate.toDateString());
+
+  useEffect(()=>{window.speechSynthesis?.getVoices();const h=()=>window.speechSynthesis?.getVoices();window.speechSynthesis?.addEventListener?.("voiceschanged",h);return()=>window.speechSynthesis?.removeEventListener?.("voiceschanged",h);},[]);
+
+  const startChallenge = useCallback(() => {
+    window.speechSynthesis?.cancel();
+    // Pick 20 random words from entire vocab, no repeats
+    const words = shuffle([...VOCAB]).slice(0, 20);
+    setDaily(words);
+    const e = [];
+    const safeGen = (gen, w) => { try { return gen(); } catch(err) { return mkMC(w, VOCAB); } };
+    // One question per word — pick from non-learn types only (no learn card in challenge)
+    const questionTypes = [
+      w => safeGen(()=>mkMC(w,VOCAB), w),
+      w => safeGen(()=>mkReverse(w,VOCAB), w),
+      w => safeGen(()=>mkDragFill(w,VOCAB), w),
+      w => safeGen(()=>mkWordFamily(w,VOCAB), w),
+      w => safeGen(()=>mkSynAnt(w,VOCAB), w),
+      w => safeGen(()=>mkErrorSpot(w,VOCAB), w),
+      w => safeGen(()=>mkPhraseComplete(w,VOCAB), w),
+      w => safeGen(()=>mkDialogue(w,VOCAB), w),
+      w => safeGen(()=>mkSentBuild(w,VOCAB), w),
+      w => w.verbForms ? safeGen(()=>mkVerbForms(w,VOCAB), w) : safeGen(()=>mkMC(w,VOCAB), w),
+    ];
+    words.forEach(w => {
+      const picker = questionTypes[Math.floor(Math.random()*questionTypes.length)];
+      e.push(picker(w));
+    });
+    setChallengeScore(0);
+    setChallengeMode(true);
+    setExs(e); setIdx(0); setRes([]); setAnswered(false); setStreak(0); setScreen("play");
+  }, []);
+
+  // ── Refs to track latest values (avoids stale closures in goNext/handleDone) ──
+  const totalRef = useRef(total);
+  const bestRef = useRef(best);
+  const streakRef = useRef(streak);
+  const authUserRef = useRef(authUser);
+  useEffect(() => { totalRef.current = total; }, [total]);
+  useEffect(() => { bestRef.current = best; }, [best]);
+  useEffect(() => { streakRef.current = streak; }, [streak]);
+  useEffect(() => { authUserRef.current = authUser; }, [authUser]);
+
+  // ── progressLoaded: prevents auto-save from overwriting cloud data on startup ──
+  const progressLoaded = useRef(false);
+  const [cloudLoaded, setCloudLoaded] = useState(false); // moved here so init closure can access setCloudLoaded
+
+  // ── Load profile and sync progress from cloud ──
+  useEffect(() => {
+    const init = async () => {
+      const user = supabase.auth.getUser();
+      if (!user) { setAuthReady(true); return; }
+      setAuthUser(user);
+      try {
+        const prog = await supabase.getProgress(user.id);
+        console.log("[init] loaded progress from cloud:", prog);
+        if (prog) {
+          if (prog.mastered_words?.length > 0)
+            setMastered(new Set(prog.mastered_words));
+          if (prog.total_answered > 0) {
+            setTotal(prog.total_answered);
+            totalRef.current = prog.total_answered;
+          }
+          if (prog.best_streak > 0) {
+            setBest(prog.best_streak);
+            bestRef.current = prog.best_streak;
+          }
+          // P1c: Restore pet food from cloud if available
+          if (typeof prog.pet_food === "number" && prog.pet_food > 0) {
+            try {
+              const petRaw = localStorage.getItem("vm_pet_v2");
+              if (petRaw) {
+                const petState = JSON.parse(petRaw);
+                // Only restore from cloud if local food is 0 (new device / cleared cache)
+                // Don't overwrite if user already has food locally (they may have spent some)
+                if ((petState.food || 0) === 0) {
+                  petState.food = prog.pet_food;
+                  localStorage.setItem("vm_pet_v2", JSON.stringify(petState));
+                  console.log("[init] restored pet food from cloud:", prog.pet_food);
+                }
+              }
+            } catch(e) {}
+          }
+        }
+        const prof = await supabase.getProfile(user.id);
+        if (prof) {
+          setProfile(prof);
+          // 检查是否老师：role字段 或 邮箱 或 profiles表里的email
+          const email = user.email || prof.email || "";
+          if (prof.role === 'teacher' || email === 'annieyanranzhou@gmail.com') {
+            setIsTeacher(true);
+            const classes = await supabase.getMyClasses().catch(()=>[]);
+            setMyClasses(Array.isArray(classes) ? classes : []);
+            const lists = await supabase.getMyCustomLists().catch(()=>[]);
+            setCustomLists(Array.isArray(lists) ? lists : []);
+          }
+        }
+      } catch(e) { console.log("sync error", e); }
+      progressLoaded.current = true; // kept for compatibility
+      setCloudLoaded(true); // triggers auto-save useEffect
+      // 加载访问权限
+      try {
+        const access = await supabase.getUserAccess(user.id);
+        setUserAccess(access);
+      } catch(e) {}
+      setAccessLoaded(true);
+      // 每日登录奖励粮食 +1
+      const _loginKey = "vm_last_login_pet";
+      const _today = new Date().toDateString();
+      if(localStorage.getItem(_loginKey) !== _today){
+        addPetFood(1);
+        localStorage.setItem(_loginKey, _today);
+      }
+      setAuthReady(true);
+    };
+    init();
+  }, []);
+
+  // ── On mount: try to refresh token if we have a refresh_token stored ──
+  useEffect(() => {
+    const refresh = localStorage.getItem("sb_refresh");
+    if (refresh && !localStorage.getItem("sb_token")) {
+      supabase.auth.refreshToken();
+    }
+  }, []);
+
+  // ── Auto-save progress to cloud ──
+  // Only save after user has actually done something (answered a question, mastered a word).
+  // userDidActivity ref is set to true in handleDone; prevents overwriting DB with 0s on load.
+  const userDidActivity = useRef(false);
+  const skipNextAutoSave = useRef(false);
+  useEffect(() => {
+    if (!authUser || !cloudLoaded || !userDidActivity.current) return;
+    if (skipNextAutoSave.current) {
+      skipNextAutoSave.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      supabase.saveProgress(authUser.id, [...mastered], total, best, getPetFood())
+        .then(()=>console.log("[saveProgress auto] OK", {total,best}))
+        .catch(e => console.log("[saveProgress auto] error", e));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [mastered, total, best, authUser, cloudLoaded]);
+
+  const startDrill = useCallback((type) => {
+    // 听说模式：从 VOCAB 随机取20词，50% listen_pick + 50% listen_fill
+    if (type === "listening") {
+      const words = shuffle(VOCAB).slice(0, 20);
+      const qs = words.map((w, i) => {
+        // Mix: listen_pick, listen_fill, listen_def
+        const r = i % 3;
+        if (r === 0) return mkListenPick(w, VOCAB);
+        if (r === 1) {
+          const q = mkListenFill(w, VOCAB);
+          return q.type === "listen_fill" ? q : mkListenPick(w, VOCAB);
+        }
+        return mkListenDef(w, VOCAB);
+      });
+      setDrillQuestions(qs);
+      setDrillType("listening");
+      setDrillIdx(0); setDrillSel(null); setDrillDone(false);
+      setDrillFinished(false); setDrillScore(0); setDrillCorrect(0);
+      return;
+    }
+    if (type === "speaking") {
+      const words = shuffle(VOCAB).slice(0, 10);
+      const qs = words.map(w => mkFollowRead(w));
+      setDrillQuestions(qs);
+      setDrillType("speaking");
+      setDrillIdx(0); setDrillSel(null); setDrillDone(false);
+      setDrillFinished(false); setDrillScore(0); setDrillCorrect(0);
+      return;
+    }
+    const bank = type==="adverbial" ? ADVERBIAL_QUESTIONS
+                : type==="noun_clause" ? NOUN_CLAUSE_QUESTIONS
+                : type==="attributive" ? ATTRIBUTIVE_QUESTIONS
+                : type==="preposition" ? PREPOSITION_QUESTIONS
+                : type==="passive" ? PASSIVE_QUESTIONS
+                : type==="double_consonant" ? DOUBLE_CONSONANT_QUESTIONS
+                : type==="cloze" ? CLOZE_QUESTIONS
+                : TENSE_QUESTIONS;
+    const qs = shuffle([...bank]).slice(0,10).map(q => ({
+      ...q,
+      opts: shuffle([...q.opts])  // randomise option order each time
+    }));
+    setDrillType(type);
+    setDrillQuestions(qs);
+    setDrillIdx(0);
+    setDrillScore(0);
+    setDrillCorrect(0);
+    setDrillSel(null);
+    setDrillDone(false);
+    setDrillFinished(false);
+  },[]);
+
+  const drillAnswer = useCallback((opt) => {
+    if(drillDone) return;
+    setDrillSel(opt);
+    setDrillDone(true);
+    if(opt===drillQuestions[drillIdx].a){
+      playCorrectSound();
+      setDrillScore(s=>s+10);
+      setDrillCorrect(c=>c+1);
+    } else {
+      playWrongSound();
+      // P1a: 专项练习错题收录
+      try {
+        const q = drillQuestions[drillIdx];
+        const key = "vm_wrong_drills";
+        const wd = JSON.parse(localStorage.getItem(key)||"[]");
+        const entry = { type: drillType, q: q.q, a: q.a||q.answer, tip: q.tip||"", ts: Date.now() };
+        // Deduplicate by question text
+        const filtered = wd.filter(e => e.q !== entry.q);
+        filtered.unshift(entry);
+        localStorage.setItem(key, JSON.stringify(filtered.slice(0, 80)));
+      } catch(e){}
+    }
+  },[drillDone,drillQuestions,drillIdx,drillType]);
+
+  const drillNext = useCallback(() => {
+    if(drillIdx+1 >= drillQuestions.length){
+      playCelebrationSound();
+      const rate = drillQuestions.length > 0 ? drillCorrect / drillQuestions.length : 0;
+      const _food = rate >= 0.9 ? 10 : rate >= 0.7 ? 7 : rate >= 0.5 ? 5 : 3;
+      console.log("[drillNext] finished", {drillCorrect, total: drillQuestions.length, rate, food: _food});
+      addPetFood(_food);
+      if(authUser) supabase.saveDrillScore(authUser.id, drillType, drillScore)
+        .catch(()=>{});
+      setDrillFinished(true);
+    } else {
+      setDrillIdx(i=>i+1);
+      setDrillSel(null);
+      setDrillDone(false);
+    }
+  },[drillIdx,drillQuestions]);
+
+  // ── Sync drill results to main progress when any drill (专项/听说) finishes ──
+  useEffect(() => {
+    if (!drillFinished || drillQuestions.length === 0) return;
+    const qCount = drillQuestions.length;
+    // Add all drill questions to total answered
+    setTotal(t => {
+      const nt = t + qCount;
+      totalRef.current = nt;
+      return nt;
+    });
+    // Update best streak if drillCorrect (consecutive correct in this drill) is higher
+    setBest(prev => {
+      const nb = Math.max(prev, drillCorrect);
+      bestRef.current = nb;
+      return nb;
+    });
+    userDidActivity.current = true;
+    // Update daily answered count for today tab
+    try {
+      const _todayKey = "vm_daily_answered_" + new Date().toDateString();
+      const _cnt = parseInt(localStorage.getItem(_todayKey)||"0") + qCount;
+      localStorage.setItem(_todayKey, _cnt);
+    } catch(e){}
+    // Immediate save to cloud
+    const curUser = authUserRef.current;
+    if (curUser) {
+      // Use setTimeout(0) to let state updates settle
+      setTimeout(() => {
+        supabase.saveProgress(curUser.id, [...mastered], totalRef.current, bestRef.current, getPetFood())
+          .then(() => console.log("[saveProgress drill] OK", { total: totalRef.current, best: bestRef.current }))
+          .catch(e => console.log("[saveProgress drill] error", e));
+      }, 100);
+    }
+  }, [drillFinished]);
+
+  // Practice a single word from the word bank — runs all exercise types on it
+  const startWordPractice = useCallback((w) => {
+    window.speechSynthesis?.cancel();
+    setDaily([w]);
+    const e = [];
+    const safeGen = (gen) => { try { return gen(); } catch(err) { return mkMC(w, VOCAB); } };
+    e.push(mkLearn(w));
+    const allTypes = shuffle([
+      ()=>safeGen(()=>mkMC(w,VOCAB)),
+      ()=>safeGen(()=>mkReverse(w,VOCAB)),
+      ()=>safeGen(()=>mkDragFill(w,VOCAB)),
+      ()=>safeGen(()=>mkWordFamily(w,VOCAB)),
+      ()=>safeGen(()=>mkSynAnt(w,VOCAB)),
+      ()=>safeGen(()=>mkErrorSpot(w,VOCAB)),
+      ()=>safeGen(()=>mkPhraseComplete(w,VOCAB)),
+      ()=>safeGen(()=>mkMatch(w,VOCAB)),
+      ()=>safeGen(()=>mkDialogue(w,VOCAB)),
+      ()=>safeGen(()=>mkSentBuild(w,VOCAB)),
+    ]);
+    // Pick up to 6 unique types
+    const usedTypes = new Set();
+    allTypes.forEach(t => {
+      if(usedTypes.size >= 6) return;
+      const ex = t();
+      if(!usedTypes.has(ex.type)){ usedTypes.add(ex.type); e.push(ex); }
+    });
+    setExs(e); setIdx(0); setRes([]); setAnswered(false); setWrongQueue([]); setScreen("play");
+  }, []);
+
+  const startPractice=useCallback((wordsOverride)=>{
+    window.speechSynthesis?.cancel();
+    const words = wordsOverride || todayWords;
+    setDaily(words);const e=[];
+    words.forEach(w=>{
+      e.push(mkLearn(w));
+      const safeGen = (gen) => { try { return gen(); } catch(err) { return mkMC(w,VOCAB); } };
+      // Guarantee Dialogue + SentBuild appear, then 2 random from the rest
+      const fixedTypes = [
+        ()=>safeGen(()=>mkDialogue(w,VOCAB)),
+        ()=>safeGen(()=>mkSentBuild(w,VOCAB)),
+      ];
+      const randomPool = shuffle([
+        ()=>safeGen(()=>mkMC(w,VOCAB)),
+        ()=>safeGen(()=>mkDragFill(w,VOCAB)),
+        ()=>safeGen(()=>mkReverse(w,VOCAB)),
+        ()=>safeGen(()=>mkWordFamily(w,VOCAB)),
+        ()=>safeGen(()=>mkSynAnt(w,VOCAB)),
+        ()=>safeGen(()=>mkErrorSpot(w,VOCAB)),
+        ()=>safeGen(()=>mkPhraseComplete(w,VOCAB)),
+        ()=>safeGen(()=>mkMatch(w,VOCAB)),
+        ()=>safeGen(()=>mkListenPick(w,VOCAB)),
+        ()=>safeGen(()=>mkListenFill(w,VOCAB)),
+        ()=>safeGen(()=>mkListenDef(w,VOCAB)),
+        ...(w.verbForms ? [()=>safeGen(()=>mkVerbForms(w,VOCAB))] : []),
+      ]);
+      const allTypes = shuffle([...fixedTypes, randomPool[0], randomPool[1]]);
+      const usedTypes = new Set();
+      allTypes.forEach(t => {
+        const ex = t();
+        // Skip if we already have this type for this word
+        if(!usedTypes.has(ex.type)){ usedTypes.add(ex.type); e.push(ex); }
+        else {
+          // Try a different type from the pool not yet used
+          const backup = randomPool.find(pt => {
+            const bex = pt(); return !usedTypes.has(bex.type);
+          });
+          if(backup){ const bex=backup(); usedTypes.add(bex.type); e.push(bex); }
+        }
+      });
+    });
+    setExs(e);setIdx(0);setRes([]);setAnswered(false);setWrongQueue([]);setScreen("play");
+  },[mastered]);
+
+  const startReview=useCallback(()=>{
+    window.speechSynthesis?.cancel();
+    // Review prioritizes words already seen/mastered for reinforcement
+    const masteredList = VOCAB.filter(w => mastered.has(w.word));
+    const pool = masteredList.length >= 4 ? masteredList : VOCAB;
+    const words = shuffle(pool).slice(0,6);
+    setDaily(words);
+    const e=[];
+    const safeGen = (gen) => { try { return gen(); } catch(err) { return mkMC(words[0],VOCAB); } };
+    words.forEach(w=>{
+      // No learn card — straight to exercises (review mode)
+      const types = shuffle([
+        ()=>safeGen(()=>mkMC(w,VOCAB)),
+        ()=>safeGen(()=>mkDragFill(w,VOCAB)),
+        ()=>safeGen(()=>mkReverse(w,VOCAB)),
+        ()=>safeGen(()=>mkSynAnt(w,VOCAB)),
+        ()=>safeGen(()=>mkPhraseComplete(w,VOCAB)),
+        ()=>safeGen(()=>mkDialogue(w,VOCAB)),
+        ()=>safeGen(()=>mkSentBuild(w,VOCAB)),
+      ]);
+      e.push(types[0]()); e.push(types[1]()); e.push(types[2]());
+    });
+    setExs(e);setIdx(0);setRes([]);setAnswered(false);setWrongQueue([]);setScreen("play");
+  },[mastered]);
+
+  const handleDone=useCallback((correct)=>{
+    setAnswered(true);
+    userDidActivity.current = true; // mark that user has done something — enables auto-save
+    if(!correct && !challengeMode){
+      // Queue this exercise to repeat later (with a fresh id to force re-render)
+      setWrongQueue(q=>[...q,{...exs[idx], id:exs[idx].id+'_retry'}]);
+    }
+    if(!correct){
+      // Save to wrong words book (both normal and challenge mode)
+      const wrongWord = exs[idx]?.word?.word;
+      if(wrongWord) try {
+        const ww = JSON.parse(localStorage.getItem("vm_wrong_words")||"[]");
+        if(!ww.includes(wrongWord)){ ww.unshift(wrongWord); localStorage.setItem("vm_wrong_words", JSON.stringify(ww.slice(0,60))); }
+      } catch(e){}
+    }
+    setRes(prev=>{
+      const nr=[...prev,{word:exs[idx]?.word,correct}];
+      if(correct){
+        setStreak(s=>{
+          const ns=s+1;
+          streakRef.current = ns; // sync ref eagerly
+          setBest(prev => {
+            const nb = Math.max(prev, ns);
+            bestRef.current = nb; // sync ref eagerly
+            return nb;
+          });
+          // 每答对5题给1粮食
+          if(ns % 5 === 0) addPetFood(1);
+          if(challengeMode){
+            const mult=Math.min(ns,5);
+            setChallengeScore(sc=>sc+10*mult);
+          }
+          return ns;
+        });
+      } else {
+        setStreak(0);
+        streakRef.current = 0; // sync ref eagerly
+        if(challengeMode) setChallengeScore(sc=>Math.max(0,sc-5));
+      }
+      setTotal(t=>{
+        const nt = t+1;
+        totalRef.current = nt; // sync ref eagerly
+        return nt;
+      });
+      // 今日答题计数（所有模式）
+      try {
+        const _todayKey = "vm_daily_answered_" + new Date().toDateString();
+        const _cnt = parseInt(localStorage.getItem(_todayKey)||"0") + 1;
+        localStorage.setItem(_todayKey, _cnt);
+      } catch(e){}
+      return nr;
+    });
+  },[exs,idx,challengeMode]);
+
+  const goNext=useCallback(()=>{
+    setAnswered(false);
+    const isLastEx = idx+1 >= exs.length;
+    if(isLastEx && wrongQueue.length > 0 && !challengeMode){
+      // Append wrong exercises to the queue and continue
+      setExs(prev=>[...prev,...wrongQueue]);
+      setWrongQueue([]);
+      setIdx(i=>i+1);
+    } else if(isLastEx){
+      const nm=new Set(mastered);
+      const nowMastered = [];
+      daily.forEach(w=>{
+        const wr=res.filter(r=>r.word?.word===w.word&&!r.id?.includes("_retry"));
+        if(wr.length>0){
+          const correctRate=wr.filter(r=>r.correct).length/wr.length;
+          if(correctRate>=0.7){ nm.add(w.word); nowMastered.push(w.word); }
+        }
+      });
+      // Remove mastered words from wrong book
+      try {
+        const ww = JSON.parse(localStorage.getItem("vm_wrong_words")||"[]");
+        const updated = ww.filter(w=>!nowMastered.includes(w));
+        localStorage.setItem("vm_wrong_words", JSON.stringify(updated));
+      } catch(e){}
+      setMastered(nm);
+      const ratio = res.filter(r=>r.correct).length/res.length;
+      if(ratio>=0.7){setShowConfetti(true);setTimeout(()=>setShowConfetti(false),3000);}
+      playCelebrationSound();
+      if(challengeMode){ setChallengeFinalScore(challengeScore); setChallengeMode(false); }
+      setWrongQueue([]);
+      // 喂养积分：挑战赛+5，普通练习≥10题+2，短练习+1
+      if(challengeMode){ addPetFood(5); }
+      else if(exs.length >= 10){ addPetFood(2); }
+      else { addPetFood(1); }
+      // 立即保存进度（使用 ref 获取最新值，避免闭包过期）
+      skipNextAutoSave.current = true; // prevent auto-save from racing
+      const curUser = authUserRef.current;
+      if(curUser) {
+        const latestTotal = totalRef.current;
+        const latestBest = bestRef.current;
+        supabase.saveProgress(curUser.id, [...nm], latestTotal, latestBest, getPetFood())
+          .then(()=>console.log("[saveProgress immediate] OK", {total: latestTotal, best: latestBest}))
+          .catch(e=>console.log("[saveProgress immediate] error", e));
+      }
+      setScreen("results");
+    } else {
+      setIdx(i=>i+1);
+    }
+  },[idx,exs,wrongQueue,res,mastered,daily,challengeMode]);
+
+  const prog=exs.length>0?Math.round(((idx+1)/exs.length)*100):0;const correct=res.filter(r=>r.correct).length;
+
+
+  // ── 时态详细解释 ──
+  const getTenseExplain = (tip) => {
+    if(!tip) return null;
+    const rules = {
+      "一般现在时": "结构：动词原形（第三人称单数加 -s）\n用法：习惯/规律/客观事实/状态",
+      "现在进行时": "结构：am/is/are + 动词-ing\n用法：此刻正在进行的动作，或近期变化趋势",
+      "现在完成时": "结构：have/has + 过去分词\n用法：过去动作对现在有影响，或从过去持续到现在",
+      "现在完成进行时": "结构：have/has + been + 动词-ing\n用法：从过去开始、一直持续到现在的动作（强调持续性）",
+      "一般过去时": "结构：动词过去式\n用法：过去某个具体时间发生的动作或状态",
+      "过去进行时": "结构：was/were + 动词-ing\n用法：过去某时刻正在进行的动作，常被另一动作打断",
+      "过去完成时": "结构：had + 过去分词\n用法：过去某时间点之前已经完成的动作（过去的过去）",
+      "将来时": "结构：will + 动词原形\n用法：将来会发生的动作或预测",
+      "将来完成时": "结构：will have + 过去分词\n用法：将来某时间点之前会完成的动作",
+      "be going to": "结构：am/is/are going to + 动词原形\n用法：有计划/有迹象表明将要发生的事",
+    };
+    for(const [k,v] of Object.entries(rules)){
+      if(tip.includes(k)) return v;
+    }
+    return null;
+  };
+  // ── Auth gate ──
+  if (!authReady) return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(160deg,#fff5f0,#f5f0ff)"}}>
+      <div style={{textAlign:"center"}}><div style={{fontSize:48,marginBottom:12}}>📚</div><div style={{fontSize:16,color:"#8A8494",fontWeight:600}}>Loading...</div></div>
+    </div>
+  );
+  if (!authUser) return <AuthScreen onLogin={(user)=>{ setAuthUser(user); setAuthReady(true); if(user?.email==='annieyanranzhou@gmail.com') setIsTeacher(true); }}/>;
+
+  // Teacher dashboard overlay
+  if (teacherScreen === "dashboard") return (
+    <TeacherDashboard onClose={()=>setTeacherScreen(null)} authUser={authUser}/>
+  );
+  const filtered=VOCAB.filter(w=>{const ms=w.word.toLowerCase().includes(search.toLowerCase())||w.en.toLowerCase().includes(search.toLowerCase())||w.cn.includes(search);return ms&&(lvFilter==="all"||w.lv===lvFilter)&&(posFilter==="all"||w.pos===posFilter);});
+
+  return (
+    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Nunito','Segoe UI',sans-serif",color:C.text,position:"relative"}}>
+      <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+      <style>{`@keyframes cfall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:0}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}*{box-sizing:border-box}button:active{transform:scale(0.96)!important}::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:rgba(255,107,53,0.2);border-radius:8px}#cal-strip::-webkit-scrollbar{display:none}#cal-strip{-ms-overflow-style:none;scrollbar-width:none}`}</style>
+      <Confetti active={showConfetti}/>
+      <div style={{position:"fixed",top:-80,right:-80,width:300,height:300,borderRadius:"50%",background:"rgba(255,107,53,0.07)",filter:"blur(60px)",pointerEvents:"none"}}/>
+      <div style={{position:"fixed",bottom:-60,left:-60,width:250,height:250,borderRadius:"50%",background:"rgba(123,45,142,0.07)",filter:"blur(60px)",pointerEvents:"none"}}/>
+
+      {/* ── BOTTOM NAV (hidden during play/results) ── */}
+      {showStudentPanel && (
+        <StudentPanel
+          onClose={()=>setShowStudentPanel(false)}
+          onStartCustomQuiz={(words)=>{
+            const vocabWords = words.filter(w=>w.word&&(w.en||w.cn));
+            if(vocabWords.length>0) startPractice(vocabWords);
+          }}
+        />
+      )}
+      {showMovieRead&&(
+        <div style={{position:"fixed",inset:0,zIndex:200,background:C.bg,overflowY:"auto"}}>
+          <MovieReadScreen onClose={()=>setShowMovieRead(false)}/>
+        </div>
+      )}
+      {showGame&&(
+        <GameMode supabase={supabase} authUser={authUser} onClose={()=>setShowGame(false)}
+          onProgress={({answered, correct})=>{
+            // Sync game mode results to main progress
+            setTotal(t=>{ const nt=t+answered; totalRef.current=nt; return nt; });
+            setBest(prev=>{ const nb=Math.max(prev,correct); bestRef.current=nb; return nb; });
+            userDidActivity.current=true;
+            // Update daily answered count
+            try {
+              const _todayKey = "vm_daily_answered_" + new Date().toDateString();
+              const _cnt = parseInt(localStorage.getItem(_todayKey)||"0") + answered;
+              localStorage.setItem(_todayKey, _cnt);
+            } catch(e){}
+            const curUser=authUserRef.current;
+            if(curUser){
+              setTimeout(()=>{
+                supabase.saveProgress(curUser.id,[...mastered],totalRef.current,bestRef.current,getPetFood())
+                  .then(()=>console.log("[saveProgress game] OK",{total:totalRef.current,best:bestRef.current}))
+                  .catch(e=>console.log("[saveProgress game] error",e));
+              },100);
+            }
+          }}/>
+      )}
+      {(showGame||screen!=="play"&&screen!=="results")&&(
+        <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.nav,borderTop:"none",display:"flex",zIndex:100,boxShadow:"0 -4px 20px rgba(0,0,0,0.06)"}}>
+          {[
+            {id:"today",icon:"🏠",label:"今日"},
+            {id:"words",icon:"📖",label:"词库"},
+            {id:"game",icon:"🎮",label:"闯关"},
+            {id:"drills",icon:"✏️",label:"专项"},
+            {id:"progress",icon:"📊",label:"进度"},
+            {id:"settings",icon:"⚙️",label:"设置"},
+          ].map(t=>(
+            <button key={t.id} onClick={()=>{if(t.id==="game"){setShowGame(true);return;}setShowGame(false);setTab(t.id);if(screen!=="home")setScreen("home");}} style={{flex:1,padding:"10px 0 8px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+              <span style={{fontSize:20}}>{t.icon}</span>
+              <span style={{fontSize:11,fontWeight:700,color:(t.id==="game"?showGame:(!showGame&&tab===t.id))?"#4DB6FF":"#5A7A9A"}}>{t.label}</span>
+              {(t.id==="game"?showGame:(!showGame&&tab===t.id))&&<div style={{width:20,height:3,borderRadius:2,background:"#4DB6FF",marginTop:1}}/>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {screen==="home"&&tab==="today"&&(
+        <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
+          <div style={{textAlign:"center",marginBottom:36,animation:"slideUp 0.6s ease"}}>
+            <div style={{fontSize:48,marginBottom:8,animation:"float 3s ease-in-out infinite"}}>📚</div>
+            <div style={{fontSize:11,letterSpacing:5,textTransform:"uppercase",color:"#4DB6FF",fontWeight:800,marginBottom:8}}>高考 English</div>
+            <h1 style={{fontSize:40,fontWeight:900,lineHeight:1.1,margin:0}}>Vocab<span style={{background:C.grad1,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Master</span></h1>
+            {authUser&&(
+              <div style={{marginTop:12,display:"flex",alignItems:"center",justifyContent:"center",gap:8,flexWrap:"wrap"}}>
+                <span style={{fontSize:12,color:C.tm,fontWeight:700}}>
+                  {isTeacher?"👩‍🏫":"👤"} {profile?.username||authUser.email?.split("@")[0]}
+                </span>
+                {isTeacher&&(
+                  <button onClick={()=>setTeacherScreen("dashboard")}
+                    style={{fontSize:11,color:"#fff",background:C.secondary,border:"none",borderRadius:8,padding:"4px 12px",cursor:"pointer",fontWeight:800}}>
+                    🏫 教师端
+                  </button>
+                )}
+                <button onClick={()=>{supabase.auth.signOut();setAuthUser(null);setProfile(null);setIsTeacher(false);setMastered(new Set());setTotal(0);setBest(0);setStreak(0);}}
+                  style={{fontSize:11,color:C.tl,background:"transparent",border:"1px solid #E8EEFF",borderRadius:8,padding:"3px 8px",cursor:"pointer"}}>
+                  退出
+                </button>
+              </div>
+            )}
+          </div>
+          {/* ── Stats Row ── */}
+          {(()=>{
+            const basic = VOCAB.filter(w=>w.lv==="basic"||w.lv==="基础");
+            const mid = VOCAB.filter(w=>w.lv==="intermediate"||w.lv==="中级");
+            const adv = VOCAB.filter(w=>w.lv==="advanced"||w.lv==="高级");
+            const mastBasic = basic.filter(w=>mastered.has(w.word)).length;
+            const mastMid = mid.filter(w=>mastered.has(w.word)).length;
+            const mastAdv = adv.filter(w=>mastered.has(w.word)).length;
+            const todayStr = new Date().toDateString();
+            const lastDate = localStorage.getItem("vm_last_date");
+            const streakDays = parseInt(localStorage.getItem("vm_streak_days")||"0");
+            if(lastDate !== todayStr && mastered.size > 0){
+              const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
+              const newDays = lastDate===yesterday.toDateString() ? streakDays+1 : 1;
+              localStorage.setItem("vm_streak_days", newDays);
+              localStorage.setItem("vm_last_date", todayStr);
+            }
+            const days = parseInt(localStorage.getItem("vm_streak_days")||"1");
+            const todayAnswered = (()=>{try{return parseInt(localStorage.getItem("vm_daily_answered_"+new Date().toDateString())||"0")}catch(e){return 0}})();
+            return (
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:16,animation:"slideUp 0.7s ease"}}>
+                {[
+                  {icon:"🗓️",val:days,label:"连续学习",sub:"天",c:C.secondary},
+                  {icon:"⚡",val:todayAnswered,label:"今日答题",sub:"题",c:C.accent},
+                  {icon:"⭐",val:mastered.size,label:"已掌握",sub:"词",c:C.gold},
+                ].map((s,i)=>(
+                  <div key={i} style={{background:C.card,borderRadius:18,padding:"16px 10px",textAlign:"center",boxShadow:"0 4px 16px rgba(0,0,0,0.04)",border:`2px solid ${s.c}18`}}>
+                    <div style={{fontSize:20}}>{s.icon}</div>
+                    <div style={{fontSize:26,fontWeight:900,color:s.c}}>{s.val}<span style={{fontSize:12,fontWeight:700,color:C.tl,marginLeft:2}}>{s.sub}</span></div>
+                    <div style={{fontSize:11,color:C.tl,fontWeight:600}}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+          {/* Calendar date picker */}
+          {(()=>{
+            const today=new Date(); today.setHours(0,0,0,0);
+            const sel=new Date(calendarDate); sel.setHours(0,0,0,0);
+            const isToday=sel.getTime()===today.getTime();
+            // Build last 14 days
+            const days=Array.from({length:14},(_,i)=>{const d=new Date(today);d.setDate(today.getDate()-13+i);return d;});
+            return (
+              <div style={{marginBottom:20}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <div style={{fontSize:13,fontWeight:800,color:C.tm}}>📅 {isToday?"今日词单":sel.toLocaleDateString("zh-CN",{month:"long",day:"numeric"})+" 词单"}</div>
+                  {!isToday&&<button onClick={()=>setCalendarDate(new Date())} style={{fontSize:12,fontWeight:700,color:C.primary,background:`${C.primary}10`,border:`1.5px solid ${C.primary}33`,padding:"4px 12px",borderRadius:20,cursor:"pointer"}}>回到今天</button>}
+                </div>
+                {/* Day strip - auto scroll to today, supports mouse drag + touch swipe */}
+                <div id="cal-strip" style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:6,paddingLeft:4,paddingRight:4,marginLeft:-4,marginRight:-4,marginBottom:14,scrollbarWidth:"none",WebkitOverflowScrolling:"touch",cursor:"grab",userSelect:"none"}}
+                  ref={el=>{
+                    if(!el) return;
+                    const today=el.querySelector("[data-today='1']"); if(today) today.scrollIntoView({block:"nearest",inline:"center"});
+                    // Mouse drag scroll for desktop
+                    if(!el._dragBound){
+                      el._dragBound=true;
+                      let isDown=false, startX, scrollL;
+                      el.addEventListener("mousedown",e=>{isDown=true;el.style.cursor="grabbing";startX=e.pageX-el.offsetLeft;scrollL=el.scrollLeft;e.preventDefault();});
+                      el.addEventListener("mouseleave",()=>{isDown=false;el.style.cursor="grab";});
+                      el.addEventListener("mouseup",()=>{isDown=false;el.style.cursor="grab";});
+                      el.addEventListener("mousemove",e=>{if(!isDown)return;const x=e.pageX-el.offsetLeft;el.scrollLeft=scrollL-(x-startX);});
+                    }
+                  }}>
+                  {days.map((d,i)=>{
+                    const isSel=d.toDateString()===calendarDate.toDateString();
+                    const isTd=d.toDateString()===today.toDateString();
+                    const isPast=d<today;
+                    const dayNames=["日","一","二","三","四","五","六"];
+                    return (
+                      <button key={i} data-today={isTd?"1":"0"} onClick={()=>setCalendarDate(new Date(d))} style={{flexShrink:0,width:48,minWidth:48,padding:"8px 0",borderRadius:12,border:`2px solid ${isSel?C.primary:isTd?C.primary+"44":"#E8EEFF"}`,background:isSel?C.grad1:isTd?`${C.primary}08`:"transparent",color:isSel?"#fff":isTd?C.primary:isPast?C.tm:C.tl,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                        <span style={{fontSize:10,fontWeight:600}}>{dayNames[d.getDay()]}</span>
+                        <span style={{fontSize:15,fontWeight:900}}>{d.getDate()}</span>
+                        {isTd&&!isSel&&<div style={{width:5,height:5,borderRadius:"50%",background:C.primary}}/>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* ── 练习按钮 + 错题区 ── */}
+                {(()=>{
+                  const wrongWords = JSON.parse(localStorage.getItem("vm_wrong_words")||"[]");
+                  const wrongVocab = VOCAB.filter(w=>wrongWords.includes(w.word));
+                  const startWrongBook = () => { if(wrongVocab.length>0) startPractice(wrongVocab.slice(0,10)); };
+                  const wrongListen = JSON.parse(localStorage.getItem("vm_wrong_listen")||"[]");
+                  const wrongListenVocab = VOCAB.filter(w=>wrongListen.includes(w.word));
+                  const startListenWrong = () => { if(wrongListenVocab.length>0){ startDrill("listening"); } };
+                  const wrongDrills = JSON.parse(localStorage.getItem("vm_wrong_drills")||"[]");
+                  return (
+                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+                      <button onClick={()=>startPractice(todayWords)} style={{background:C.grad1,border:"none",color:"#fff",padding:"15px",borderRadius:16,cursor:"pointer",fontSize:16,fontWeight:800,boxShadow:"0 4px 16px rgba(77,182,255,0.3)"}}>
+                        {calendarDate.toDateString()===new Date().toDateString()?"▶ 开始今日练习":"▶ 补学这天的词"}
+                      </button>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                        <button onClick={startWrongBook}
+                          style={{background:wrongVocab.length>0?"linear-gradient(135deg,#FF6B6B,#FF8C5A)":C.card,
+                            border:wrongVocab.length>0?"none":`1px solid ${C.primary}22`,
+                            color:wrongVocab.length>0?"#fff":C.tl,
+                            padding:"12px 8px",borderRadius:14,cursor:wrongVocab.length>0?"pointer":"default",
+                            fontSize:13,fontWeight:800}}>
+                          📝 错题斩
+                          <div style={{fontSize:10,fontWeight:600,opacity:0.85,marginTop:2}}>
+                            {wrongVocab.length>0?`${wrongVocab.length}词待复习`:"暂无错题"}
+                          </div>
+                        </button>
+                        <button onClick={startChallenge}
+                          style={{background:C.grad2,border:"none",color:"#fff",
+                            padding:"12px 8px",borderRadius:14,cursor:"pointer",fontSize:13,fontWeight:800}}>
+                          ⚡ 挑战赛
+                          <div style={{fontSize:10,fontWeight:600,opacity:0.85,marginTop:2}}>20题 · 全词库</div>
+                        </button>
+                      </div>
+                      {/* P1b: 听说错题 + 语法错题入口 */}
+                      {(wrongListen.length>0 || wrongDrills.length>0) && (
+                        <div style={{display:"grid",gridTemplateColumns:wrongListen.length>0&&wrongDrills.length>0?"1fr 1fr":"1fr",gap:8}}>
+                          {wrongListen.length>0 && (
+                            <button onClick={startListenWrong}
+                              style={{background:"linear-gradient(135deg,#00B4D8,#7B61FF)",border:"none",color:"#fff",
+                                padding:"12px 8px",borderRadius:14,cursor:"pointer",fontSize:13,fontWeight:800}}>
+                              🎧 听说错题
+                              <div style={{fontSize:10,fontWeight:600,opacity:0.85,marginTop:2}}>
+                                {wrongListen.length}词待复习
+                              </div>
+                            </button>
+                          )}
+                          {wrongDrills.length>0 && (
+                            <button onClick={()=>{setTab("drills");setDrillType(null);}}
+                              style={{background:"linear-gradient(135deg,#9B6FFF,#FF6B6B)",border:"none",color:"#fff",
+                                padding:"12px 8px",borderRadius:14,cursor:"pointer",fontSize:13,fontWeight:800}}>
+                              ✏️ 语法错题
+                              <div style={{fontSize:10,fontWeight:600,opacity:0.85,marginTop:2}}>
+                                {wrongDrills.length}题待回顾
+                              </div>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                {/* Word cards for selected date */}
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {todayWords.map((w,i)=>{
+                    const done=mastered.has(w.word);
+                    return (
+                      <div key={w.word} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderRadius:16,background:done?`${C.success}10`:C.card,border:`1.5px solid ${done?C.success+"44":"#E8EEFF"}`,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+                        <div style={{width:32,height:32,borderRadius:10,background:done?`${C.success}20`:["#D8EEFF","#EAE4FF","#C8F5E0","#FFF4D4","#C8F5E0","#FFE8E8","#D8EEFF","#EAE4FF"][i],display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:done?C.success:["#4DB6FF","#9B6FFF","#3CC87A","#F8C740","#3CC87A","#FF6B6B","#4DB6FF","#9B6FFF"][i],flexShrink:0}}>{done?"✓":(i+1)}</div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:15,fontWeight:800,color:C.text}}>{w.word}</div>
+                          <div style={{fontSize:12,color:C.tl,fontWeight:600}}>{w.cn}</div>
+                        </div>
+                        <Speak text={w.word} size={28} color={done?C.success:C.primary}/>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ══ 经典台词跟读入口 ══ */}
+          <div onClick={()=>setShowMovieRead(true)}
+            style={{marginBottom:20,cursor:"pointer",background:"linear-gradient(135deg,#1A1A2E,#2D1B69)",borderRadius:20,padding:"20px",display:"flex",alignItems:"center",gap:16,boxShadow:"0 4px 20px rgba(45,27,105,0.2)",transition:"transform 0.2s"}}
+            onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+            onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
+            <div style={{fontSize:36}}>🎬</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:15,fontWeight:800,color:"#fff",marginBottom:4}}>经典台词跟读</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>🦁 狮子王 · 🧊 冰雪奇缘 · 🧙 哈利波特</div>
+            </div>
+            <div style={{fontSize:20,color:"rgba(255,255,255,0.4)"}}>›</div>
+          </div>
+        </div>
+      )}
+
+      {screen==="play"&&exs[idx]&&(
+        <div style={{padding:"20px 20px",maxWidth:500,margin:"0 auto",position:"relative",zIndex:1}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+            <button onClick={()=>{window.speechSynthesis?.cancel();setScreen("home");}} style={{background:C.card,border:"2px solid #ffd4d4",color:C.error,padding:"8px 16px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>✕</button>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <button onClick={()=>{setAnswered(false);setIdx(i=>Math.max(0,i-1));}} disabled={idx===0} style={{background:idx===0?"transparent":C.card,border:`2px solid ${idx===0?"transparent":"#e8e4f0"}`,color:idx===0?"#ccc":C.secondary,padding:"6px 12px",borderRadius:10,cursor:idx===0?"default":"pointer",fontSize:13,fontWeight:700,opacity:idx===0?0.3:1}}>‹ 上一题</button>
+              <div style={{fontSize:14,fontWeight:700,color:C.tl}}>{idx+1}/{exs.length}</div>
+              <button onClick={()=>{if(idx+1<exs.length){setAnswered(false);setIdx(i=>i+1);}}} disabled={idx+1>=exs.length} style={{background:idx+1>=exs.length?"transparent":C.card,border:`2px solid ${idx+1>=exs.length?"transparent":"#e8e4f0"}`,color:idx+1>=exs.length?"#ccc":C.secondary,padding:"6px 12px",borderRadius:10,cursor:idx+1>=exs.length?"default":"pointer",fontSize:13,fontWeight:700,opacity:idx+1>=exs.length?0.3:1}}>下一题 ›</button>
+            </div>
+            {challengeMode
+              ? <div style={{display:"flex",flexDirection:"column",alignItems:"center",background:C.grad2,padding:"4px 12px",borderRadius:20,minWidth:70}}>
+                  <div style={{fontSize:16,fontWeight:900,color:"#fff"}}>⚡ {challengeScore}</div>
+                  {streak>=2&&<div style={{fontSize:10,color:"rgba(255,255,255,0.9)",fontWeight:700}}>×{Math.min(streak,5)} 倍率!</div>}
+                </div>
+              : streak>0&&<div style={{fontSize:14,fontWeight:800,color:"#F8C740",background:"rgba(248,199,64,0.1)",padding:"4px 12px",borderRadius:20}}>🔥{streak}</div>
+            }
+          </div>
+          <div style={{height:8,background:"rgba(255,107,53,0.08)",borderRadius:8,marginBottom:wrongQueue.length>0?6:18,overflow:"hidden"}}><div style={{height:"100%",width:`${prog}%`,background:"linear-gradient(90deg,#4DB6FF,#3CC87A)",borderRadius:8,transition:"width 0.4s ease"}}/></div>
+          {wrongQueue.length>0&&!challengeMode&&(
+            <div style={{fontSize:11,color:C.error,fontWeight:700,textAlign:"center",marginBottom:14,background:`${C.error}10`,borderRadius:8,padding:"4px 10px"}}>
+              🔁 {wrongQueue.length} 题答错，做完后会重复练习
+            </div>
+          )}
+          <div style={{textAlign:"center",marginBottom:16}}>
+            {challengeMode&&<div style={{fontSize:11,color:"#FF6B35",fontWeight:700,marginBottom:4}}>⚡ 挑战赛 · 第{idx+1}/20题</div>}
+            <span style={{display:"inline-block",padding:"5px 14px",borderRadius:20,background:C.card,boxShadow:"0 2px 8px rgba(0,0,0,0.06)",fontSize:12,fontWeight:700,color:C.tm}}>
+              {exs[idx].type==="learn"&&"📖 Learn"}{exs[idx].type==="mc"&&"🎯 Choice"}{exs[idx].type==="listen_pick"&&"👂 Listen"}{exs[idx].type==="listen_fill"&&"👂 Fill"}{exs[idx].type==="dragfill"&&"🧩 Drag Fill"}{exs[idx].type==="reverse"&&"🔄 Reverse"}{exs[idx].type==="wordfamily"&&"🔤 Word Family"}{exs[idx].type==="synant"&&"🔗 Synonym"}{exs[idx].type==="errorspot"&&"🔍 Error Spot"}{exs[idx].type==="phrasecomplete"&&"💬 Phrase"}{exs[idx].type==="match"&&"🔗 Match"}{exs[idx].type==="dialogue"&&"💬 Dialogue"}{exs[idx].type==="sentbuild"&&"🔤 Build"}{exs[idx].type==="verbforms"&&"🔀 Verb Forms"}{exs[idx].type==="follow_read"&&"🎙️ Follow Read"}
+            </span>
+          </div>
+          <div key={exs[idx].id} style={{display:"flex",justifyContent:"center",animation:"slideUp 0.3s ease"}}>
+            {exs[idx].type==="learn"&&<LearnCard exercise={exs[idx]} onDone={handleDone}/>}
+            {exs[idx].type==="listen_pick"&&<ListenPickQ key={idx} exercise={exs[idx]} onDone={handleDone}/>}
+            {exs[idx].type==="listen_fill"&&<ListenFillQ key={idx} exercise={exs[idx]} onDone={handleDone}/>}
+            {exs[idx].type==="listen_def"&&<ListenDefQ key={idx} exercise={exs[idx]} onDone={handleDone}/>}
+            {exs[idx].type==="follow_read"&&<FollowReadQ key={idx} exercise={exs[idx]} onDone={handleDone}/>}
+            {(exs[idx].type==="mc"||exs[idx].type==="reverse")&&<ChoiceQ exercise={exs[idx]} onDone={handleDone}/>}
+            {exs[idx].type==="dragfill"&&<DragFillQ exercise={exs[idx]} onDone={handleDone}/>}
+            {exs[idx].type==="wordfamily"&&<WordFamilyQ exercise={exs[idx]} onDone={handleDone}/>}
+            {exs[idx].type==="synant"&&<SynAntQ exercise={exs[idx]} onDone={handleDone}/>}
+            {exs[idx].type==="errorspot"&&<ErrorSpotQ exercise={exs[idx]} onDone={handleDone}/>}
+            {exs[idx].type==="phrasecomplete"&&<PhraseCompleteQ exercise={exs[idx]} onDone={handleDone}/>}
+            {exs[idx].type==="match"&&<MatchQ exercise={exs[idx]} onDone={handleDone}/>}
+            {exs[idx].type==="dialogue"&&<DialogueQ exercise={exs[idx]} onDone={handleDone}/>}
+            {exs[idx].type==="sentbuild"&&<SentBuildQ exercise={exs[idx]} onDone={handleDone}/>}
+            {exs[idx].type==="verbforms"&&<VerbFormsQ exercise={exs[idx]} onDone={handleDone}/>}
+          </div>
+          {/* Next button — appears after student answers */}
+          {answered&&(
+            <div style={{marginTop:20,animation:"slideUp 0.3s ease"}}>
+              <button onClick={goNext} style={{width:"100%",background:C.grad1,border:"none",color:"#fff",padding:"16px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:900,boxShadow:`0 8px 28px rgba(255,107,53,0.3)`}}>
+                {idx+1>=exs.length?"查看结果 →":"下一题 →"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {screen==="results"&&(
+        <div style={{padding:"36px 20px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1,textAlign:"center"}}>
+          {/* Challenge results header */}
+          {res.length>0&&res[0]?.challengeRound
+            ? null
+            : null
+          }
+          <div style={{fontSize:72,marginBottom:12,animation:"float 2s ease-in-out infinite"}}>
+            {challengeScore>=150?"🏆":challengeScore>=100?"🥈":challengeScore>=50?"🥉":correct/res.length>=0.8?"🏆":correct/res.length>=0.5?"💪":"📖"}
+          </div>
+          {res.length===20&&challengeFinalScore>0&&(
+            <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",background:C.grad2,borderRadius:20,padding:"10px 24px",marginBottom:16,boxShadow:"0 6px 20px rgba(255,107,53,0.3)"}}>
+              <div style={{fontSize:32,fontWeight:900,color:"#fff"}}>⚡ {challengeFinalScore}</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.85)",fontWeight:700}}>挑战赛得分</div>
+            </div>
+          )}
+          <h2 style={{fontSize:32,fontWeight:900,margin:"0 0 6px"}}>{correct/res.length>=0.8?"太棒了!":correct/res.length>=0.5?"继续加油!":"再接再厉!"}</h2>
+          <p style={{color:C.tl,fontSize:15,marginBottom:24}}>{correct/res.length>=0.8?"Outstanding!":correct/res.length>=0.5?"Keep going!":"Practice more!"}</p>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:24}}>
+            <div style={{width:120,height:120,borderRadius:"50%",background:`conic-gradient(#3CC87A ${correct/res.length*360}deg, #E8FFF4 0deg)`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 32px rgba(45,198,83,0.15)"}}>
+              <div style={{width:92,height:92,borderRadius:"50%",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column"}}><div style={{fontSize:28,fontWeight:900,color:C.success}}>{correct}</div><div style={{fontSize:11,color:C.tl}}>/{res.length}</div></div>
+            </div>
+          </div>
+          {/* Session summary - only show for non-challenge */}
+          {!(res.length===20&&challengeFinalScore>0)&&(()=>{
+            const nonRetry = res.filter(r=>!r.id?.includes("_retry"));
+            const newLearned = nonRetry.filter(r=>r.correct).length;
+            const retried = res.filter(r=>r.id?.includes("_retry")&&r.correct).length;
+            const maxStreak = (() => {
+              let max=0,cur=0;
+              nonRetry.forEach(r=>{ if(r.correct){cur++;max=Math.max(max,cur);}else cur=0; });
+              return max;
+            })();
+            const confusedPairs = nonRetry.filter(r=>!r.correct).length;
+            const summaryItems = [
+              {icon:"✨",label:"今天新学",val:`${newLearned} 词`,c:C.success},
+              {icon:"🔁",label:"复习命中",val:`${retried} 词`,c:C.secondary},
+              {icon:"⚡",label:"最高连对",val:`${maxStreak} 个`,c:C.gold},
+              {icon:"📌",label:"需要加强",val:`${confusedPairs} 词`,c:C.error},
+            ];
+            return (
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+                {summaryItems.map((item,i)=>(
+                  <div key={i} style={{background:C.card,borderRadius:16,padding:"14px 12px",textAlign:"center",border:`2px solid ${item.c}18`,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+                    <div style={{fontSize:22}}>{item.icon}</div>
+                    <div style={{fontSize:20,fontWeight:900,color:item.c,marginTop:2}}>{item.val}</div>
+                    <div style={{fontSize:11,color:C.tl,fontWeight:600,marginTop:2}}>{item.label}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24,textAlign:"left"}}>
+            {daily.map(w=>{const wr=res.filter(r=>r.word?.word===w.word);const ok=wr.length>0&&wr.every(r=>r.correct);
+              return <div key={w.word} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderRadius:14,background:ok?`${C.success}08`:C.card,border:`1.5px solid ${ok?C.success+"33":"#f0eaf5"}`,boxShadow:"0 2px 8px rgba(0,0,0,0.03)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
+                  <Speak text={w.word} size={28} color={ok?C.success:C.gold}/>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:15}}>{w.word}</div>
+                    <div style={{fontSize:12,color:C.tl}}>{w.cn}</div>
+                  </div>
+                </div>
+                {ok
+                  ? <span style={{fontSize:18}}>✅</span>
+                  : <button onClick={()=>startWordPractice(w)} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:10,background:C.grad1,border:"none",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                      🔁 再练
+                    </button>
+                }
+              </div>;})}
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {res.length===20&&challengeFinalScore>0
+              ? <button onClick={startChallenge} style={{background:C.grad2,border:"none",color:"#fff",padding:"16px 32px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:800,boxShadow:"0 8px 28px rgba(255,107,53,0.27)"}}>⚡ 再战一局 · Again!</button>
+              : <button onClick={()=>startPractice()} style={{background:C.grad1,border:"none",color:"#fff",padding:"16px 32px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:800,boxShadow:"0 8px 28px rgba(255,107,53,0.27)"}}>再练 · Again!</button>
+            }
+            <button onClick={()=>setScreen("home")} style={{background:C.card,border:"2px solid #e8e4f0",color:C.tm,padding:"14px 32px",borderRadius:18,cursor:"pointer",fontSize:15,fontWeight:700}}>首页 · Home</button>
+          </div>
+        </div>
+      )}
+
+      {screen==="home"&&tab==="words"&&(
+        <div style={{padding:"24px 20px 100px",maxWidth:500,margin:"0 auto",position:"relative",zIndex:1}}>
+          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:22}}>
+            <h2 style={{fontSize:22,fontWeight:900,margin:0}}>📖 词汇表 · Word Bank</h2>
+          </div>
+          <div style={{display:"flex",gap:8,marginBottom:10}}>
+            <input type="text" placeholder="搜索单词..." value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1,background:C.card,border:"2px solid #ffe0cc",color:C.text,padding:"10px 14px",borderRadius:14,fontSize:15,outline:"none",fontWeight:600}}/>
+          </div>
+          <div style={{display:"flex",gap:8,marginBottom:16}}>
+            <select value={posFilter} onChange={e=>setPosFilter(e.target.value)} style={{flex:1,background:C.card,border:"2px solid #D8EEFF",color:C.text,padding:"10px 12px",borderRadius:14,fontSize:13,outline:"none",cursor:"pointer",fontWeight:700}}>
+              <option value="all">全部词性</option>
+              <option value="n">名词 noun</option>
+              <option value="v">动词 verb</option>
+              <option value="adj">形容词 adj</option>
+              <option value="adv">副词 adv</option>
+            </select>
+            <select value={lvFilter} onChange={e=>setLvFilter(e.target.value)} style={{flex:1,background:C.card,border:"2px solid #D8EEFF",color:C.text,padding:"10px 12px",borderRadius:14,fontSize:13,outline:"none",cursor:"pointer",fontWeight:700}}>
+              <option value="all">全部难度</option><option value="basic">基础</option><option value="intermediate">中级</option><option value="advanced">高级</option>
+            </select>
+          </div>
+          <div style={{fontSize:13,color:C.tl,marginBottom:14,fontWeight:600}}>{filtered.length} words</div>
+          <div style={{display:"flex",flexDirection:"column",gap:0,paddingBottom:40}}>
+            {filtered.map((w,wi)=>{
+              const open=expanded===w.word;
+              const isAdv=w.lv==="advanced";
+              const isInt=w.lv==="intermediate";
+              const badgeColor=isAdv?"#7B2D8E":isInt?"#00B4D8":"#2DC653";
+              const badgeText=isAdv?"高级":isInt?"中级":"基础";
+              return (
+                <div key={w.word}>
+                  {/* Word row */}
+                  <div
+                    onClick={()=>{const nowOpen=expanded===w.word;setExpanded(nowOpen?null:w.word);if(!nowOpen)fetchWordImage(w.word);}}
+                    style={{
+                      padding:"14px 4px",
+                      cursor:"pointer",
+                      display:"flex",
+                      alignItems:"center",
+                      justifyContent:"space-between",
+                      borderBottom:"1px solid #eee8f0",
+                      backgroundColor:open?"#faf7ff":"transparent",
+                    }}
+                  >
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <button
+                        onClick={(e)=>{e.stopPropagation();speakNow(w.word);}}
+                        style={{
+                          width:30,height:30,borderRadius:"50%",border:"none",
+                          backgroundColor:"#f0ecf5",color:badgeColor,fontSize:14,
+                          cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+                        }}
+                      >🔈</button>
+                      <span style={{fontSize:17,fontWeight:700,color:"#1A1A2E"}}>{w.word}</span>
+                      {mastered.has(w.word)&&<span style={{fontSize:13}}>✅</span>}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:13,color:"#8A8494"}}>{w.cn}</span>
+                      <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,backgroundColor:isAdv?"#f3e8ff":isInt?"#e0f7fa":"#e8f5e9",color:badgeColor,fontWeight:700}}>{badgeText}</span>
+                      <span style={{fontSize:14,color:"#bbb"}}>{open?"▲":"▼"}</span>
+                    </div>
+                  </div>
+
+                  {/* Expanded details */}
+                  {open&&(
+                    <div style={{padding:"12px 8px 20px",backgroundColor:"#faf7ff",borderBottom:"2px solid #e0dae8"}}>
+                      <div style={{marginBottom:6}}>
+                        <span style={{color:"#7B2D8E",fontFamily:"'JetBrains Mono',monospace",fontSize:14}}>{w.ph}</span>
+                      </div>
+                      <div style={{color:"#1A1A2E",fontSize:15,lineHeight:1.7,marginBottom:6}}>
+                        {w.en}
+                        <button onClick={()=>speakNow(w.en,0.85)} style={{marginLeft:8,width:24,height:24,borderRadius:"50%",border:"none",backgroundColor:"#f3e8ff",color:"#7B2D8E",fontSize:11,cursor:"pointer",verticalAlign:"middle"}}>🔈</button>
+                      </div>
+                      <div style={{color:"#F4A236",fontSize:15,padding:"8px 12px",backgroundColor:"#FFF8E8",borderRadius:8,border:"1px solid #fde8c8",marginBottom:10,fontWeight:600}}>
+                        🇨🇳 {w.cn}
+                      </div>
+                      {/* 单词配图 */}
+                      {wordImages[w.word]&&wordImages[w.word]!=="none"&&(
+                        <div style={{marginBottom:12,borderRadius:12,overflow:"hidden",position:"relative"}}>
+                          <img src={wordImages[w.word]} alt={w.word}
+                            style={{width:"100%",height:140,objectFit:"cover",borderRadius:12,display:"block"}}/>
+                          <div style={{position:"absolute",bottom:6,right:8,fontSize:10,color:"rgba(255,255,255,0.7)"}}>📷 Unsplash</div>
+                        </div>
+                      )}
+                      {w.family&&(
+                        <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
+                          {Object.entries(w.family).map(([k,v])=>(
+                            <span key={k} style={{fontSize:11,padding:"2px 8px",borderRadius:8,backgroundColor:"#f3e8ff",color:"#7B2D8E",fontWeight:600}}>{k}: {v}</span>
+                          ))}
+                        </div>
+                      )}
+                      {(w.syn?.length>0||w.ant?.length>0)&&(
+                        <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
+                          {w.syn?.map(s=><span key={s} style={{fontSize:11,padding:"2px 8px",borderRadius:8,backgroundColor:"#e8f5e9",color:"#2DC653",fontWeight:600}}>≈ {s}</span>)}
+                          {w.ant?.map(a=><span key={a} style={{fontSize:11,padding:"2px 8px",borderRadius:8,backgroundColor:"#ffeef0",color:"#FF3860",fontWeight:600}}>≠ {a}</span>)}
+                        </div>
+                      )}
+                      {/* Phrases */}
+                      <div style={{marginBottom:10}}>
+                        <div style={{fontSize:12,fontWeight:700,color:"#8A8494",marginBottom:6,letterSpacing:1}}>PHRASES</div>
+                        {w.phrases.map((p,i)=>(
+                          <div key={i} style={{marginBottom:8,paddingLeft:8,borderLeft:"3px solid "+["#FF6B35","#00B4D8","#F4A236"][i%3]}}>
+                            <div style={{fontSize:14,fontWeight:700,color:"#1A1A2E"}}>
+                              {p.phrase}
+                              <button onClick={()=>speakNow(p.phrase)} style={{marginLeft:6,width:22,height:22,borderRadius:"50%",border:"none",backgroundColor:"#f5f0fa",color:"#7B2D8E",fontSize:10,cursor:"pointer",verticalAlign:"middle"}}>🔈</button>
+                            </div>
+                            <div style={{fontSize:13,color:"#5C5470",fontStyle:"italic",lineHeight:1.5}}>
+                              "{p.sent}"
+                              <button onClick={()=>speakNow(p.sent,0.82)} style={{marginLeft:6,width:20,height:20,borderRadius:"50%",border:"none",backgroundColor:"#f5f0fa",color:"#00B4D8",fontSize:9,cursor:"pointer",verticalAlign:"middle"}}>🔈</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{fontSize:13,color:"#5C5470",fontStyle:"italic",lineHeight:1.6}}>
+                        📝 "{w.ex}"
+                        <button onClick={()=>speakNow(w.ex,0.85)} style={{marginLeft:6,width:22,height:22,borderRadius:"50%",border:"none",backgroundColor:"#e0f7fa",color:"#00B4D8",fontSize:10,cursor:"pointer",verticalAlign:"middle"}}>🔈</button>
+                      </div>
+                      {/* Practice this word button */}
+                      <button
+                        onClick={(e)=>{e.stopPropagation(); startWordPractice(w);}}
+                        style={{marginTop:16,width:"100%",padding:"12px",borderRadius:14,
+                          background:C.grad1,
+                          border:"none",color:"#fff",fontSize:14,fontWeight:800,
+                          cursor:"pointer",boxShadow:"0 4px 16px rgba(255,107,53,0.25)",
+                          display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                        🎯 练习这个词 · Practice This Word
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {screen==="home"&&tab==="progress"&&(
+        <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
+          <div style={{textAlign:"center",marginBottom:28,animation:"slideUp 0.5s ease"}}>
+            <h2 style={{fontSize:26,fontWeight:900,margin:"0 0 4px"}}>📊 学习进度</h2>
+            <div style={{fontSize:13,color:C.tl}}>Your Learning Progress</div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
+            {[
+              {icon:"⭐",val:mastered.size,label:"已掌握",sub:"Mastered",c:C.gold},
+              {icon:"📖",val:VOCAB.length-mastered.size,label:"待学习",sub:"Remaining",c:C.primary},
+              {icon:"🔥",val:best,label:"最高连击",sub:"Best Streak",c:C.error},
+              {icon:"📝",val:total,label:"总答题数",sub:"Total Answered",c:C.secondary},
+            ].map((s,i)=>(
+              <div key={i} style={{background:C.card,borderRadius:20,padding:"20px 16px",textAlign:"center",boxShadow:"0 4px 16px rgba(0,0,0,0.05)",border:`2px solid ${s.c}18`}}>
+                <div style={{fontSize:28,marginBottom:4}}>{s.icon}</div>
+                <div style={{fontSize:32,fontWeight:900,color:s.c}}>{s.val}</div>
+                <div style={{fontSize:13,fontWeight:700,color:C.tm}}>{s.label}</div>
+                <div style={{fontSize:11,color:C.tl}}>{s.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* ══ 词汇收集 ══ */}
+          {(()=>{
+            const basic = VOCAB.filter(w=>w.lv==="basic"||w.lv==="基础");
+            const mid = VOCAB.filter(w=>w.lv==="intermediate"||w.lv==="中级");
+            const adv = VOCAB.filter(w=>w.lv==="advanced"||w.lv==="高级");
+            const mastBasic = basic.filter(w=>mastered.has(w.word)).length;
+            const mastMid = mid.filter(w=>mastered.has(w.word)).length;
+            const mastAdv = adv.filter(w=>mastered.has(w.word)).length;
+            return (
+              <div style={{background:C.card,borderRadius:20,padding:"16px 18px",marginBottom:20,boxShadow:"0 4px 16px rgba(0,0,0,0.04)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  <span style={{fontSize:13,fontWeight:800,color:C.tm}}>💎 词汇收集</span>
+                  <span style={{fontSize:13,fontWeight:900,color:C.primary}}>{mastered.size}<span style={{color:C.tl,fontWeight:600}}>/{VOCAB.length}</span></span>
+                </div>
+                {[
+                  {label:"🔴 高级词汇",total:adv.length,done:mastAdv,c:"#E74C3C"},
+                  {label:"🟡 中级词汇",total:mid.length,done:mastMid,c:C.gold},
+                  {label:"🟢 基础词汇",total:basic.length,done:mastBasic,c:C.success},
+                ].map((row,i)=>(
+                  <div key={i} style={{marginBottom:i<2?10:0}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                      <span style={{fontSize:12,fontWeight:700,color:C.tm}}>{row.label}</span>
+                      <span style={{fontSize:12,fontWeight:800,color:row.c}}>{row.done}<span style={{color:C.tl,fontWeight:600}}>/{row.total}</span></span>
+                    </div>
+                    <div style={{height:8,background:`${row.c}15`,borderRadius:6,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${row.total>0?row.done/row.total*100:0}%`,background:row.c,borderRadius:6,transition:"width 0.6s ease"}}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* ══ 领养宠物 ══ */}
+          <div style={{marginBottom:16,borderRadius:20,overflow:"hidden",border:"2px solid #e0e6ff",boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
+            <PetSystem />
+          </div>
+          {mastered.size>0&&(
+            <div style={{background:C.card,borderRadius:20,padding:"18px",boxShadow:"0 4px 16px rgba(0,0,0,0.04)"}}>
+              <div style={{fontSize:13,fontWeight:800,color:C.tm,marginBottom:12}}>✅ 已掌握词汇</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                {VOCAB.filter(w=>mastered.has(w.word)).map(w=>(
+                  <div key={w.word} style={{padding:"6px 14px",borderRadius:20,background:`${C.success}12`,border:`1.5px solid ${C.success}33`,fontSize:13,fontWeight:700,color:C.success}}>{w.word}</div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {screen==="home"&&tab==="settings"&&(
+        <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
+          <div style={{textAlign:"center",marginBottom:28}}>
+            <h2 style={{fontSize:26,fontWeight:900,margin:"0 0 4px"}}>⚙️ 设置</h2>
+            <div style={{fontSize:13,color:C.tl}}>Settings</div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{background:C.card,borderRadius:20,padding:"20px",boxShadow:"0 4px 16px rgba(0,0,0,0.04)"}}>
+              <div style={{fontSize:14,fontWeight:800,color:C.tm,marginBottom:4}}>📚 词汇大师</div>
+              <div style={{fontSize:13,color:C.tl}}>高考英语词汇学习 · 版本 1.0</div>
+            </div>
+
+            {/* 访问码激活 */}
+            <div style={{background:C.card,borderRadius:20,padding:"20px",boxShadow:"0 4px 16px rgba(0,0,0,0.04)"}}>
+              <div style={{fontSize:14,fontWeight:800,color:C.tm,marginBottom:12}}>🔐 访问码激活</div>
+              {userAccess&&new Date(userAccess.expires_at)>new Date()?(
+                <div style={{background:"#EDFAF3",borderRadius:14,padding:"14px 16px"}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#4CAF7D",marginBottom:4}}>✅ 已激活</div>
+                  <div style={{fontSize:12,color:"#5A7A9A"}}>类型：{userAccess.type==="year"?"一年":userAccess.type==="month"?"一个月":"永久"}</div>
+                  <div style={{fontSize:12,color:"#5A7A9A"}}>到期：{new Date(userAccess.expires_at).toLocaleDateString("zh-CN")}</div>
+                  <div style={{fontSize:11,color:"#4CAF7D",marginTop:4}}>剩余 {Math.ceil((new Date(userAccess.expires_at)-new Date())/86400000)} 天</div>
+                </div>
+              ):(
+                <div>
+                  {userAccess&&<div style={{fontSize:12,color:"#FF5A5A",marginBottom:8}}>⚠️ 访问码已过期，请续费</div>}
+                  <div style={{display:"flex",gap:8,marginBottom:8}}>
+                    <input value={accessCode} onChange={e=>setAccessCode(e.target.value.toUpperCase())}
+                      placeholder="输入8位访问码" maxLength={8}
+                      style={{flex:1,padding:"12px 14px",borderRadius:12,border:"2px solid #e0e8f0",fontSize:14,fontWeight:700,letterSpacing:2,outline:"none"}}/>
+                    <button onClick={async()=>{
+                      if(!accessCode.trim()){setAccessMsg({type:"err",text:"请输入访问码"});return;}
+                      setAccessLoading(true);setAccessMsg(null);
+                      try{
+                        const result=await supabase.activateCode(accessCode);
+                        setUserAccess({...result,activated_at:new Date().toISOString()});
+                        setAccessMsg({type:"ok",text:"🎉 激活成功！欢迎使用词汇大师"});
+                        setAccessCode("");
+                      }catch(e){setAccessMsg({type:"err",text:e.message||"激活失败"});}
+                      setAccessLoading(false);
+                    }} disabled={accessLoading}
+                    style={{padding:"12px 18px",borderRadius:12,background:"#4DB6FF",border:"none",color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    {accessLoading?"...":"激活"}</button>
+                  </div>
+                  {accessMsg&&<div style={{fontSize:13,color:accessMsg.type==="ok"?"#4CAF7D":"#FF5A5A",fontWeight:700}}>{accessMsg.text}</div>}
+                  <div style={{fontSize:12,color:"#5A7A9A",marginTop:6}}>没有访问码？在小红书/微信搜索「青帆教育」购买</div>
+                </div>
+              )}
+            </div>
+
+            <div style={{background:C.card,borderRadius:20,padding:"20px",boxShadow:"0 4px 16px rgba(0,0,0,0.04)"}}>
+              <div style={{fontSize:14,fontWeight:800,color:C.tm,marginBottom:12}}>🔑 班级 / 词单码</div>
+              <button onClick={()=>setShowStudentPanel(true)}
+                style={{width:"100%",background:C.grad1,border:"none",color:"#fff",padding:"13px",borderRadius:14,cursor:"pointer",fontSize:14,fontWeight:800}}>
+                输入邀请码 / 词单码
+              </button>
+            </div>
+            <div style={{background:C.card,borderRadius:20,padding:"20px",boxShadow:"0 4px 16px rgba(0,0,0,0.04)"}}>
+              <div style={{fontSize:14,fontWeight:800,color:C.tm,marginBottom:8}}>🔊 语音设置</div>
+              <div style={{fontSize:13,color:C.tl}}>朗读速度：标准 (0.88x)</div>
+            </div>
+            {isTeacher&&(
+              <div style={{background:C.card,borderRadius:20,padding:"20px",boxShadow:"0 4px 16px rgba(0,0,0,0.04)"}}>
+                <div style={{fontSize:14,fontWeight:800,color:C.tm,marginBottom:12}}>🏫 教师控制台</div>
+                <button onClick={()=>setTeacherScreen("dashboard")}
+                  style={{width:"100%",background:"linear-gradient(135deg,#4DB6FF,#9B6FFF)",border:"none",color:"#fff",padding:"13px",borderRadius:14,cursor:"pointer",fontSize:14,fontWeight:800}}>
+                  进入教师端 →
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══ DRILLS TAB ══ */}
+      {screen==="home"&&tab==="drills"&&!drillType&&(
+        <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
+          <div style={{textAlign:"center",marginBottom:28}}>
+            <div style={{fontSize:40,marginBottom:8}}>✏️</div>
+            <h2 style={{fontSize:24,fontWeight:900,margin:"0 0 6px"}}>专项练习</h2>
+            <div style={{fontSize:13,color:C.tl}}>Grammar Drills · 10题/局</div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            {[
+              {type:"adverbial",icon:"🔗",title:"状语从句",sub:"Adverbial Clauses",desc:"时间/原因/条件/让步/目的/结果 状语从句",color:C.secondary},
+              {type:"noun_clause",icon:"📝",title:"名词性从句",sub:"Noun Clauses",desc:"主语从句 / 宾语从句 / 表语从句 / 同位语从句",color:"#9B6FFF"},
+              {type:"attributive",icon:"🔍",title:"定语从句",sub:"Attributive Clauses",desc:"who / whom / whose / which / that / where / when",color:C.gold},
+              {type:"preposition",icon:"📍",title:"介词专项",sub:"Prepositions",desc:"in / on / at / by / with / for / of / to ...",color:C.accent},
+              {type:"tense",icon:"⏰",title:"动词时态",sub:"Verb Tenses",desc:"一般现在 / 过去完成 / 现在进行 / 将来 ...",color:C.primary},
+              {type:"passive",icon:"🔄",title:"被动语态",sub:"Passive Voice",desc:"is/are done · was/were done · has been done · will be done ...",color:"#FF6B6B"},
+              {type:"double_consonant",icon:"✍️",title:"双写变形",sub:"Double Consonant",desc:"prefer→preferred · stop→stopped · occur→occurred 重读闭音节规则",color:"#FF8C5A"},
+              {type:"cloze",icon:"📄",title:"完型填空专项",sub:"Cloze Test",desc:"根据语境选词 · 词义辨析 · 语篇逻辑 模拟高考完型填空",color:"#7C5CE3"},
+              {type:"listening",icon:"🎧",title:"听力专项",sub:"Listening",desc:"听音选词 · 听句填空 · 听释义选词 · 20题",color:"#00B4D8"},
+              {type:"speaking",icon:"🎙️",title:"口语专项",sub:"Speaking",desc:"句子跟读 · 语音识别 · 逐词对比 · 10题",color:"#FF6B9D"},
+            ].map(d=>(
+              <div key={d.type} onClick={()=>startDrill(d.type)}
+                style={{background:C.card,borderRadius:20,padding:"20px",cursor:"pointer",
+                  border:`2px solid ${d.color}22`,boxShadow:"0 4px 16px rgba(0,0,0,0.05)",
+                  display:"flex",gap:16,alignItems:"center",transition:"all 0.2s"}}>
+                <div style={{width:52,height:52,borderRadius:16,background:`${d.color}15`,
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,flexShrink:0}}>
+                  {d.icon}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:17,fontWeight:800,color:C.text,marginBottom:2}}>
+                    {d.title} <span style={{fontSize:12,color:d.color,fontWeight:700,marginLeft:4}}>{d.sub}</span>
+                  </div>
+                  <div style={{fontSize:12,color:C.tl,lineHeight:1.5}}>{d.desc}</div>
+                </div>
+                <div style={{fontSize:20,color:d.color}}>›</div>
+              </div>
+            ))}
+          </div>
+          {/* P1b: 语法错题回顾 */}
+          {(()=>{
+            const wd = JSON.parse(localStorage.getItem("vm_wrong_drills")||"[]");
+            if(wd.length===0) return null;
+            const typeNames = {adverbial:"状语从句",noun_clause:"名词性从句",attributive:"定语从句",preposition:"介词",tense:"时态",passive:"被动语态",double_consonant:"双写变形",cloze:"完型填空"};
+            return (
+              <div style={{marginTop:20}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  <div style={{fontSize:15,fontWeight:800,color:C.text}}>📋 语法错题回顾 <span style={{fontSize:12,color:C.tl,fontWeight:600}}>({wd.length}题)</span></div>
+                  <button onClick={()=>{localStorage.removeItem("vm_wrong_drills");setDrillType(null);}}
+                    style={{fontSize:11,color:C.tl,background:C.card,border:"1px solid #e0e6ff",padding:"4px 10px",borderRadius:10,cursor:"pointer",fontWeight:600}}>
+                    清空
+                  </button>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {wd.slice(0,15).map((e,i)=>(
+                    <div key={i} style={{background:C.card,borderRadius:14,padding:"14px 16px",border:"1.5px solid #FFE0E0",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+                      <div style={{fontSize:13,fontWeight:700,color:C.text,lineHeight:1.6,marginBottom:6}}>{e.q?.replace(/_____/g,"______")}</div>
+                      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                        <span style={{fontSize:12,fontWeight:800,color:C.success,background:`${C.success}12`,padding:"2px 10px",borderRadius:8}}>✓ {e.a}</span>
+                        <span style={{fontSize:11,color:C.tl,fontWeight:600}}>{typeNames[e.type]||e.type}</span>
+                      </div>
+                      {e.tip&&<div style={{fontSize:11,color:C.tm,marginTop:4}}>💡 {e.tip}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ══ DRILL IN PROGRESS ══ */}
+      {screen==="home"&&tab==="drills"&&drillType&&!drillFinished&&drillQuestions.length>0&&(()=>{
+        const q = drillQuestions[drillIdx];
+        const oc = [C.primary,C.secondary,C.accent,C.gold];
+        const typeLabel = drillType==="adverbial"?"🔗 状语从句"
+              :drillType==="noun_clause"?"📝 名词性从句"
+              :drillType==="attributive"?"🔍 定语从句"
+              :drillType==="preposition"?"📍 介词专项"
+              :drillType==="passive"?"🔄 被动语态"
+              :drillType==="double_consonant"?"✍️ 双写变形"
+              :drillType==="cloze"?"📄 完型填空"
+              :drillType==="listening"?"🎧 听力专项"
+              :drillType==="speaking"?"🎙️ 口语专项"
+              :"⏰ 动词时态";
+        return (
+          <div style={{padding:"24px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
+            {/* Header */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <button onClick={()=>setDrillType(null)} style={{background:C.card,border:"2px solid #ffd4d4",color:C.error,padding:"8px 14px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>✕</button>
+              <div style={{fontSize:14,fontWeight:700,color:C.tl}}>{drillIdx+1} / {drillQuestions.length}</div>
+              <div style={{fontSize:15,fontWeight:900,color:"#F8C740",background:"rgba(248,199,64,0.1)",padding:"4px 14px",borderRadius:20}}>⭐ {drillScore}</div>
+            </div>
+            {/* Progress */}
+            <div style={{height:6,background:"rgba(0,0,0,0.06)",borderRadius:6,marginBottom:20,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${((drillIdx+1)/drillQuestions.length)*100}%`,background:`linear-gradient(90deg,${C.secondary},${C.accent})`,borderRadius:6,transition:"width 0.4s ease"}}/>
+            </div>
+            {/* Type badge */}
+            <div style={{textAlign:"center",marginBottom:16}}>
+              <span style={{display:"inline-block",padding:"5px 14px",borderRadius:20,background:C.card,fontSize:12,fontWeight:700,color:C.tm}}>{typeLabel}</span>
+            </div>
+            {/* Question — listen types and follow_read use dedicated components */}
+            {(q.type==="listen_pick"||q.type==="listen_fill"||q.type==="listen_def"||q.type==="follow_read") ? (
+              <div style={{marginBottom:20}}>
+                {q.type==="follow_read" && <FollowReadQ key={drillIdx} exercise={q} onDone={ok=>{
+                  setDrillSel(ok?"__correct__":"__wrong__");
+                  setDrillDone(true);
+                  setTimeout(()=>{
+                    if(ok)setDrillScore(s=>s+10); else setDrillScore(s=>Math.max(0,s-2));
+                    if(ok)setDrillCorrect(c=>c+1);
+                    if(drillIdx+1>=drillQuestions.length){
+                      playCelebrationSound();
+                      // drillCorrect is stale (before +1), so add 1 if ok
+                      const finalCorrect = ok ? drillCorrect + 1 : drillCorrect;
+                      const total = drillQuestions.length;
+                      const rate = total > 0 ? finalCorrect / total : 0;
+                      const _food = rate >= 0.9 ? 10 : rate >= 0.7 ? 7 : rate >= 0.5 ? 5 : 3;
+                      console.log("[speaking drill] finished", {finalCorrect, total, rate, food: _food});
+                      addPetFood(_food);
+                      if(authUser) supabase.saveDrillScore(authUser.id, drillType, drillScore).catch(()=>{});
+                      setDrillFinished(true);
+                    }
+                    else{setDrillIdx(i=>i+1);setDrillSel(null);setDrillDone(false);}
+                  },500);
+                }}/>}
+                {q.type==="listen_pick" && <ListenPickQ key={drillIdx} exercise={q} onDone={ok=>{
+                  setDrillSel(ok?q.answer:"__wrong__");
+                  setDrillDone(true);
+                  setTimeout(()=>{
+                    if(ok)setDrillScore(s=>s+10); else setDrillScore(s=>Math.max(0,s-2));
+                    if(ok)setDrillCorrect(c=>c+1);
+                    if(drillIdx+1>=drillQuestions.length){
+                      playCelebrationSound();
+                      const _food = drillCorrect >= 18 ? 10 : drillCorrect >= 14 ? 7 : drillCorrect >= 10 ? 5 : 3;
+                      addPetFood(_food);
+                      if(authUser) supabase.saveDrillScore(authUser.id, drillType, drillScore).catch(()=>{});
+                      setDrillFinished(true);
+                    }
+                    else{setDrillIdx(i=>i+1);setDrillSel(null);setDrillDone(false);}
+                  },ok?800:1500);
+                }}/>}
+                {q.type==="listen_def" && <ListenDefQ key={drillIdx} exercise={q} onDone={ok=>{
+                  setDrillSel(ok?q.answer:"__wrong__");
+                  setDrillDone(true);
+                  setTimeout(()=>{
+                    if(ok)setDrillScore(s=>s+10); else setDrillScore(s=>Math.max(0,s-2));
+                    if(ok)setDrillCorrect(c=>c+1);
+                    if(drillIdx+1>=drillQuestions.length){
+                      playCelebrationSound();
+                      const _food = drillCorrect >= 18 ? 10 : drillCorrect >= 14 ? 7 : drillCorrect >= 10 ? 5 : 3;
+                      addPetFood(_food);
+                      if(authUser) supabase.saveDrillScore(authUser.id, drillType, drillScore).catch(()=>{});
+                      setDrillFinished(true);
+                    }
+                    else{setDrillIdx(i=>i+1);setDrillSel(null);setDrillDone(false);}
+                  },ok?800:1500);
+                }}/>}
+                {q.type==="listen_fill" && <ListenFillQ key={drillIdx} exercise={q} onDone={ok=>{
+                  setDrillSel(ok?q.answer:"__wrong__");
+                  setDrillDone(true);
+                  setTimeout(()=>{
+                    if(ok)setDrillScore(s=>s+10); else setDrillScore(s=>Math.max(0,s-2));
+                    if(ok)setDrillCorrect(c=>c+1);
+                    if(drillIdx+1>=drillQuestions.length){
+                      playCelebrationSound();
+                      const _food = drillCorrect >= 18 ? 10 : drillCorrect >= 14 ? 7 : drillCorrect >= 10 ? 5 : 3;
+                      addPetFood(_food);
+                      if(authUser) supabase.saveDrillScore(authUser.id, drillType, drillScore).catch(()=>{});
+                      setDrillFinished(true);
+                    }
+                    else{setDrillIdx(i=>i+1);setDrillSel(null);setDrillDone(false);}
+                  },ok?800:1500);
+                }}/>}
+              </div>
+            ) : (
+            <div style={{background:C.card,borderRadius:20,padding:"22px 20px",marginBottom:20,boxShadow:"0 4px 16px rgba(0,0,0,0.06)",textAlign:"center"}}>
+              <div style={{fontSize:16,lineHeight:1.8,color:C.text,fontWeight:600,marginBottom:10}}>
+                {q.q.split("_____").map((part,i,arr)=>(
+                  <span key={i}>
+                    {part}
+                    {i<arr.length-1&&(
+                      <span style={{
+                        display:"inline-block",minWidth:80,padding:"2px 12px",
+                        borderRadius:8,textAlign:"center",fontWeight:800,
+                        background:drillDone?`${drillSel===(q.a||q.answer)?C.success:C.error}15`:"#f0ecf8",
+                        color:drillDone?(drillSel===(q.a||q.answer)?C.success:C.error):C.secondary,
+                        border:`1.5px solid ${drillDone?(drillSel===(q.a||q.answer)?C.success:C.error):C.secondary}44`,
+                        transition:"all 0.3s"
+                      }}>
+                        {drillDone?(q.a||q.answer):"　　　　"}
+                      </span>
+                    )}
+                  </span>
+                ))}
+              </div>
+              <div style={{fontSize:13,color:C.tl,fontStyle:"italic"}}>{q.cn}</div>
+            </div>
+            )}
+            {/* Options — hidden for listen types (they render their own) */}
+            {!(q.type==="listen_pick"||q.type==="listen_fill"||q.type==="listen_def"||q.type==="follow_read")&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+              {(q.opts||q.options||[]).map((opt,i)=>{
+                const isCorrect = opt===(q.a||q.answer);
+                const isSelected = opt===drillSel;
+                let bg=`${oc[i%4]}10`, bd=`2px solid ${oc[i%4]}33`, cl=C.text;
+                if(drillDone&&isCorrect){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}
+                else if(drillDone&&isSelected&&!isCorrect){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
+                return (
+                  <button key={i} onClick={()=>drillAnswer(opt)}
+                    style={{background:bg,border:bd,color:cl,padding:"14px 10px",
+                      borderRadius:14,cursor:drillDone?"default":"pointer",
+                      fontSize:14,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",
+                      transition:"all 0.2s",lineHeight:1.4}}>
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>}
+            {/* Tip on done — hidden for listen types */}
+            {drillDone&&!(q.type==="listen_pick"||q.type==="listen_fill"||q.type==="listen_def"||q.type==="follow_read")&&(
+              <div style={{padding:"12px 16px",borderRadius:14,
+                background:drillSel===q.a?`${C.success}10`:`${C.error}08`,
+                border:`1.5px solid ${drillSel===q.a?C.success:C.error}33`,
+                marginBottom:16,animation:"slideUp 0.3s ease"}}>
+                <div style={{fontSize:12,fontWeight:800,color:drillSel===q.a?C.success:C.error,marginBottom:4}}>
+                  {drillSel===q.a?"✓ 正确！":"✗ 答错了"}
+                  {drillSel!==q.a&&<span style={{fontFamily:"'JetBrains Mono',monospace",marginLeft:6}}>→ {q.a}</span>}
+                </div>
+                <div style={{fontSize:13,color:C.tm,whiteSpace:"pre-line"}}>
+                  💡 {q.tip}
+                  {drillType==="tense"&&getTenseExplain(q.tip)&&(
+                    <div style={{marginTop:8,padding:"8px 10px",background:"rgba(0,0,0,0.04)",borderRadius:10,fontSize:12,color:C.tl,whiteSpace:"pre-line",lineHeight:1.6}}>
+                      {getTenseExplain(q.tip)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {/* end of listen/non-listen branch */}
+            {drillDone&&!(drillQuestions[drillIdx]?.type==="listen_pick"||drillQuestions[drillIdx]?.type==="listen_fill"||drillQuestions[drillIdx]?.type==="follow_read")&&(
+              <button onClick={drillNext}
+                style={{width:"100%",background:`linear-gradient(135deg,${C.secondary},${C.accent})`,
+                  border:"none",color:"#fff",padding:"16px",borderRadius:16,
+                  cursor:"pointer",fontSize:16,fontWeight:800}}>
+                {drillIdx+1>=drillQuestions.length?"查看结果 →":"下一题 →"}
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ══ DRILL RESULTS ══ */}
+      {screen==="home"&&tab==="drills"&&drillFinished&&(
+        <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",textAlign:"center",zIndex:1,position:"relative"}}>
+          <div style={{fontSize:64,marginBottom:12,animation:"float 2s ease-in-out infinite"}}>
+            {(drillCorrect/drillQuestions.length)>=0.9?"🏆":(drillCorrect/drillQuestions.length)>=0.7?"🥈":(drillCorrect/drillQuestions.length)>=0.5?"🥉":"📖"}
+          </div>
+          <h2 style={{fontSize:28,fontWeight:900,margin:"0 0 4px"}}>{(drillCorrect/drillQuestions.length)>=0.9?"太棒了！":(drillCorrect/drillQuestions.length)>=0.7?"做得不错！":"继续加油！"}</h2>
+          <div style={{fontSize:16,color:C.tl,marginBottom:24}}>{(drillCorrect/drillQuestions.length)>=0.9?"Outstanding!":(drillCorrect/drillQuestions.length)>=0.7?"Well done!":"Keep practising!"}</div>
+          <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",
+            background:`linear-gradient(135deg,${C.secondary},${C.accent})`,
+            borderRadius:24,padding:"20px 40px",marginBottom:28,
+            boxShadow:"0 8px 28px rgba(0,0,0,0.15)"}}>
+            <div style={{fontSize:44,fontWeight:900,color:"#fff"}}>{drillCorrect}</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.85)",fontWeight:700}}>/ {drillQuestions.length} 题正确</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:4}}>
+              🌾 +{(()=>{const r=drillQuestions.length>0?drillCorrect/drillQuestions.length:0; return r>=0.9?10:r>=0.7?7:r>=0.5?5:3;})()} 粮食
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <button onClick={()=>startDrill(drillType)}
+              style={{background:`linear-gradient(135deg,${C.secondary},${C.accent})`,border:"none",color:"#fff",
+                padding:"16px",borderRadius:16,cursor:"pointer",fontSize:16,fontWeight:800}}>
+              🔁 再练一局
+            </button>
+            <button onClick={()=>{setDrillType(null);setDrillFinished(false);}}
+              style={{background:C.card,border:"2px solid #e8e4f0",color:C.tm,
+                padding:"14px",borderRadius:16,cursor:"pointer",fontSize:14,fontWeight:700}}>
+              返回专项选择
+            </button>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}

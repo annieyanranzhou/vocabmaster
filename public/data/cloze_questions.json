@@ -1,0 +1,412 @@
+{
+  "id": "cloze",
+  "title": "✍️ 完型填空专项",
+  "description": "模拟高考完型，根据语境选词，共40题",
+  "questionCount": 40,
+  "questions": [
+    {
+      "id": "cloze_001",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "Tom had been studying hard all semester. When the exam results came out, he was excited to see his ______ — he had scored 98 out of 100.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "score",
+      "options": ["score", "record", "mark", "report"],
+      "answer": "score",
+      "explanation": "score 指考试得分，是最自然的搭配。record 侧重历史记录，mark 在英式英语中也可指分数但此处 score 更地道，report 指报告。"
+    },
+    {
+      "id": "cloze_002",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "The little girl stood at the door, afraid to knock. She took a deep ______, gathered her courage, and finally raised her hand.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "breath",
+      "options": ["breath", "moment", "silence", "sense"],
+      "answer": "breath",
+      "explanation": "take a deep breath（深吸一口气）是紧张或鼓起勇气前的固定动作描写，是完型填空高频搭配。"
+    },
+    {
+      "id": "cloze_003",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "After years of hard work, the young athlete finally stood on the highest step of the podium, arms raised in ______. The crowd went wild.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "victory",
+      "options": ["victory", "competition", "independence", "encouragement"],
+      "answer": "victory",
+      "explanation": "victory（胜利）与 podium（领奖台）、crowd went wild 等语境高度一致。competition 指比赛过程，independence 指独立，encouragement 指鼓励，均不符合。"
+    },
+    {
+      "id": "cloze_004",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "My grandmother always said that a good ______ is more valuable than talent. If you wake up at the same time every day and study consistently, success will come.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "habit",
+      "options": ["habit", "ability", "decision", "instruction"],
+      "answer": "habit",
+      "explanation": "整段强调坚持规律作息的力量，habit（习惯）是核心词。ability 指能力，decision 指决定，instruction 指指导，均与语境不符。"
+    },
+    {
+      "id": "cloze_005",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "She didn't want to go to the party at all, but her friend kept persuading her. In the end, she agreed — not because she wanted to, but because she didn't want to ______ her friend's feelings.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "embarrass",
+      "options": ["embarrass", "complain", "remind", "congratulate"],
+      "answer": "embarrass",
+      "explanation": "此处表示不想让朋友难堪/伤心，embarrass（使尴尬）最贴近语境。complain 是抱怨，remind 是提醒，congratulate 是祝贺，均不符合。"
+    },
+    {
+      "id": "cloze_006",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "The teacher asked the class a difficult question. The room fell into complete ______. Nobody dared to speak.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "silence",
+      "options": ["silence", "darkness", "breath", "moment"],
+      "answer": "silence",
+      "explanation": "fell into silence（陷入沉默）是固定搭配，描述没人敢回答的场景。darkness 指黑暗，breath 指呼吸，moment 指时刻，均不符合。"
+    },
+    {
+      "id": "cloze_007",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "The volunteers worked day and night to collect clothes and food for the flood victims. Their ______ showed how much people cared about each other.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "support",
+      "options": ["support", "competition", "discussion", "management"],
+      "answer": "support",
+      "explanation": "support（支持/援助）与收集物资帮助灾民的语境完全吻合。competition 指竞争，discussion 指讨论，management 指管理，均不符合。"
+    },
+    {
+      "id": "cloze_008",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "I had planned to finish the project by Friday, but I completely underestimated how long it would take. I ______ to meet the deadline.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "failed",
+      "options": ["failed", "refused", "doubted", "complained"],
+      "answer": "failed",
+      "explanation": "fail to do sth（未能做到某事）是固定搭配，表示没能完成。refuse 是拒绝（主动），doubt 是怀疑，complain 是抱怨，均不符合。"
+    },
+    {
+      "id": "cloze_009",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "Lisa was nervous before her speech. But the moment she stepped onto the stage and saw the friendly faces in the audience, she felt ______ enough to begin.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "brave",
+      "options": ["brave", "silent", "patient", "lazy"],
+      "answer": "brave",
+      "explanation": "看到友善面孔后鼓起勇气开口，brave（勇敢的）最符合语境逻辑。silent 是沉默的，patient 是耐心的，lazy 是懒惰的，均与语境矛盾。"
+    },
+    {
+      "id": "cloze_010",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "When the coach announced that Mike had made the team, his classmates burst into cheers to ______ him on his achievement.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "congratulate",
+      "options": ["congratulate", "remind", "celebrate", "praise"],
+      "answer": "congratulate",
+      "explanation": "congratulate sb on sth（祝贺某人某事）是固定搭配，此处后有 on his achievement 作线索。celebrate 指庆祝（不接人），praise 是称赞，remind 是提醒。"
+    },
+    {
+      "id": "cloze_011",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "The old man sat quietly on the bench, watching the children play. A warm smile ______ across his face as he remembered his own childhood.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "spread",
+      "options": ["spread", "covered", "filled", "appeared"],
+      "answer": "spread",
+      "explanation": "spread across one's face（笑容蔓延/浮现在脸上）是文学性描写的固定搭配，完型高频。appear 也可接受，但 spread 更生动、更符合高考答题方向。"
+    },
+    {
+      "id": "cloze_012",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "After the marathon, Emma's legs were shaking and her energy was almost gone. But she kept going — her ______ to finish the race was stronger than the pain.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "goal",
+      "options": ["goal", "decision", "ability", "progress"],
+      "answer": "goal",
+      "explanation": "goal（目标）指终点线，与 finish the race 直接呼应。decision 是决定（已做出，非动力），ability 是能力（非意志力），progress 是进步。"
+    },
+    {
+      "id": "cloze_013",
+      "type": "synonym_choice",
+      "typeLabel": "词义辨析",
+      "question": "下面哪个词与 \"She spoke in a very ______ voice, careful not to wake the baby.\" 语境最吻合？",
+      "options": ["silent", "quiet", "still", "calm"],
+      "answer": "quiet",
+      "explanation": "quiet 形容声音轻柔，常修饰 voice；silent 指完全无声（不能修饰声音本身）；still 指静止不动；calm 指镇定，通常描述情绪。此处 quiet voice 是固定搭配。"
+    },
+    {
+      "id": "cloze_014",
+      "type": "synonym_choice",
+      "typeLabel": "词义辨析",
+      "question": "He went ______ to the library every day after school, telling no one about his plans.",
+      "options": ["privately", "widely", "partly", "seriously"],
+      "answer": "privately",
+      "explanation": "privately（私下地、秘密地）与 telling no one 的语境一致。widely 指广泛地，partly 指部分地，seriously 指认真地，均不符合「不让人知道」的含义。"
+    },
+    {
+      "id": "cloze_015",
+      "type": "synonym_choice",
+      "typeLabel": "词义辨析",
+      "question": "The doctor said the patient's condition was ______. He needed to be hospitalized immediately.",
+      "options": ["serious", "crazy", "silent", "normal"],
+      "answer": "serious",
+      "explanation": "serious（严重的）用于描述病情，与 needed to be hospitalized immediately 因果对应。crazy 指疯狂，silent 指沉默，normal 指正常（语义相反）。"
+    },
+    {
+      "id": "cloze_016",
+      "type": "synonym_choice",
+      "typeLabel": "词义辨析",
+      "question": "She is one of the most ______ teachers in school — every student wants to be in her class.",
+      "options": ["popular", "proper", "active", "direct"],
+      "answer": "popular",
+      "explanation": "popular（受欢迎的）与 every student wants to be in her class 直接对应。proper 指合适的，active 指积极的，direct 指直接的，均不表达「受欢迎」。"
+    },
+    {
+      "id": "cloze_017",
+      "type": "synonym_choice",
+      "typeLabel": "词义辨析",
+      "question": "It seemed ______ to finish all the homework in one hour, but he tried anyway.",
+      "options": ["impossible", "useless", "improper", "unexpected"],
+      "answer": "impossible",
+      "explanation": "impossible（不可能的）直接描述任务难度，与 but he tried anyway 形成转折。useless 指无用的，improper 指不当的，unexpected 指意外的，均与语境不符。"
+    },
+    {
+      "id": "cloze_018",
+      "type": "synonym_choice",
+      "typeLabel": "词义辨析",
+      "question": "My grandfather is a very ______ man. He always listens carefully before giving advice.",
+      "options": ["wise", "talkative", "impatient", "lazy"],
+      "answer": "wise",
+      "explanation": "wise（睿智的）与 listens carefully before giving advice（深思熟虑）完全吻合。talkative 是话多的，impatient 是不耐心的（语义相反），lazy 是懒惰的。"
+    },
+    {
+      "id": "cloze_019",
+      "type": "discourse_logic",
+      "typeLabel": "语篇逻辑",
+      "passage": "Jake had been practicing the piano for six years. When he finally performed on stage, the audience sat in complete silence. Then, the moment he finished, they rose to their feet and ______ his incredible performance.",
+      "question": "根据语篇情感逻辑，空格处最合适的词是？",
+      "blank_word": "praised",
+      "options": ["praised", "refused", "doubted", "ignored"],
+      "answer": "praised",
+      "explanation": "语篇逻辑：六年苦练→精彩表演→观众起立→高度赞扬。praised（称赞）是情感递进的自然结果。refused / doubted / ignored 均与正面结局矛盾。"
+    },
+    {
+      "id": "cloze_020",
+      "type": "discourse_logic",
+      "typeLabel": "语篇逻辑",
+      "passage": "The teacher had spent weeks preparing the surprise. On the last day of class, she brought in a cake and asked everyone to ______. The room filled with laughter and happy tears.",
+      "question": "根据语篇情感逻辑，空格处最合适的词是？",
+      "blank_word": "celebrate",
+      "options": ["celebrate", "complain", "compete", "repeat"],
+      "answer": "celebrate",
+      "explanation": "语篇逻辑：惊喜→蛋糕→欢笑与泪水，celebrate（庆祝）是唯一符合温馨结局的动词。complain 是抱怨，compete 是竞争，repeat 是重复，均破坏语篇情感。"
+    },
+    {
+      "id": "cloze_021",
+      "type": "discourse_logic",
+      "typeLabel": "语篇逻辑",
+      "passage": "When Anna heard the news that her best friend was moving to another city, her heart sank. She walked home ______, not saying a word to anyone.",
+      "question": "根据语篇情感逻辑，空格处最合适的词是？",
+      "blank_word": "silently",
+      "options": ["silently", "bravely", "actively", "politely"],
+      "answer": "silently",
+      "explanation": "语篇情感：得知好友离开→心情低落→一言不发地走回家。silently（沉默地）与 not saying a word 呼应。bravely / actively 与低落情绪矛盾，politely 指礼貌地，无关。"
+    },
+    {
+      "id": "cloze_022",
+      "type": "discourse_logic",
+      "typeLabel": "语篇逻辑",
+      "passage": "The project had failed twice before. But this time, the team worked together, listened to each other's ideas, and made a ______ to never give up. Three months later, they succeeded.",
+      "question": "根据语篇情感逻辑，空格处最合适的词是？",
+      "blank_word": "promise",
+      "options": ["promise", "record", "report", "complaint"],
+      "answer": "promise",
+      "explanation": "语篇逻辑：两次失败→团队齐心→立下承诺→三个月后成功。make a promise（立下承诺）是推动情节发展的关键词。record / report / complaint 均无法构成励志叙事的转折点。"
+    },
+    {
+      "id": "cloze_023",
+      "type": "discourse_logic",
+      "typeLabel": "语篇逻辑",
+      "passage": "The young boy had never spoken in front of a crowd before. His hands trembled and his voice shook. But he stood tall and spoke ______, refusing to let fear stop him.",
+      "question": "根据语篇情感逻辑，空格处最合适的词是？",
+      "blank_word": "bravely",
+      "options": ["bravely", "privately", "partly", "politely"],
+      "answer": "bravely",
+      "explanation": "语篇情感：第一次演讲→双手颤抖→but（转折）→refusing to let fear stop him。bravely（勇敢地）是 but 后的情感落点。privately 指私下，partly 指部分，politely 指礼貌，均与勇气无关。"
+    },
+    {
+      "id": "cloze_024",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "Scientists are studying how ______ change affects the migration patterns of birds. Rising temperatures have caused many species to shift their routes dramatically.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "climate",
+      "options": ["climate", "science", "information", "discussion"],
+      "answer": "climate",
+      "explanation": "climate change（气候变化）是固定术语，与 rising temperatures、migration patterns 构成完整学术语境。science / information / discussion 均无法构成这个固定搭配。"
+    },
+    {
+      "id": "cloze_025",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "After the game, the coach pulled Kevin aside. 'You made an ______ pass in the final minute,' he said kindly. 'Next time, look left before you throw.'",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "incorrect",
+      "options": ["incorrect", "unexpected", "exact", "final"],
+      "answer": "incorrect",
+      "explanation": "教练指出传球失误，incorrect（错误的）是最直接的表达，与后文「下次要注意」形成建议结构。unexpected 指意外，exact 指精确（意思相反），final 指最后的（已出现在句中）。"
+    },
+    {
+      "id": "cloze_026",
+      "type": "context_fill",
+      "typeLabel": "语境填空",
+      "passage": "Instead of giving up when things got difficult, she chose to see every challenge as a chance to grow. That ______ helped her become one of the most successful people in her field.",
+      "question": "根据语境，空格处最合适的词是？",
+      "blank_word": "decision",
+      "options": ["experience", "decision", "progress", "risk"],
+      "answer": "decision",
+      "explanation": "这里指她做出的选择（把挑战视为机会的选择），decision（决定/选择）最准确。experience 是经历，progress 是进步，risk 是风险，均不能指代前一句描述的主动选择。"
+    },
+    {
+      "id": "cloze_027",
+      "type": "synonym_choice",
+      "typeLabel": "词义辨析",
+      "question": "The speaker's ______ answer surprised everyone — he got straight to the point without any hesitation.",
+      "options": ["direct", "polite", "active", "proper"],
+      "answer": "direct",
+      "explanation": "direct（直接的）与 got straight to the point（开门见山）完全呼应。polite 是礼貌的，active 是积极的，proper 是得体的，均不强调「直白、不绕弯子」。"
+    },
+    {
+      "id": "cloze_028",
+      "type": "synonym_choice",
+      "typeLabel": "词义辨析",
+      "question": "The children were so ______ during the long flight — they sat quietly and didn't complain once.",
+      "options": ["patient", "talkative", "lazy", "impatient"],
+      "answer": "patient",
+      "explanation": "patient（耐心的）与 sat quietly and didn't complain 完全吻合。talkative 是话多的（矛盾），lazy 是懒惰的，impatient 是不耐心的（语义相反）。"
+    },
+    {
+      "id": "cloze_029",
+      "type": "discourse_logic",
+      "typeLabel": "语篇逻辑",
+      "passage": "The rescue team worked through the night in freezing rain. By morning, they had saved twelve people from the collapsed building. The whole city was moved by their ______ effort.",
+      "question": "根据语篇情感逻辑，空格处最合适的词是？",
+      "blank_word": "brave",
+      "options": ["brave", "lazy", "private", "normal"],
+      "answer": "brave",
+      "explanation": "语篇逻辑：彻夜救援→拯救12人→全城感动。brave（勇敢的）是对救援队的最高评价，与语篇情感基调一致。lazy 和 normal 均贬低或淡化了行动，private 无关。"
+    },
+    {
+      "id": "cloze_030",
+      "type": "discourse_logic",
+      "typeLabel": "语篇逻辑",
+      "passage": "Mark had always been the quiet one in class. But the day he stood up to defend his friend from bullying, everyone saw a different side of him. From that day on, they treated him with great ______.",
+      "question": "根据语篇情感逻辑，空格处最合适的词是？",
+      "blank_word": "respect",
+      "options": ["respect", "silence", "competition", "doubt"],
+      "answer": "respect",
+      "explanation": "语篇情感弧线：沉默→勇敢站出来→大家刮目相看→尊重。respect（尊重）是这一弧线的情感终点。silence / competition / doubt 均与正面转变的结局矛盾。"
+    },
+    {
+      "id": "cloze_031",
+      "type": "tense_form",
+      "typeLabel": "时态变形",
+      "question": "She ______ (realize) her mistake the moment she heard the news.",
+      "options": ["realized", "has realized", "was realizing", "had been realizing"],
+      "answer": "realized",
+      "explanation": "the moment 引导时间状语从句，主句叙述过去某一瞬间发生的动作，用一般过去时 realized。heard 已是过去时，与之对应。has realized 是现在完成时，不搭配过去时从句。"
+    },
+    {
+      "id": "cloze_032",
+      "type": "tense_form",
+      "typeLabel": "时态变形",
+      "question": "By the time we arrived at the stadium, the match ______ (already / start).",
+      "options": ["had already started", "already started", "has already started", "was already starting"],
+      "answer": "had already started",
+      "explanation": "by the time + 过去时从句，主句用过去完成时，表示「到我们到达时，比赛已经开始了」。had already started 是唯一正确的过去完成时形式。"
+    },
+    {
+      "id": "cloze_033",
+      "type": "tense_form",
+      "typeLabel": "时态变形",
+      "question": "The coach reminded us that practice ______ (make) perfect.",
+      "options": ["makes", "made", "has made", "was making"],
+      "answer": "makes",
+      "explanation": "that 从句表达的是普遍真理（practice makes perfect），即使主句是过去时 reminded，真理性陈述仍用一般现在时 makes。这是高考完型填空的固定考点。"
+    },
+    {
+      "id": "cloze_034",
+      "type": "tense_form",
+      "typeLabel": "时态变形",
+      "question": "She ______ (study) for three hours when her mother called her for dinner.",
+      "options": ["had been studying", "studied", "has been studying", "was studied"],
+      "answer": "had been studying",
+      "explanation": "when 引导的时间点（母亲叫她吃饭）之前，她已持续学习了三小时，用过去完成进行时 had been studying，强调动作持续到过去某个时间点。"
+    },
+    {
+      "id": "cloze_035",
+      "type": "tense_form",
+      "typeLabel": "时态变形",
+      "question": "Look at those dark clouds! It ______ (rain) soon.",
+      "options": ["is going to rain", "rains", "will have rained", "has rained"],
+      "answer": "is going to rain",
+      "explanation": "look at those dark clouds 提供了眼前可见的证据，根据眼前迹象预测即将发生的事用 be going to。will 是主观预测，此句有证据支撑，be going to rain 更准确。"
+    },
+    {
+      "id": "cloze_036",
+      "type": "tense_form",
+      "typeLabel": "时态变形",
+      "question": "Tom said he ______ (finish) the report before the meeting the next day.",
+      "options": ["would finish", "will finish", "has finished", "finishes"],
+      "answer": "would finish",
+      "explanation": "said 是过去时，宾语从句中表将来用 would + 动词原形（过去将来时）。will finish 是直接引语的形式，在间接引语中需变为 would finish。"
+    },
+    {
+      "id": "cloze_037",
+      "type": "tense_form",
+      "typeLabel": "时态变形",
+      "question": "The scientist discovered that water ______ (boil) at 100°C at sea level.",
+      "options": ["boils", "boiled", "has boiled", "was boiling"],
+      "answer": "boils",
+      "explanation": "that 从句描述客观科学事实（水在海平面100°C沸腾），无论主句时态如何，科学事实用一般现在时 boils。与「真理性陈述」规则相同。"
+    },
+    {
+      "id": "cloze_038",
+      "type": "tense_form",
+      "typeLabel": "时态变形",
+      "question": "I ______ (not see) him since he moved to Beijing last year.",
+      "options": ["haven't seen", "didn't see", "don't see", "hadn't seen"],
+      "answer": "haven't seen",
+      "explanation": "since + 过去时间点，主句用现在完成时，表示从过去某时一直延续到现在。haven't seen 是现在完成时否定。didn't see 只表示过去某次没见到，不表达「从那以后一直没见」。"
+    },
+    {
+      "id": "cloze_039",
+      "type": "tense_form",
+      "typeLabel": "时态变形",
+      "question": "While I ______ (walk) home, I found a wallet on the ground.",
+      "options": ["was walking", "walked", "had walked", "am walking"],
+      "answer": "was walking",
+      "explanation": "while 引导背景动作用过去进行时 was walking，表示走路途中（背景）突然发现钱包（短暂动作 found）。这是 while + 过去进行时 / when + 一般过去时 的经典对比考点。"
+    },
+    {
+      "id": "cloze_040",
+      "type": "tense_form",
+      "typeLabel": "时态变形",
+      "question": "If you ______ (work) harder last term, you would have passed the exam.",
+      "options": ["had worked", "worked", "would work", "have worked"],
+      "answer": "had worked",
+      "explanation": "与过去事实相反的虚拟条件句：if 从句用过去完成时 had worked，主句用 would have + 过去分词。这是虚拟语气（与过去相反）的固定结构，高考高频考点。"
+    }
+  ]
+}
