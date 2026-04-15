@@ -8291,7 +8291,9 @@ export default function VocabMaster() {
             </div>
 
             {/* ── Scrollable Middle Content ── */}
-            <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",justifyContent:"center",padding:"12px 20px",maxWidth:600,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
+            <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",padding:"0 20px",maxWidth:600,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
+              <div style={{flex:1}}/>
+              <div style={{flexShrink:0,paddingBottom:drillDone?8:60}}>
               {/* Type badge */}
               <div style={{textAlign:"center",marginBottom:10,flexShrink:0}}>
                 <span style={{display:"inline-block",padding:"4px 12px",borderRadius:20,background:C.card,fontSize:11,fontWeight:700,color:C.tm}}>{typeLabel}{drillStage&&STAGE_CONFIG[drillType]?(" · "+(STAGE_CONFIG[drillType].stages.find(s=>s.cat===drillStage)?.name||"")):""}</span>
@@ -8432,6 +8434,8 @@ export default function VocabMaster() {
                 <div style={{fontSize:14,color:C.tm,lineHeight:1.5}}>💡 {q.tip}</div>
               </div>
             )}
+              </div>{/* end fixed content block */}
+              <div style={{flex:1}}/>
             </div>{/* end of middle content */}
 
             {/* ── Fixed Bottom Bar ── */}
