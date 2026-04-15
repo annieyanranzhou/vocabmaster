@@ -7064,7 +7064,8 @@ export default function VocabMaster() {
     if(drillDone) return;
     setDrillSel(opt);
     setDrillDone(true);
-    if(opt===drillQuestions[drillIdx].a){
+    const q = drillQuestions[drillIdx];
+    if(opt===q.a){
       playCorrectSound();
       setDrillScore(s=>s+10);
       setDrillCorrect(c=>c+1);
@@ -7072,16 +7073,23 @@ export default function VocabMaster() {
       playWrongSound();
       // P1a: 专项练习错题收录
       try {
-        const q = drillQuestions[drillIdx];
         const key = "vm_wrong_drills";
         const wd = JSON.parse(localStorage.getItem(key)||"[]");
         const entry = { type: drillType, q: q.q, a: q.a||q.answer, tip: q.tip||"", ts: Date.now() };
-        // Deduplicate by question text
         const filtered = wd.filter(e => e.q !== entry.q);
         filtered.unshift(entry);
         localStorage.setItem(key, JSON.stringify(filtered.slice(0, 80)));
       } catch(e){}
     }
+    // 答题后朗读完整句子（填入正确答案）加深记忆
+    setTimeout(() => {
+      try {
+        const fullSentence = q.q.replace(/_____/g, q.a).replace(/_____ /g, q.a + " ").replace(/ _____/g, " " + q.a).replace("_____", q.a);
+        // Clean up parenthetical hints like (go), (clean) etc.
+        const cleaned = fullSentence.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g, " ").trim();
+        speak(cleaned, 0.85);
+      } catch(e){}
+    }, 600);
   },[drillDone,drillQuestions,drillIdx,drillType]);
 
   const drillNext = useCallback(() => {
@@ -8423,6 +8431,20 @@ export default function VocabMaster() {
                       {getTenseExplain(q.tip)}
                     </div>
                   )}
+                </div>
+                {/* 朗读完整句子按钮 */}
+                <div style={{marginTop:10,padding:"10px 14px",background:`${C.primary}08`,borderRadius:12,display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}
+                  onClick={()=>{
+                    const full = q.q.replace(/_____/g, q.a).replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g," ").trim();
+                    speak(full, 0.82);
+                  }}>
+                  <span style={{fontSize:22}}>🔊</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:700,color:C.primary,marginBottom:2}}>点击朗读完整句子</div>
+                    <div style={{fontSize:12,color:C.tm,lineHeight:1.5,fontFamily:"'JetBrains Mono',monospace"}}>
+                      {q.q.replace(/_____/g, q.a).replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g," ").trim()}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
