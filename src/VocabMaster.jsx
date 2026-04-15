@@ -6725,7 +6725,7 @@ function AuthScreen({ onLogin }) {
 
           <button onClick={handle} disabled={loading}
             style={{background:C.grad1,border:"none",color:"#fff",
-              padding:"16px",borderRadius:14,cursor:loading?"wait":"pointer",fontSize:16,fontWeight:800,
+              padding:"18px",borderRadius:14,cursor:loading?"wait":"pointer",fontSize:16,fontWeight:800,
               boxShadow:"0 6px 20px rgba(255,107,53,0.3)",marginTop:4,opacity:loading?0.7:1}}>
             {loading?"请稍候...":(mode==="login"?"登录 →":"注册 →")}
           </button>
@@ -7641,7 +7641,7 @@ export default function VocabMaster() {
       )}
 
       {screen==="play"&&exs[idx]&&(
-        <div style={{padding:"20px 20px",maxWidth:500,margin:"0 auto",position:"relative",zIndex:1}}>
+        <div style={{padding:"20px 20px",maxWidth:600,margin:"0 auto",position:"relative",zIndex:1}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
             <button onClick={()=>{window.speechSynthesis?.cancel();setScreen("home");}} style={{background:C.card,border:"2px solid #ffd4d4",color:C.error,padding:"8px 16px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>✕</button>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -7778,7 +7778,7 @@ export default function VocabMaster() {
       )}
 
       {screen==="home"&&tab==="words"&&(
-        <div style={{padding:"24px 20px 100px",maxWidth:500,margin:"0 auto",position:"relative",zIndex:1}}>
+        <div style={{padding:"24px 20px 100px",maxWidth:600,margin:"0 auto",position:"relative",zIndex:1}}>
           <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:22}}>
             <h2 style={{fontSize:22,fontWeight:900,margin:0}}>📖 词汇表 · Word Bank</h2>
           </div>
@@ -8078,7 +8078,7 @@ export default function VocabMaster() {
               {type:"speaking",icon:"🎙️",title:"口语专项",sub:"Speaking",desc:"句子跟读 · 语音识别 · 逐词对比 · 10题",color:"#FF6B9D"},
             ].map(d=>(
               <div key={d.type} onClick={()=>{
-                if(STAGE_CONFIG[d.type]) { setDrillType(d.type); setDrillMode(null); }
+                if(STAGE_CONFIG[d.type]) { setDrillType(d.type); setDrillMode(null); setDrillQuestions([]); setDrillFinished(false); setDrillStage(null); }
                 else startDrill(d.type);
               }}
                 style={{background:C.card,borderRadius:20,padding:"20px",cursor:"pointer",
@@ -8281,7 +8281,7 @@ export default function VocabMaster() {
           <div style={{position:"fixed",inset:0,zIndex:100,background:C.bg,display:"flex",flexDirection:"column",overflow:"hidden"}}>
             {/* ── Fixed Top Bar ── */}
             <div style={{flexShrink:0,padding:"12px 16px 8px",borderBottom:`1px solid ${C.bg}`}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,maxWidth:500,margin:"0 auto"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,maxWidth:600,margin:"0 auto"}}>
                 <button onClick={()=>{setDrillType(null);setDrillMode(null);setDrillStage(null);}} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:C.tm,padding:4}}>✕</button>
                 <div style={{flex:1,height:8,background:"rgba(0,0,0,0.06)",borderRadius:8,margin:"0 14px",overflow:"hidden"}}>
                   <div style={{height:"100%",width:`${((drillIdx+(drillDone?1:0))/drillQuestions.length)*100}%`,background:`linear-gradient(90deg,${C.secondary},${C.accent})`,borderRadius:8,transition:"width 0.4s ease"}}/>
@@ -8291,7 +8291,7 @@ export default function VocabMaster() {
             </div>
 
             {/* ── Scrollable Middle Content ── */}
-            <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",justifyContent:"center",padding:"12px 20px",maxWidth:500,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
+            <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",justifyContent:"center",padding:"12px 20px",maxWidth:600,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
               {/* Type badge */}
               <div style={{textAlign:"center",marginBottom:10,flexShrink:0}}>
                 <span style={{display:"inline-block",padding:"4px 12px",borderRadius:20,background:C.card,fontSize:11,fontWeight:700,color:C.tm}}>{typeLabel}{drillStage&&STAGE_CONFIG[drillType]?(" · "+(STAGE_CONFIG[drillType].stages.find(s=>s.cat===drillStage)?.name||"")):""}</span>
@@ -8371,8 +8371,8 @@ export default function VocabMaster() {
                 }}/>}
               </div>
             ) : (
-            <div style={{background:C.card,borderRadius:16,padding:"16px 18px",marginBottom:12,boxShadow:"0 2px 10px rgba(0,0,0,0.04)",textAlign:"center",flexShrink:0}}>
-              <div style={{fontSize:15,lineHeight:1.7,color:C.text,fontWeight:600,marginBottom:6}}>
+            <div style={{background:C.card,borderRadius:16,padding:"20px",marginBottom:12,boxShadow:"0 2px 10px rgba(0,0,0,0.04)",textAlign:"center",flexShrink:0}}>
+              <div style={{fontSize:18,lineHeight:1.8,color:C.text,fontWeight:600,marginBottom:6}}>
                 {q.q.split("_____").map((part,i,arr)=>(
                   <span key={i}>
                     {part}
@@ -8391,7 +8391,7 @@ export default function VocabMaster() {
                   </span>
                 ))}
               </div>
-              <div style={{fontSize:13,color:C.tl,fontStyle:"italic"}}>{q.cn}</div>
+              <div style={{fontSize:15,color:C.tl,fontStyle:"italic"}}>{q.cn}</div>
             </div>
             )}
             {/* Options — hidden for listen types (they render their own) */}
@@ -8404,10 +8404,10 @@ export default function VocabMaster() {
                 else if(drillDone&&isSelected&&!isCorrect){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
                 return (
                   <button key={i} onClick={()=>drillAnswer(opt)}
-                    style={{background:bg,border:bd,color:cl,padding:"12px 8px",
-                      borderRadius:12,cursor:drillDone?"default":"pointer",
-                      fontSize:13,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",
-                      transition:"all 0.2s",lineHeight:1.3}}>
+                    style={{background:bg,border:bd,color:cl,padding:"16px 10px",
+                      borderRadius:14,cursor:drillDone?"default":"pointer",
+                      fontSize:16,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",
+                      transition:"all 0.2s",lineHeight:1.4}}>
                     {opt}
                   </button>
                 );
@@ -8420,7 +8420,7 @@ export default function VocabMaster() {
                 border:`1.5px solid ${drillSel===q.a?C.success:C.error}33`,
                 marginBottom:8,animation:"slideUp 0.3s ease",flexShrink:0}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-                  <div style={{fontSize:12,fontWeight:800,color:drillSel===q.a?C.success:C.error}}>
+                  <div style={{fontSize:14,fontWeight:800,color:drillSel===q.a?C.success:C.error}}>
                     {drillSel===q.a?"✓ 正确！":"✗ 答错了"}
                     {drillSel!==q.a&&<span style={{fontFamily:"'JetBrains Mono',monospace",marginLeft:6}}>→ {q.a}</span>}
                   </div>
@@ -8429,7 +8429,7 @@ export default function VocabMaster() {
                     speak(full, 0.82);
                   }} style={{cursor:"pointer",fontSize:18,padding:"2px 6px"}}>🔊</div>
                 </div>
-                <div style={{fontSize:12,color:C.tm,lineHeight:1.5}}>💡 {q.tip}</div>
+                <div style={{fontSize:14,color:C.tm,lineHeight:1.5}}>💡 {q.tip}</div>
               </div>
             )}
             </div>{/* end of middle content */}
@@ -8438,10 +8438,10 @@ export default function VocabMaster() {
             {drillDone&&!(drillQuestions[drillIdx]?.type==="listen_pick"||drillQuestions[drillIdx]?.type==="listen_fill"||drillQuestions[drillIdx]?.type==="follow_read")&&(
               <div style={{flexShrink:0,padding:"12px 20px",borderTop:`1px solid rgba(0,0,0,0.06)`,
                 background:drillSel===q.a?`${C.success}12`:`${C.error}08`}}>
-                <div style={{maxWidth:500,margin:"0 auto"}}>
+                <div style={{maxWidth:600,margin:"0 auto"}}>
                   <button onClick={drillNext}
                     style={{width:"100%",background:drillSel===q.a?C.success:`linear-gradient(135deg,${C.secondary},${C.accent})`,
-                      border:"none",color:"#fff",padding:"16px",borderRadius:14,
+                      border:"none",color:"#fff",padding:"18px",borderRadius:14,
                       cursor:"pointer",fontSize:16,fontWeight:800}}>
                     {drillIdx+1>=drillQuestions.length?"查看结果 →":"继续 →"}
                   </button>
