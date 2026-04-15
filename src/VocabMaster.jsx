@@ -5879,10 +5879,10 @@ const TENSE_QUESTIONS = [
   {cat:"advanced_tenses",q:"You _____ (ought to/apologize) to her yesterday.", a:"ought to have apologized", opts:["ought to have apologized","ought to apologize","apologized","will apologize"], cn:"你昨天本应该向她道歉的。", tip:"ought to have done 本应该做而没做"},
 ];
 
-// ══ STAGE MODE CONFIG — 闯关模式关卡配置 ══════════════════════════════════════
+// ══ STAGE MODE CONFIG — 分类专练关卡配置 ══════════════════════════════════════
 const STAGE_CONFIG = {
   adverbial: {
-    title: "状语从句闯关",
+    title: "状语从句分类专练",
     stages: [
       {cat:"time", name:"时间状语从句", icon:"⏰", desc:"when/while/after/before/until/since/as soon as"},
       {cat:"cause", name:"原因状语从句", icon:"💡", desc:"because/since/as/now that/for"},
@@ -5896,7 +5896,7 @@ const STAGE_CONFIG = {
     ]
   },
   noun_clause: {
-    title: "名词性从句闯关",
+    title: "名词性从句分类专练",
     stages: [
       {cat:"object", name:"宾语从句", icon:"📦", desc:"that/whether/what/who/how/when/where 引导"},
       {cat:"subject", name:"主语从句", icon:"👑", desc:"What.../That.../Whether.../It is...that"},
@@ -5905,7 +5905,7 @@ const STAGE_CONFIG = {
     ]
   },
   attributive: {
-    title: "定语从句闯关",
+    title: "定语从句分类专练",
     stages: [
       {cat:"who_whom_whose", name:"who/whom/whose", icon:"👤", desc:"修饰人，作主语/宾语/所属"},
       {cat:"which", name:"which 修饰物", icon:"📦", desc:"修饰物，作主语/宾语，介词+which"},
@@ -5917,7 +5917,7 @@ const STAGE_CONFIG = {
     ]
   },
   preposition: {
-    title: "介词专项闯关",
+    title: "介词专项分类专练",
     stages: [
       {cat:"at", name:"at 的用法", icon:"📌", desc:"时间点/小地点/固定搭配 be good at, look at"},
       {cat:"in", name:"in 的用法", icon:"📥", desc:"年月季/大地点/语言/in a hurry/interested in"},
@@ -5940,7 +5940,7 @@ const STAGE_CONFIG = {
     ]
   },
   tense: {
-    title: "动词时态闯关",
+    title: "动词时态分类专练",
     stages: [
       {cat:"simple_present", name:"一般现在时", icon:"📋", desc:"习惯/规律/客观事实 → 动词原形(三单+s)"},
       {cat:"simple_past", name:"一般过去时", icon:"📖", desc:"过去具体时间的动作 → 动词过去式"},
@@ -6455,7 +6455,7 @@ Include: word, cn (Chinese meaning), en (English definition), ex (example senten
 
               <button onClick={createQuiz} disabled={loading||!quizTitle||quizWords.length===0}
                 style={{...btn(C.grad1),background:C.grad1,opacity:loading||!quizTitle||quizWords.length===0?0.5:1,padding:"14px"}}>
-                {loading?"生成中...":"🚀 生成闯关词单"}
+                {loading?"生成中...":"🚀 生成分类专练词单"}
               </button>
 
               {shareCode && (
@@ -6987,12 +6987,7 @@ export default function VocabMaster() {
     return prog[key];
   },[]);
   const isStageUnlocked = useCallback((type, stageIdx) => {
-    if (stageIdx === 0) return true;
-    const cfg = STAGE_CONFIG[type];
-    if (!cfg) return false;
-    const prevCat = cfg.stages[stageIdx - 1].cat;
-    const prog = getStageProgress();
-    return prog[`${type}_${prevCat}`]?.passed || false;
+    return true; // 所有分类自由访问，哪弱练哪
   },[]);
 
   const startStage = useCallback((type, cat) => {
@@ -7434,7 +7429,7 @@ export default function VocabMaster() {
           {[
             {id:"today",icon:"🏠",label:"今日"},
             {id:"words",icon:"📖",label:"词库"},
-            {id:"game",icon:"🎮",label:"闯关"},
+            {id:"game",icon:"🎮",label:"分类专练"},
             {id:"drills",icon:"✏️",label:"专项"},
             {id:"progress",icon:"📊",label:"进度"},
             {id:"settings",icon:"⚙️",label:"设置"},
@@ -8135,7 +8130,7 @@ export default function VocabMaster() {
         </div>
       )}
 
-      {/* ══ MODE SELECTION — 随机/闯关选择 ══ */}
+      {/* ══ MODE SELECTION — 随机/分类专练选择 ══ */}
       {screen==="home"&&tab==="drills"&&drillType&&!drillMode&&STAGE_CONFIG[drillType]&&(
         <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
           <button onClick={()=>{setDrillType(null);setDrillMode(null);}}
@@ -8161,10 +8156,10 @@ export default function VocabMaster() {
               style={{background:"linear-gradient(135deg,#f093fb,#f5576c)",borderRadius:20,padding:"24px 20px",cursor:"pointer",
                 boxShadow:"0 6px 20px rgba(245,87,108,0.3)",display:"flex",gap:16,alignItems:"center"}}>
               <div style={{width:56,height:56,borderRadius:16,background:"rgba(255,255,255,0.2)",
-                display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,flexShrink:0}}>🏰</div>
+                display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,flexShrink:0}}>📂</div>
               <div style={{flex:1}}>
-                <div style={{fontSize:18,fontWeight:800,color:"#fff",marginBottom:4}}>闯关模式</div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,0.8)",lineHeight:1.5}}>按分类逐关突破，≥80%解锁下一关</div>
+                <div style={{fontSize:18,fontWeight:800,color:"#fff",marginBottom:4}}>分类专练</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.8)",lineHeight:1.5}}>按分类针对性练习，哪弱练哪</div>
               </div>
               <div style={{fontSize:22,color:"rgba(255,255,255,0.6)"}}>›</div>
             </div>
@@ -8172,15 +8167,15 @@ export default function VocabMaster() {
         </div>
       )}
 
-      {/* ══ STAGE SELECTION — 闯关关卡列表 ══ */}
+      {/* ══ STAGE SELECTION — 分类关卡列表 ══ */}
       {screen==="home"&&tab==="drills"&&drillType&&drillMode==="stage"&&!showGrammarCard&&!drillStage&&STAGE_CONFIG[drillType]&&(
         <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
           <button onClick={()=>{setDrillMode(null);}}
             style={{position:"absolute",top:12,left:16,background:"none",border:"none",fontSize:22,cursor:"pointer",color:C.tm,padding:8}}>‹ 返回</button>
           <div style={{textAlign:"center",marginBottom:24,marginTop:8}}>
-            <div style={{fontSize:36,marginBottom:8}}>🏰</div>
+            <div style={{fontSize:36,marginBottom:8}}>📂</div>
             <h2 style={{fontSize:22,fontWeight:900,margin:"0 0 6px"}}>{STAGE_CONFIG[drillType].title}</h2>
-            <div style={{fontSize:13,color:C.tl}}>按顺序闯关 · ≥80% 解锁下一关</div>
+            <div style={{fontSize:13,color:C.tl}}>选择薄弱分类，针对性练习 · ≥80% 解锁下一关</div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             {STAGE_CONFIG[drillType].stages.map((s, idx) => {
@@ -8211,7 +8206,7 @@ export default function VocabMaster() {
                     <div style={{fontSize:14,letterSpacing:2}}>
                       {[1,2,3].map(i=><span key={i} style={{color:i<=stars?"#FFD700":"#ddd"}}>{i<=stars?"★":"☆"}</span>)}
                     </div>
-                    {prog?.passed && <div style={{fontSize:10,color:C.accent,fontWeight:700}}>已通关</div>}
+                    {prog?.passed && <div style={{fontSize:10,color:C.accent,fontWeight:700}}>已掌握</div>}
                   </div>
                 </div>
               );
@@ -8283,24 +8278,28 @@ export default function VocabMaster() {
               :drillType==="speaking"?"🎙️ 口语专项"
               :"⏰ 动词时态";
         return (
-          <div style={{padding:"24px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
-            {/* Header */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-              <button onClick={()=>{setDrillType(null);setDrillMode(null);setDrillStage(null);}} style={{background:C.card,border:"2px solid #ffd4d4",color:C.error,padding:"8px 14px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>✕</button>
-              <div style={{fontSize:14,fontWeight:700,color:C.tl}}>{drillIdx+1} / {drillQuestions.length}</div>
-              <div style={{fontSize:15,fontWeight:900,color:"#F8C740",background:"rgba(248,199,64,0.1)",padding:"4px 14px",borderRadius:20}}>⭐ {drillScore}</div>
+          <div style={{position:"fixed",inset:0,zIndex:100,background:C.bg,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            {/* ── Fixed Top Bar ── */}
+            <div style={{flexShrink:0,padding:"12px 16px 8px",borderBottom:`1px solid ${C.bg}`}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,maxWidth:500,margin:"0 auto"}}>
+                <button onClick={()=>{setDrillType(null);setDrillMode(null);setDrillStage(null);}} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:C.tm,padding:4}}>✕</button>
+                <div style={{flex:1,height:8,background:"rgba(0,0,0,0.06)",borderRadius:8,margin:"0 14px",overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${((drillIdx+(drillDone?1:0))/drillQuestions.length)*100}%`,background:`linear-gradient(90deg,${C.secondary},${C.accent})`,borderRadius:8,transition:"width 0.4s ease"}}/>
+                </div>
+                <div style={{fontSize:13,fontWeight:700,color:C.tl,whiteSpace:"nowrap"}}>{drillIdx+1}/{drillQuestions.length}</div>
+              </div>
             </div>
-            {/* Progress */}
-            <div style={{height:6,background:"rgba(0,0,0,0.06)",borderRadius:6,marginBottom:20,overflow:"hidden"}}>
-              <div style={{height:"100%",width:`${((drillIdx+1)/drillQuestions.length)*100}%`,background:`linear-gradient(90deg,${C.secondary},${C.accent})`,borderRadius:6,transition:"width 0.4s ease"}}/>
-            </div>
-            {/* Type badge */}
-            <div style={{textAlign:"center",marginBottom:16}}>
-              <span style={{display:"inline-block",padding:"5px 14px",borderRadius:20,background:C.card,fontSize:12,fontWeight:700,color:C.tm}}>{typeLabel}</span>
-            </div>
-            {/* Question — listen types and follow_read use dedicated components */}
-            {(q.type==="listen_pick"||q.type==="listen_fill"||q.type==="listen_def"||q.type==="follow_read") ? (
-              <div style={{marginBottom:20}}>
+
+            {/* ── Scrollable Middle Content ── */}
+            <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",justifyContent:"center",padding:"12px 20px",maxWidth:500,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
+              {/* Type badge */}
+              <div style={{textAlign:"center",marginBottom:10,flexShrink:0}}>
+                <span style={{display:"inline-block",padding:"4px 12px",borderRadius:20,background:C.card,fontSize:11,fontWeight:700,color:C.tm}}>{typeLabel}{drillStage&&STAGE_CONFIG[drillType]?(" · "+(STAGE_CONFIG[drillType].stages.find(s=>s.cat===drillStage)?.name||"")):""}</span>
+              </div>
+
+              {/* Question — listen/speaking types use dedicated components */}
+              {(q.type==="listen_pick"||q.type==="listen_fill"||q.type==="listen_def"||q.type==="follow_read") ? (
+                <div style={{marginBottom:12,flexShrink:0}}>
                 {q.type==="follow_read" && <FollowReadQ key={drillIdx} exercise={q} onDone={ok=>{
                   setDrillSel(ok?"__correct__":"__wrong__");
                   setDrillDone(true);
@@ -8372,8 +8371,8 @@ export default function VocabMaster() {
                 }}/>}
               </div>
             ) : (
-            <div style={{background:C.card,borderRadius:20,padding:"22px 20px",marginBottom:20,boxShadow:"0 4px 16px rgba(0,0,0,0.06)",textAlign:"center"}}>
-              <div style={{fontSize:16,lineHeight:1.8,color:C.text,fontWeight:600,marginBottom:10}}>
+            <div style={{background:C.card,borderRadius:16,padding:"16px 18px",marginBottom:12,boxShadow:"0 2px 10px rgba(0,0,0,0.04)",textAlign:"center",flexShrink:0}}>
+              <div style={{fontSize:15,lineHeight:1.7,color:C.text,fontWeight:600,marginBottom:6}}>
                 {q.q.split("_____").map((part,i,arr)=>(
                   <span key={i}>
                     {part}
@@ -8396,7 +8395,7 @@ export default function VocabMaster() {
             </div>
             )}
             {/* Options — hidden for listen types (they render their own) */}
-            {!(q.type==="listen_pick"||q.type==="listen_fill"||q.type==="listen_def"||q.type==="follow_read")&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+            {!(q.type==="listen_pick"||q.type==="listen_fill"||q.type==="listen_def"||q.type==="follow_read")&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8,flexShrink:0}}>
               {(q.opts||q.options||[]).map((opt,i)=>{
                 const isCorrect = opt===(q.a||q.answer);
                 const isSelected = opt===drillSel;
@@ -8405,10 +8404,10 @@ export default function VocabMaster() {
                 else if(drillDone&&isSelected&&!isCorrect){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
                 return (
                   <button key={i} onClick={()=>drillAnswer(opt)}
-                    style={{background:bg,border:bd,color:cl,padding:"14px 10px",
-                      borderRadius:14,cursor:drillDone?"default":"pointer",
-                      fontSize:14,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",
-                      transition:"all 0.2s",lineHeight:1.4}}>
+                    style={{background:bg,border:bd,color:cl,padding:"12px 8px",
+                      borderRadius:12,cursor:drillDone?"default":"pointer",
+                      fontSize:13,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",
+                      transition:"all 0.2s",lineHeight:1.3}}>
                     {opt}
                   </button>
                 );
@@ -8416,46 +8415,38 @@ export default function VocabMaster() {
             </div>}
             {/* Tip on done — hidden for listen types */}
             {drillDone&&!(q.type==="listen_pick"||q.type==="listen_fill"||q.type==="listen_def"||q.type==="follow_read")&&(
-              <div style={{padding:"12px 16px",borderRadius:14,
+              <div style={{padding:"10px 14px",borderRadius:12,
                 background:drillSel===q.a?`${C.success}10`:`${C.error}08`,
                 border:`1.5px solid ${drillSel===q.a?C.success:C.error}33`,
-                marginBottom:16,animation:"slideUp 0.3s ease"}}>
-                <div style={{fontSize:12,fontWeight:800,color:drillSel===q.a?C.success:C.error,marginBottom:4}}>
-                  {drillSel===q.a?"✓ 正确！":"✗ 答错了"}
-                  {drillSel!==q.a&&<span style={{fontFamily:"'JetBrains Mono',monospace",marginLeft:6}}>→ {q.a}</span>}
-                </div>
-                <div style={{fontSize:13,color:C.tm,whiteSpace:"pre-line"}}>
-                  💡 {q.tip}
-                  {drillType==="tense"&&getTenseExplain(q.tip)&&(
-                    <div style={{marginTop:8,padding:"8px 10px",background:"rgba(0,0,0,0.04)",borderRadius:10,fontSize:12,color:C.tl,whiteSpace:"pre-line",lineHeight:1.6}}>
-                      {getTenseExplain(q.tip)}
-                    </div>
-                  )}
-                </div>
-                {/* 朗读完整句子按钮 */}
-                <div style={{marginTop:10,padding:"10px 14px",background:`${C.primary}08`,borderRadius:12,display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}
-                  onClick={()=>{
+                marginBottom:8,animation:"slideUp 0.3s ease",flexShrink:0}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                  <div style={{fontSize:12,fontWeight:800,color:drillSel===q.a?C.success:C.error}}>
+                    {drillSel===q.a?"✓ 正确！":"✗ 答错了"}
+                    {drillSel!==q.a&&<span style={{fontFamily:"'JetBrains Mono',monospace",marginLeft:6}}>→ {q.a}</span>}
+                  </div>
+                  <div onClick={()=>{
                     const full = q.q.replace(/_____/g, q.a).replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g," ").trim();
                     speak(full, 0.82);
-                  }}>
-                  <span style={{fontSize:22}}>🔊</span>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:13,fontWeight:700,color:C.primary,marginBottom:2}}>点击朗读完整句子</div>
-                    <div style={{fontSize:12,color:C.tm,lineHeight:1.5,fontFamily:"'JetBrains Mono',monospace"}}>
-                      {q.q.replace(/_____/g, q.a).replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g," ").trim()}
-                    </div>
-                  </div>
+                  }} style={{cursor:"pointer",fontSize:18,padding:"2px 6px"}}>🔊</div>
                 </div>
+                <div style={{fontSize:12,color:C.tm,lineHeight:1.5}}>💡 {q.tip}</div>
               </div>
             )}
-            {/* end of listen/non-listen branch */}
+            </div>{/* end of middle content */}
+
+            {/* ── Fixed Bottom Bar ── */}
             {drillDone&&!(drillQuestions[drillIdx]?.type==="listen_pick"||drillQuestions[drillIdx]?.type==="listen_fill"||drillQuestions[drillIdx]?.type==="follow_read")&&(
-              <button onClick={drillNext}
-                style={{width:"100%",background:`linear-gradient(135deg,${C.secondary},${C.accent})`,
-                  border:"none",color:"#fff",padding:"16px",borderRadius:16,
-                  cursor:"pointer",fontSize:16,fontWeight:800}}>
-                {drillIdx+1>=drillQuestions.length?"查看结果 →":"下一题 →"}
-              </button>
+              <div style={{flexShrink:0,padding:"12px 20px",borderTop:`1px solid rgba(0,0,0,0.06)`,
+                background:drillSel===q.a?`${C.success}12`:`${C.error}08`}}>
+                <div style={{maxWidth:500,margin:"0 auto"}}>
+                  <button onClick={drillNext}
+                    style={{width:"100%",background:drillSel===q.a?C.success:`linear-gradient(135deg,${C.secondary},${C.accent})`,
+                      border:"none",color:"#fff",padding:"16px",borderRadius:14,
+                      cursor:"pointer",fontSize:16,fontWeight:800}}>
+                    {drillIdx+1>=drillQuestions.length?"查看结果 →":"继续 →"}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         );
@@ -8490,14 +8481,14 @@ export default function VocabMaster() {
           {isStageMode && passed && nextStage && (
             <div style={{background:"linear-gradient(135deg,#e8f5e9,#c8e6c9)",borderRadius:14,padding:"12px 16px",marginBottom:16,
               border:"1px solid #a5d6a722"}}>
-              <div style={{fontSize:14,fontWeight:800,color:"#2e7d32"}}>🔓 恭喜通关！已解锁下一关</div>
+              <div style={{fontSize:14,fontWeight:800,color:"#2e7d32"}}>🔓 太棒了！本分类已掌握</div>
               <div style={{fontSize:12,color:"#388e3c",marginTop:4}}>{nextStage.icon} {nextStage.name}</div>
             </div>
           )}
           {isStageMode && !passed && (
             <div style={{background:"linear-gradient(135deg,#fff3e0,#ffe0b2)",borderRadius:14,padding:"12px 16px",marginBottom:16,
               border:"1px solid #ffb74d22"}}>
-              <div style={{fontSize:14,fontWeight:800,color:"#e65100"}}>需要 ≥80% 正确率才能通关</div>
+              <div style={{fontSize:14,fontWeight:800,color:"#e65100"}}>继续加油！≥80% 正确率即为掌握</div>
               <div style={{fontSize:12,color:"#bf360c",marginTop:4}}>当前 {Math.round(rate*100)}%，再试一次吧！</div>
             </div>
           )}
@@ -8516,19 +8507,19 @@ export default function VocabMaster() {
               <button onClick={()=>startStage(drillType, drillStage)}
                 style={{background:`linear-gradient(135deg,${C.secondary},${C.accent})`,border:"none",color:"#fff",
                   padding:"16px",borderRadius:16,cursor:"pointer",fontSize:16,fontWeight:800}}>
-                🔁 再练本关
+                🔁 再练本分类
               </button>
               {passed && nextStage && (
                 <button onClick={()=>{setDrillStage(nextStage.cat);setShowGrammarCard(true);setDrillFinished(false);}}
                   style={{background:"linear-gradient(135deg,#667eea,#764ba2)",border:"none",color:"#fff",
                     padding:"16px",borderRadius:16,cursor:"pointer",fontSize:16,fontWeight:800}}>
-                  ▶ 下一关: {nextStage.icon} {nextStage.name}
+                  ▶ 下一分类: {nextStage.icon} {nextStage.name}
                 </button>
               )}
               <button onClick={()=>{setDrillStage(null);setDrillFinished(false);setShowGrammarCard(false);}}
                 style={{background:C.card,border:"2px solid #e8e4f0",color:C.tm,
                   padding:"14px",borderRadius:16,cursor:"pointer",fontSize:14,fontWeight:700}}>
-                返回关卡列表
+                返回分类列表
               </button>
             </>) : (<>
               <button onClick={()=>startDrill(drillType)}
