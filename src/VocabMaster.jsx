@@ -8291,9 +8291,8 @@ export default function VocabMaster() {
             </div>
 
             {/* ── Scrollable Middle Content ── */}
-            <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",padding:"0 20px",maxWidth:600,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
-              <div style={{flex:1}}/>
-              <div style={{flexShrink:0,paddingBottom:drillDone?8:60}}>
+            <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 20px",overflow:"hidden"}}>
+              <div style={{width:"100%",maxWidth:600}}>
               {/* Type badge */}
               <div style={{textAlign:"center",marginBottom:10,flexShrink:0}}>
                 <span style={{display:"inline-block",padding:"4px 12px",borderRadius:20,background:C.card,fontSize:11,fontWeight:700,color:C.tm}}>{typeLabel}{drillStage&&STAGE_CONFIG[drillType]?(" · "+(STAGE_CONFIG[drillType].stages.find(s=>s.cat===drillStage)?.name||"")):""}</span>
@@ -8417,36 +8416,34 @@ export default function VocabMaster() {
             </div>}
             {/* Tip on done — hidden for listen types */}
             {drillDone&&!(q.type==="listen_pick"||q.type==="listen_fill"||q.type==="listen_def"||q.type==="follow_read")&&(
-              <div style={{padding:"10px 14px",borderRadius:12,
-                background:drillSel===q.a?`${C.success}10`:`${C.error}08`,
-                border:`1.5px solid ${drillSel===q.a?C.success:C.error}33`,
-                marginBottom:8,animation:"slideUp 0.3s ease",flexShrink:0}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-                  <div style={{fontSize:14,fontWeight:800,color:drillSel===q.a?C.success:C.error}}>
-                    {drillSel===q.a?"✓ 正确！":"✗ 答错了"}
-                    {drillSel!==q.a&&<span style={{fontFamily:"'JetBrains Mono',monospace",marginLeft:6}}>→ {q.a}</span>}
-                  </div>
-                  <div onClick={()=>{
-                    const full = q.q.replace(/_____/g, q.a).replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g," ").trim();
-                    speak(full, 0.82);
-                  }} style={{cursor:"pointer",fontSize:18,padding:"2px 6px"}}>🔊</div>
-                </div>
-                <div style={{fontSize:14,color:C.tm,lineHeight:1.5}}>💡 {q.tip}</div>
-              </div>
+              <div style={{display:"none"}}/>
             )}
               </div>{/* end fixed content block */}
-              <div style={{flex:1}}/>
             </div>{/* end of middle content */}
 
-            {/* ── Fixed Bottom Bar ── */}
+            {/* ── Fixed Bottom Bar with feedback + continue ── */}
             {drillDone&&!(drillQuestions[drillIdx]?.type==="listen_pick"||drillQuestions[drillIdx]?.type==="listen_fill"||drillQuestions[drillIdx]?.type==="follow_read")&&(
-              <div style={{flexShrink:0,padding:"12px 20px",borderTop:`1px solid rgba(0,0,0,0.06)`,
-                background:drillSel===q.a?`${C.success}12`:`${C.error}08`}}>
+              <div style={{flexShrink:0,padding:"12px 20px 16px",
+                background:drillSel===q.a?"#e8f5e9":"#fbe9e7",
+                borderTop:`1px solid ${drillSel===q.a?"#a5d6a744":"#ffab9144"}`}}>
                 <div style={{maxWidth:600,margin:"0 auto"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                    <div>
+                      <div style={{fontSize:15,fontWeight:800,color:drillSel===q.a?"#2e7d32":"#c62828"}}>
+                        {drillSel===q.a?"✓ 正确！":"✗ 答错了"}
+                        {drillSel!==q.a&&<span style={{fontFamily:"'JetBrains Mono',monospace",marginLeft:6}}>→ {q.a}</span>}
+                      </div>
+                      <div style={{fontSize:13,color:drillSel===q.a?"#388e3c":"#d32f2f",marginTop:2}}>💡 {q.tip}</div>
+                    </div>
+                    <div onClick={()=>{
+                      const full = q.q.replace(/_____/g, q.a).replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g," ").trim();
+                      speak(full, 0.82);
+                    }} style={{cursor:"pointer",fontSize:24,padding:"4px 8px",flexShrink:0}}>🔊</div>
+                  </div>
                   <button onClick={drillNext}
-                    style={{width:"100%",background:drillSel===q.a?C.success:`linear-gradient(135deg,${C.secondary},${C.accent})`,
-                      border:"none",color:"#fff",padding:"18px",borderRadius:14,
-                      cursor:"pointer",fontSize:16,fontWeight:800}}>
+                    style={{width:"100%",background:drillSel===q.a?"#4caf50":"linear-gradient(135deg,"+C.secondary+","+C.accent+")",
+                      border:"none",color:"#fff",padding:"16px",borderRadius:14,
+                      cursor:"pointer",fontSize:17,fontWeight:800}}>
                     {drillIdx+1>=drillQuestions.length?"查看结果 →":"继续 →"}
                   </button>
                 </div>
