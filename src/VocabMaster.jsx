@@ -8421,31 +8421,36 @@ export default function VocabMaster() {
               </div>{/* end fixed content block */}
             </div>{/* end of middle content */}
 
-            {/* ── Fixed Bottom Bar with feedback + continue ── */}
-            {drillDone&&!(drillQuestions[drillIdx]?.type==="listen_pick"||drillQuestions[drillIdx]?.type==="listen_fill"||drillQuestions[drillIdx]?.type==="follow_read")&&(
-              <div style={{flexShrink:0,padding:"12px 20px 16px",
-                background:drillSel===q.a?"#e8f5e9":"#fbe9e7",
-                borderTop:`1px solid ${drillSel===q.a?"#a5d6a744":"#ffab9144"}`}}>
+            {/* ── Fixed Bottom Bar — 始终显示，答前空白，答后变色 ── */}
+            {!(drillQuestions[drillIdx]?.type==="listen_pick"||drillQuestions[drillIdx]?.type==="listen_fill"||drillQuestions[drillIdx]?.type==="follow_read")&&(
+              <div style={{flexShrink:0,minHeight:120,padding:"12px 20px 16px",
+                background:drillDone?(drillSel===q.a?"#e8f5e9":"#fbe9e7"):C.bg,
+                borderTop:drillDone?`1px solid ${drillSel===q.a?"#a5d6a744":"#ffab9144"}`:"1px solid transparent",
+                transition:"background 0.3s ease"}}>
                 <div style={{maxWidth:600,margin:"0 auto"}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                    <div>
-                      <div style={{fontSize:15,fontWeight:800,color:drillSel===q.a?"#2e7d32":"#c62828"}}>
-                        {drillSel===q.a?"✓ 正确！":"✗ 答错了"}
-                        {drillSel!==q.a&&<span style={{fontFamily:"'JetBrains Mono',monospace",marginLeft:6}}>→ {q.a}</span>}
+                  {drillDone ? (<>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                      <div>
+                        <div style={{fontSize:15,fontWeight:800,color:drillSel===q.a?"#2e7d32":"#c62828"}}>
+                          {drillSel===q.a?"✓ 正确！":"✗ 答错了"}
+                          {drillSel!==q.a&&<span style={{fontFamily:"'JetBrains Mono',monospace",marginLeft:6}}>→ {q.a}</span>}
+                        </div>
+                        <div style={{fontSize:13,color:drillSel===q.a?"#388e3c":"#d32f2f",marginTop:2}}>💡 {q.tip}</div>
                       </div>
-                      <div style={{fontSize:13,color:drillSel===q.a?"#388e3c":"#d32f2f",marginTop:2}}>💡 {q.tip}</div>
+                      <div onClick={()=>{
+                        const full = q.q.replace(/_____/g, q.a).replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g," ").trim();
+                        speak(full, 0.82);
+                      }} style={{cursor:"pointer",fontSize:24,padding:"4px 8px",flexShrink:0}}>🔊</div>
                     </div>
-                    <div onClick={()=>{
-                      const full = q.q.replace(/_____/g, q.a).replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g," ").trim();
-                      speak(full, 0.82);
-                    }} style={{cursor:"pointer",fontSize:24,padding:"4px 8px",flexShrink:0}}>🔊</div>
-                  </div>
-                  <button onClick={drillNext}
-                    style={{width:"100%",background:drillSel===q.a?"#4caf50":"linear-gradient(135deg,"+C.secondary+","+C.accent+")",
-                      border:"none",color:"#fff",padding:"16px",borderRadius:14,
-                      cursor:"pointer",fontSize:17,fontWeight:800}}>
-                    {drillIdx+1>=drillQuestions.length?"查看结果 →":"继续 →"}
-                  </button>
+                    <button onClick={drillNext}
+                      style={{width:"100%",background:drillSel===q.a?"#4caf50":"linear-gradient(135deg,"+C.secondary+","+C.accent+")",
+                        border:"none",color:"#fff",padding:"16px",borderRadius:14,
+                        cursor:"pointer",fontSize:17,fontWeight:800}}>
+                      {drillIdx+1>=drillQuestions.length?"查看结果 →":"继续 →"}
+                    </button>
+                  </>) : (
+                    <div style={{height:80}}/>
+                  )}
                 </div>
               </div>
             )}
