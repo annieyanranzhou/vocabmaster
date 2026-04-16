@@ -8317,20 +8317,20 @@ export default function VocabMaster() {
                 {q.type==="listen_pick" && <ListenPickQ key={drillIdx} exercise={q} onDone={ok=>{
                   setDrillSel(ok?q.answer:"__wrong__");
                   setDrillDone(true);
-                  if(ok){playCorrectSound();setDrillScore(s=>s+10);setDrillCorrect(c=>c+1);}
-                  else{playWrongSound();setDrillScore(s=>Math.max(0,s-2));}
+                  if(ok){setDrillScore(s=>s+10);setDrillCorrect(c=>c+1);}
+                  else{setDrillScore(s=>Math.max(0,s-2));}
                 }}/>}
                 {q.type==="listen_def" && <ListenDefQ key={drillIdx} exercise={q} onDone={ok=>{
                   setDrillSel(ok?q.answer:"__wrong__");
                   setDrillDone(true);
-                  if(ok){playCorrectSound();setDrillScore(s=>s+10);setDrillCorrect(c=>c+1);}
-                  else{playWrongSound();setDrillScore(s=>Math.max(0,s-2));}
+                  if(ok){setDrillScore(s=>s+10);setDrillCorrect(c=>c+1);}
+                  else{setDrillScore(s=>Math.max(0,s-2));}
                 }}/>}
                 {q.type==="listen_fill" && <ListenFillQ key={drillIdx} exercise={q} onDone={ok=>{
                   setDrillSel(ok?q.answer:"__wrong__");
                   setDrillDone(true);
-                  if(ok){playCorrectSound();setDrillScore(s=>s+10);setDrillCorrect(c=>c+1);}
-                  else{playWrongSound();setDrillScore(s=>Math.max(0,s-2));}
+                  if(ok){setDrillScore(s=>s+10);setDrillCorrect(c=>c+1);}
+                  else{setDrillScore(s=>Math.max(0,s-2));}
                 }}/>}
               </div>
             ) : (
@@ -8386,26 +8386,26 @@ export default function VocabMaster() {
             {/* ── Fixed Bottom Bar — 固定高度，答前空白，答后变色 ── */}
             {!(drillQuestions[drillIdx]?.type==="follow_read")&&(
               <div style={{flexShrink:0,height:140,padding:"12px 20px 16px",boxSizing:"border-box",
-                background:drillDone?(drillSel===q.a?"#e8f5e9":"#fbe9e7"):C.bg,
-                borderTop:drillDone?`1px solid ${drillSel===q.a?"#a5d6a744":"#ffab9144"}`:"1px solid transparent",
+                background:drillDone?(drillSel===(q.a||q.answer)?"#e8f5e9":"#fbe9e7"):C.bg,
+                borderTop:drillDone?`1px solid ${drillSel===(q.a||q.answer)?"#a5d6a744":"#ffab9144"}`:"1px solid transparent",
                 transition:"background 0.3s ease",display:"flex",alignItems:"center"}}>
                 <div style={{maxWidth:600,margin:"0 auto",width:"100%"}}>
                   {drillDone ? (<>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                       <div>
-                        <div style={{fontSize:15,fontWeight:800,color:drillSel===q.a?"#2e7d32":"#c62828"}}>
-                          {drillSel===q.a?"✓ 正确！":"✗ 答错了"}
-                          {drillSel!==q.a&&<span style={{fontFamily:"'JetBrains Mono',monospace",marginLeft:6}}>→ {q.a}</span>}
+                        <div style={{fontSize:15,fontWeight:800,color:drillSel===(q.a||q.answer)?"#2e7d32":"#c62828"}}>
+                          {drillSel===(q.a||q.answer)?"✓ 正确！":"✗ 答错了"}
+                          {drillSel!==(q.a||q.answer)&&<span style={{fontFamily:"'JetBrains Mono',monospace",marginLeft:6}}>→ {q.a||q.answer}</span>}
                         </div>
-                        <div style={{fontSize:13,color:drillSel===q.a?"#388e3c":"#d32f2f",marginTop:2}}>💡 {q.tip}</div>
+                        <div style={{fontSize:13,color:drillSel===(q.a||q.answer)?"#388e3c":"#d32f2f",marginTop:2}}>💡 {q.tip||""}</div>
                       </div>
                       <div onClick={()=>{
-                        const full = q.q.replace(/_____/g, q.a).replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g," ").trim();
+                        const full = (q.q||q.sentence||q.enDef||q.answer||"").replace(/_____/g, q.a||q.answer||"").replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g," ").trim();
                         speak(full, 0.82);
                       }} style={{cursor:"pointer",fontSize:24,padding:"4px 8px",flexShrink:0}}>🔊</div>
                     </div>
                     <button onClick={drillNext}
-                      style={{width:"100%",background:drillSel===q.a?"#4caf50":"linear-gradient(135deg,"+C.secondary+","+C.accent+")",
+                      style={{width:"100%",background:drillSel===(q.a||q.answer)?"#4caf50":"linear-gradient(135deg,"+C.secondary+","+C.accent+")",
                         border:"none",color:"#fff",padding:"14px",borderRadius:14,
                         cursor:"pointer",fontSize:17,fontWeight:800}}>
                       {drillIdx+1>=drillQuestions.length?"查看结果 →":"继续 →"}
