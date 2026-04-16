@@ -4378,10 +4378,10 @@ function FollowReadQ({exercise, onDone}) {
           {/* Score circle */}
           <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",
             background:score>=80?"linear-gradient(135deg,#3CC87A,#00B4D8)":score>=60?"linear-gradient(135deg,#F8C740,#FF8C5A)":"linear-gradient(135deg,#FF6B6B,#FF3333)",
-            borderRadius:20,padding:"20px 36px",marginBottom:16,
-            boxShadow:"0 6px 24px rgba(0,0,0,0.15)"}}>
-            <div style={{fontSize:36,fontWeight:900,color:"#fff"}}>{score}%</div>
-            <div style={{fontSize:12,color:"rgba(255,255,255,0.85)",fontWeight:600}}>
+            borderRadius:20,padding:"14px 28px",marginBottom:12,
+            boxShadow:"0 4px 16px rgba(0,0,0,0.12)"}}>
+            <div style={{fontSize:24,fontWeight:900,color:"#fff"}}>{score}%</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.85)",fontWeight:600}}>
               {score>=80?"太棒了！发音很准！":score>=60?"不错！继续练习！":"再试一次吧！"}
             </div>
           </div>
