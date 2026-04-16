@@ -3971,7 +3971,7 @@ function ListenDefQ({exercise, onDone}) {
 
   const oc = [C.primary, C.accent, C.gold, C.secondary];
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:16,width:"100%",maxWidth:440}}>
+    <div style={{display:"flex",flexDirection:"column",gap:16,width:"100%",maxWidth:600}}>
       <div style={{textAlign:"center",padding:"12px 0 4px"}}>
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:10}}>👂 Listen to Definition</div>
         <button onClick={readDef}
@@ -4035,15 +4035,15 @@ function ListenPickQ({exercise, onDone}) {
 
   const oc = [C.primary, C.accent, C.gold, C.secondary];
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",maxWidth:440}}>
+    <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",maxWidth:600}}>
       <div style={{textAlign:"center",padding:"20px 0 10px"}}>
-        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:12}}>👂 Listen &amp; Choose</div>
+        <div style={{fontSize:14,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:12}}>👂 Listen &amp; Choose</div>
         <button onClick={()=>speak(w.word, 0.82)}
           style={{width:80,height:80,borderRadius:"50%",background:"linear-gradient(135deg,#00B4D8,#7B61FF)",border:"none",cursor:"pointer",fontSize:36,boxShadow:"0 4px 20px rgba(0,180,216,0.4)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
           🔊
         </button>
         <div style={{marginTop:12,fontSize:13,color:C.tl}}>点击重播 · Tap to replay</div>
-        {done && <div style={{marginTop:8,fontSize:20,fontWeight:800,color:C.text}}>{w.word}</div>}
+        {done && <div style={{marginTop:8,fontSize:24,fontWeight:800,color:C.text}}>{w.word}</div>}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         {exercise.options.map((opt,i) => {
@@ -4052,7 +4052,7 @@ function ListenPickQ({exercise, onDone}) {
           if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}
           else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
           return <button key={i} onClick={()=>go(opt)}
-            style={{background:bg,border:bd,color:cl,padding:"14px 12px",borderRadius:14,cursor:done?"default":"pointer",fontSize:14,fontWeight:700,transition:"all 0.2s",lineHeight:1.4}}>
+            style={{background:bg,border:bd,color:cl,padding:"14px 12px",borderRadius:14,cursor:done?"default":"pointer",fontSize:16,fontWeight:700,transition:"all 0.2s",lineHeight:1.4}}>
             {opt}
           </button>;
         })}
@@ -4103,7 +4103,7 @@ function ListenFillQ({exercise, onDone}) {
 
   const oc = [C.primary, C.accent, C.gold, C.secondary];
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",maxWidth:440}}>
+    <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",maxWidth:600}}>
       <div style={{textAlign:"center",padding:"16px 0 8px"}}>
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:12}}>👂 Listen &amp; Fill</div>
         <button onClick={playAudio}
@@ -4112,7 +4112,7 @@ function ListenFillQ({exercise, onDone}) {
         </button>
       </div>
       <div style={{background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
-        <div style={{fontSize:15,lineHeight:1.8,color:C.text,fontWeight:500}}>
+        <div style={{fontSize:17,lineHeight:1.8,color:C.text,fontWeight:500}}>
           {exercise.masked.split("___").map((part,i,arr) => (
             <span key={i}>{part}{i<arr.length-1 && (
               done
@@ -4300,7 +4300,7 @@ function FollowReadQ({exercise, onDone}) {
   };
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:16,width:"100%",maxWidth:440}}>
+    <div style={{display:"flex",flexDirection:"column",gap:16,width:"100%",maxWidth:600}}>
       {/* Title */}
       <div style={{textAlign:"center",padding:"8px 0"}}>
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:6}}>🎙️ Follow & Read</div>
@@ -8300,7 +8300,7 @@ export default function VocabMaster() {
 
               {/* Question — listen/speaking types use dedicated components */}
               {(q.type==="listen_pick"||q.type==="listen_fill"||q.type==="listen_def"||q.type==="follow_read") ? (
-                <div style={{marginBottom:12,flexShrink:0}}>
+                <div style={{width:"100%",maxWidth:600,margin:"0 auto"}}>
                 {q.type==="follow_read" && <FollowReadQ key={drillIdx} exercise={q} onDone={ok=>{
                   setDrillSel(ok?"__correct__":"__wrong__");
                   setDrillDone(true);
