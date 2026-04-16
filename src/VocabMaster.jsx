@@ -3936,7 +3936,6 @@ function SentBuildQ({exercise, onDone}) {
 function ListenDefQ({exercise, onDone}) {
   const [sel, setSel] = useState(null);
   const [done, setDone] = useState(false);
-  const timer = useRef(null);
   const w = exercise.word;
 
   const readDef = () => {
@@ -3951,7 +3950,7 @@ function ListenDefQ({exercise, onDone}) {
 
   useEffect(() => {
     setTimeout(readDef, 400);
-    return () => { window.speechSynthesis?.cancel(); if(timer.current) clearTimeout(timer.current); };
+    return () => { window.speechSynthesis?.cancel(); };
   }, []);
 
   const go = opt => {
@@ -3966,22 +3965,22 @@ function ListenDefQ({exercise, onDone}) {
         localStorage.setItem("vm_wrong_listen", JSON.stringify(wl));
       } catch(e){}
     }
-    timer.current = setTimeout(() => onDone(ok), ok?800:1500);
+    setTimeout(() => onDone(ok), 300);
   };
 
   const oc = [C.primary, C.accent, C.gold, C.secondary];
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:16,width:"100%",maxWidth:600}}>
-      <div style={{textAlign:"center",padding:"12px 0 4px"}}>
-        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:10}}>👂 Listen to Definition</div>
+    <div style={{display:"flex",flexDirection:"column",gap:14,width:"100%",maxWidth:600,margin:"0 auto"}}>
+      <div style={{textAlign:"center",padding:"8px 0 4px"}}>
+        <div style={{fontSize:14,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:10}}>👂 Listen to Definition</div>
         <button onClick={readDef}
           style={{width:64,height:64,borderRadius:"50%",background:"linear-gradient(135deg,#00B4D8,#7B61FF)",border:"none",cursor:"pointer",fontSize:28,boxShadow:"0 4px 16px rgba(0,180,216,0.35)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
           🔊
         </button>
       </div>
       <div style={{background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
-        <div style={{fontSize:15,lineHeight:1.7,color:C.text,fontWeight:600}}>{exercise.enDef}</div>
-        <div style={{fontSize:12,color:C.tl,marginTop:6,paddingTop:6,borderTop:`1px solid ${C.primary}15`,fontStyle:"italic"}}>
+        <div style={{fontSize:16,lineHeight:1.7,color:C.text,fontWeight:600}}>{exercise.enDef}</div>
+        <div style={{fontSize:13,color:C.tl,marginTop:6,paddingTop:6,borderTop:`1px solid ${C.primary}15`,fontStyle:"italic"}}>
           🇨🇳 {exercise.cnDef}
         </div>
       </div>
@@ -3992,7 +3991,7 @@ function ListenDefQ({exercise, onDone}) {
           if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}
           else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
           return <button key={i} onClick={()=>go(opt)}
-            style={{background:bg,border:bd,color:cl,padding:"14px 12px",borderRadius:14,cursor:done?"default":"pointer",fontSize:15,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",transition:"all 0.2s"}}>
+            style={{background:bg,border:bd,color:cl,padding:"16px 12px",borderRadius:14,cursor:done?"default":"pointer",fontSize:16,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",transition:"all 0.2s"}}>
             {opt}
           </button>;
         })}
@@ -4007,14 +4006,10 @@ function ListenDefQ({exercise, onDone}) {
 function ListenPickQ({exercise, onDone}) {
   const [sel, setSel] = useState(null);
   const [done, setDone] = useState(false);
-  const [revealed, setRevealed] = useState(false);
-  const timer = useRef(null);
   const w = exercise.word;
 
   useEffect(() => {
-    // 自动播放单词音频
     setTimeout(() => speak(w.word, 0.82), 300);
-    return () => { if(timer.current) clearTimeout(timer.current); };
   }, [w.word]);
 
   const go = opt => {
@@ -4022,7 +4017,6 @@ function ListenPickQ({exercise, onDone}) {
     setSel(opt); setDone(true);
     const ok = opt === exercise.answer;
     if(ok) playCorrectSound(); else playWrongSound();
-    // 答错存入听错错题本
     if(!ok) {
       try {
         const wl = JSON.parse(localStorage.getItem("vm_wrong_listen")||"[]");
@@ -4030,20 +4024,21 @@ function ListenPickQ({exercise, onDone}) {
         localStorage.setItem("vm_wrong_listen", JSON.stringify(wl));
       } catch(e){}
     }
-    timer.current = setTimeout(() => onDone(ok), 1200);
+    // Notify parent — parent shows bottom bar
+    setTimeout(() => onDone(ok), 300);
   };
 
   const oc = [C.primary, C.accent, C.gold, C.secondary];
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",maxWidth:600}}>
-      <div style={{textAlign:"center",padding:"20px 0 10px"}}>
-        <div style={{fontSize:14,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:12}}>👂 Listen &amp; Choose</div>
+    <div style={{display:"flex",flexDirection:"column",gap:16,width:"100%",maxWidth:600,margin:"0 auto"}}>
+      <div style={{textAlign:"center",padding:"12px 0 8px"}}>
+        <div style={{fontSize:14,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:12}}>👂 Listen & Choose</div>
         <button onClick={()=>speak(w.word, 0.82)}
           style={{width:80,height:80,borderRadius:"50%",background:"linear-gradient(135deg,#00B4D8,#7B61FF)",border:"none",cursor:"pointer",fontSize:36,boxShadow:"0 4px 20px rgba(0,180,216,0.4)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
           🔊
         </button>
-        <div style={{marginTop:12,fontSize:13,color:C.tl}}>点击重播 · Tap to replay</div>
-        {done && <div style={{marginTop:8,fontSize:24,fontWeight:800,color:C.text}}>{w.word}</div>}
+        {/* 答案始终占位，答前透明答后显示，防止位置跳动 */}
+        <div style={{marginTop:10,fontSize:22,fontWeight:800,color:done?C.text:"transparent",minHeight:30}}>{w.word}</div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         {exercise.options.map((opt,i) => {
@@ -4052,7 +4047,7 @@ function ListenPickQ({exercise, onDone}) {
           if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}
           else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
           return <button key={i} onClick={()=>go(opt)}
-            style={{background:bg,border:bd,color:cl,padding:"14px 12px",borderRadius:14,cursor:done?"default":"pointer",fontSize:16,fontWeight:700,transition:"all 0.2s",lineHeight:1.4}}>
+            style={{background:bg,border:bd,color:cl,padding:"16px 12px",borderRadius:14,cursor:done?"default":"pointer",fontSize:16,fontWeight:700,transition:"all 0.2s",lineHeight:1.4}}>
             {opt}
           </button>;
         })}
@@ -4067,17 +4062,14 @@ function ListenPickQ({exercise, onDone}) {
 function ListenFillQ({exercise, onDone}) {
   const [sel, setSel] = useState(null);
   const [done, setDone] = useState(false);
-  const timer = useRef(null);
   const w = exercise.word;
 
   useEffect(() => {
-    // 自动播放句子音频
     setTimeout(() => {
       const url = `/audio/${exercise.audioHash}.mp3`;
       const au = new Audio(url);
       au.play().catch(() => speak(exercise.sentence, 0.82));
     }, 300);
-    return () => { if(timer.current) clearTimeout(timer.current); };
   }, [exercise.audioHash]);
 
   const playAudio = () => {
@@ -4098,14 +4090,14 @@ function ListenFillQ({exercise, onDone}) {
         localStorage.setItem("vm_wrong_listen", JSON.stringify(wl));
       } catch(e){}
     }
-    timer.current = setTimeout(() => onDone(ok), 1200);
+    setTimeout(() => onDone(ok), 300);
   };
 
   const oc = [C.primary, C.accent, C.gold, C.secondary];
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",maxWidth:600}}>
-      <div style={{textAlign:"center",padding:"16px 0 8px"}}>
-        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:12}}>👂 Listen &amp; Fill</div>
+    <div style={{display:"flex",flexDirection:"column",gap:14,width:"100%",maxWidth:600,margin:"0 auto"}}>
+      <div style={{textAlign:"center",padding:"8px 0 4px"}}>
+        <div style={{fontSize:14,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:10}}>👂 Listen & Fill</div>
         <button onClick={playAudio}
           style={{width:64,height:64,borderRadius:"50%",background:"linear-gradient(135deg,#00B4D8,#7B61FF)",border:"none",cursor:"pointer",fontSize:28,boxShadow:"0 4px 16px rgba(0,180,216,0.35)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
           🔊
@@ -4122,7 +4114,7 @@ function ListenFillQ({exercise, onDone}) {
           ))}
         </div>
         {exercise.sentCn && (
-          <div style={{fontSize:12,color:C.tl,marginTop:8,paddingTop:8,borderTop:`1px solid ${C.primary}15`,fontStyle:"italic"}}>
+          <div style={{fontSize:13,color:C.tl,marginTop:8,paddingTop:8,borderTop:`1px solid ${C.primary}15`,fontStyle:"italic"}}>
             🇨🇳 {exercise.sentCn}
           </div>
         )}
@@ -4134,7 +4126,7 @@ function ListenFillQ({exercise, onDone}) {
           if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}
           else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
           return <button key={i} onClick={()=>go(opt)}
-            style={{background:bg,border:bd,color:cl,padding:"14px 12px",borderRadius:14,cursor:done?"default":"pointer",fontSize:15,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",transition:"all 0.2s"}}>
+            style={{background:bg,border:bd,color:cl,padding:"16px 12px",borderRadius:14,cursor:done?"default":"pointer",fontSize:16,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",transition:"all 0.2s"}}>
             {opt}
           </button>;
         })}
@@ -8325,50 +8317,20 @@ export default function VocabMaster() {
                 {q.type==="listen_pick" && <ListenPickQ key={drillIdx} exercise={q} onDone={ok=>{
                   setDrillSel(ok?q.answer:"__wrong__");
                   setDrillDone(true);
-                  setTimeout(()=>{
-                    if(ok)setDrillScore(s=>s+10); else setDrillScore(s=>Math.max(0,s-2));
-                    if(ok)setDrillCorrect(c=>c+1);
-                    if(drillIdx+1>=drillQuestions.length){
-                      playCelebrationSound();
-                      const _food = drillCorrect >= 18 ? 10 : drillCorrect >= 14 ? 7 : drillCorrect >= 10 ? 5 : 3;
-                      addPetFood(_food);
-                      if(authUser) supabase.saveDrillScore(authUser.id, drillType, drillScore).catch(()=>{});
-                      setDrillFinished(true);
-                    }
-                    else{setDrillIdx(i=>i+1);setDrillSel(null);setDrillDone(false);}
-                  },ok?800:1500);
+                  if(ok){playCorrectSound();setDrillScore(s=>s+10);setDrillCorrect(c=>c+1);}
+                  else{playWrongSound();setDrillScore(s=>Math.max(0,s-2));}
                 }}/>}
                 {q.type==="listen_def" && <ListenDefQ key={drillIdx} exercise={q} onDone={ok=>{
                   setDrillSel(ok?q.answer:"__wrong__");
                   setDrillDone(true);
-                  setTimeout(()=>{
-                    if(ok)setDrillScore(s=>s+10); else setDrillScore(s=>Math.max(0,s-2));
-                    if(ok)setDrillCorrect(c=>c+1);
-                    if(drillIdx+1>=drillQuestions.length){
-                      playCelebrationSound();
-                      const _food = drillCorrect >= 18 ? 10 : drillCorrect >= 14 ? 7 : drillCorrect >= 10 ? 5 : 3;
-                      addPetFood(_food);
-                      if(authUser) supabase.saveDrillScore(authUser.id, drillType, drillScore).catch(()=>{});
-                      setDrillFinished(true);
-                    }
-                    else{setDrillIdx(i=>i+1);setDrillSel(null);setDrillDone(false);}
-                  },ok?800:1500);
+                  if(ok){playCorrectSound();setDrillScore(s=>s+10);setDrillCorrect(c=>c+1);}
+                  else{playWrongSound();setDrillScore(s=>Math.max(0,s-2));}
                 }}/>}
                 {q.type==="listen_fill" && <ListenFillQ key={drillIdx} exercise={q} onDone={ok=>{
                   setDrillSel(ok?q.answer:"__wrong__");
                   setDrillDone(true);
-                  setTimeout(()=>{
-                    if(ok)setDrillScore(s=>s+10); else setDrillScore(s=>Math.max(0,s-2));
-                    if(ok)setDrillCorrect(c=>c+1);
-                    if(drillIdx+1>=drillQuestions.length){
-                      playCelebrationSound();
-                      const _food = drillCorrect >= 18 ? 10 : drillCorrect >= 14 ? 7 : drillCorrect >= 10 ? 5 : 3;
-                      addPetFood(_food);
-                      if(authUser) supabase.saveDrillScore(authUser.id, drillType, drillScore).catch(()=>{});
-                      setDrillFinished(true);
-                    }
-                    else{setDrillIdx(i=>i+1);setDrillSel(null);setDrillDone(false);}
-                  },ok?800:1500);
+                  if(ok){playCorrectSound();setDrillScore(s=>s+10);setDrillCorrect(c=>c+1);}
+                  else{playWrongSound();setDrillScore(s=>Math.max(0,s-2));}
                 }}/>}
               </div>
             ) : (
@@ -8422,7 +8384,7 @@ export default function VocabMaster() {
             </div>{/* end of middle content */}
 
             {/* ── Fixed Bottom Bar — 固定高度，答前空白，答后变色 ── */}
-            {!(drillQuestions[drillIdx]?.type==="listen_pick"||drillQuestions[drillIdx]?.type==="listen_fill"||drillQuestions[drillIdx]?.type==="follow_read")&&(
+            {!(drillQuestions[drillIdx]?.type==="follow_read")&&(
               <div style={{flexShrink:0,height:140,padding:"12px 20px 16px",boxSizing:"border-box",
                 background:drillDone?(drillSel===q.a?"#e8f5e9":"#fbe9e7"):C.bg,
                 borderTop:drillDone?`1px solid ${drillSel===q.a?"#a5d6a744":"#ffab9144"}`:"1px solid transparent",
