@@ -8421,13 +8421,13 @@ export default function VocabMaster() {
               </div>{/* end fixed content block */}
             </div>{/* end of middle content */}
 
-            {/* ── Fixed Bottom Bar — 始终显示，答前空白，答后变色 ── */}
+            {/* ── Fixed Bottom Bar — 固定高度，答前空白，答后变色 ── */}
             {!(drillQuestions[drillIdx]?.type==="listen_pick"||drillQuestions[drillIdx]?.type==="listen_fill"||drillQuestions[drillIdx]?.type==="follow_read")&&(
-              <div style={{flexShrink:0,minHeight:120,padding:"12px 20px 16px",
+              <div style={{flexShrink:0,height:140,padding:"12px 20px 16px",boxSizing:"border-box",
                 background:drillDone?(drillSel===q.a?"#e8f5e9":"#fbe9e7"):C.bg,
                 borderTop:drillDone?`1px solid ${drillSel===q.a?"#a5d6a744":"#ffab9144"}`:"1px solid transparent",
-                transition:"background 0.3s ease"}}>
-                <div style={{maxWidth:600,margin:"0 auto"}}>
+                transition:"background 0.3s ease",display:"flex",alignItems:"center"}}>
+                <div style={{maxWidth:600,margin:"0 auto",width:"100%"}}>
                   {drillDone ? (<>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                       <div>
@@ -8444,13 +8444,11 @@ export default function VocabMaster() {
                     </div>
                     <button onClick={drillNext}
                       style={{width:"100%",background:drillSel===q.a?"#4caf50":"linear-gradient(135deg,"+C.secondary+","+C.accent+")",
-                        border:"none",color:"#fff",padding:"16px",borderRadius:14,
+                        border:"none",color:"#fff",padding:"14px",borderRadius:14,
                         cursor:"pointer",fontSize:17,fontWeight:800}}>
                       {drillIdx+1>=drillQuestions.length?"查看结果 →":"继续 →"}
                     </button>
-                  </>) : (
-                    <div style={{height:80}}/>
-                  )}
+                  </>) : null}
                 </div>
               </div>
             )}
