@@ -593,7 +593,7 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
   // ===== PLAYING =====
   return (
     <div style={{position:"fixed",inset:0,zIndex:9999,background:"#0a0a1a",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <canvas ref={canvasRef} width={W} height={H} style={{maxWidth:"100vw",maxHeight:"100vh",touchAction:"none",cursor:"crosshair"}}/>
+      <canvas ref={canvasRef} width={W} height={H} style={{width:"100vw",height:"100vh",touchAction:"none",cursor:"crosshair",objectFit:"cover"}}/>
     </div>
   );
 }
