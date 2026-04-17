@@ -150,7 +150,7 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
         vx: (Math.random() - 0.5) * 1.2,
         vy: -(7 + Math.random() * 1.5), // upward throw - moderate speed
         rotation: Math.random() * Math.PI * 2,
-        rotSpeed: (Math.random() - 0.5) * 0.08,
+        rotSpeed: (Math.random() - 0.5) * 0.03,
         fruit: ft, isBomb, isAnswer,
         sliced: false, missed: false,
         delay,
@@ -284,6 +284,7 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
     const ctx = canvas.getContext("2d");
 
     const loop = () => {
+      try {
       const g = gameRef.current; if (!g) return;
       g.frameCount++;
 
@@ -382,27 +383,32 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
         if (f.sliced || !f.active) continue;
         ctx.save();
         ctx.translate(f.x, f.y);
-        ctx.rotate(f.rotation);
-        // Circle background - solid and bright
+        // Outer glow
+        ctx.shadowColor = f.fruit.color;
+        ctx.shadowBlur = 15;
+        // Solid bright circle
         ctx.beginPath();
         ctx.arc(0, 0, FRUIT_R, 0, Math.PI * 2);
-        ctx.fillStyle = f.fruit.color + "bb";
+        ctx.fillStyle = f.fruit.color;
         ctx.fill();
         ctx.strokeStyle = "#fff";
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 3;
         ctx.stroke();
-        // Emoji - bigger
-        ctx.font = `${FRUIT_R * 1.3}px sans-serif`;
+        ctx.shadowBlur = 0;
+        // Emoji - big and centered, no rotation so it's readable
+        ctx.save();
+        ctx.rotate(-f.rotation); // cancel parent rotation for emoji
+        ctx.font = `${FRUIT_R}px sans-serif`;
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText(f.fruit.emoji, 0, -2);
-        // Word label - with dark pill background for readability
-        ctx.rotate(-f.rotation); // Keep text upright
-        const wordFontSize = f.word.length > 10 ? 11 : f.word.length > 7 ? 12 : 14;
+        ctx.fillText(f.fruit.emoji, 0, 0);
+        // Word label - dark pill below fruit
+        const wordFontSize = f.word.length > 10 ? 10 : f.word.length > 7 ? 12 : 14;
         ctx.font = `bold ${wordFontSize}px 'Nunito',sans-serif`;
         const tw = ctx.measureText(f.word).width;
-        ctx.fillStyle = "rgba(0,0,0,0.7)";
-        const pillW = tw + 14, pillH = wordFontSize + 8, pillY = FRUIT_R + 8;
-        const px = -pillW/2, py2 = pillY - pillH/2, pr = 5;
+        const pillW = tw + 16, pillH = wordFontSize + 10, pillY = FRUIT_R + 12;
+        ctx.fillStyle = "rgba(0,0,0,0.85)";
+        // Rounded rect manually
+        const px = -pillW/2, py2 = pillY - pillH/2, pr = 6;
         ctx.beginPath();
         ctx.moveTo(px+pr, py2); ctx.lineTo(px+pillW-pr, py2); ctx.arcTo(px+pillW, py2, px+pillW, py2+pr, pr);
         ctx.lineTo(px+pillW, py2+pillH-pr); ctx.arcTo(px+pillW, py2+pillH, px+pillW-pr, py2+pillH, pr);
@@ -411,6 +417,7 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
         ctx.closePath(); ctx.fill();
         ctx.fillStyle = "#fff";
         ctx.fillText(f.word, 0, pillY + 1);
+        ctx.restore();
         ctx.restore();
       }
 
@@ -520,6 +527,7 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
       ctx.fillStyle = "rgba(255,255,255,0.25)"; ctx.font = "11px sans-serif"; ctx.textAlign = "center";
       ctx.fillText("滑动手指切开正确单词的水果", W/2, H - 8);
 
+      } catch(err) { console.error("WordSlice loop error:", err); }
       frameRef.current = requestAnimationFrame(loop);
     };
 
