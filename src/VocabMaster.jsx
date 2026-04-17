@@ -3009,6 +3009,1159 @@ const VOCAB = [
   {word:"description",ph:"/dɪˈskrɪpʃən/",en:"A spoken or written account of what something is like",cn:"描述；描写；说明",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"give a description", sent:"Can you give a description of what you saw?", sentCn:"你能描述一下你看到的东西吗？"},{phrase:"job description", sent:"Read the job description carefully before applying.", sentCn:"申请前请仔细阅读职位描述。"},{phrase:"detailed description", sent:"The report included a detailed description of the accident.", sentCn:"报告包括对事故的详细描述。"}],ex:"Her description of the journey made everyone want to travel there.",family:{noun:"description",verb:"describe",adj:"descriptive"},syn:["account","explanation"],ant:[],collocation:{correct:["give a description","job description","detailed description"],distractors:["do a description","make description"],example_sent:"He gave a clear description of the suspect to the police."},fill_blank:{sentence:"The police officer asked for a ___ of the missing person.",sentence_cn:"警察要求提供失踪者的___。",options:["description","picture","story","report"]},synonym_match:{synonyms:["account","portrayal"]},error_fix:{wrong:"She made a description of the scene.",right:"She gave a description of the scene.",hint:"description通常用give（给出描述），不用make"}},
   {word:"dialogue",ph:"/ˈdaɪəlɒɡ/",en:"A conversation between two or more people in a book, film, or play",cn:"对话；交流；对白",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"have a dialogue", sent:"The two leaders had a dialogue about peace.", sentCn:"两位领导人就和平问题进行了对话。"},{phrase:"open dialogue", sent:"Open dialogue between students and teachers improves learning.", sentCn:"师生之间的开放对话有助于提高学习效果。"},{phrase:"written dialogue", sent:"The written dialogue in the play felt very natural.", sentCn:"剧本中的对白感觉非常自然。"}],ex:"The film's dialogue was praised for being realistic and witty.",family:{noun:"dialogue",verb:"dialogue"},syn:["conversation","exchange"],ant:["monologue"],collocation:{correct:["have a dialogue","open dialogue","written dialogue"],distractors:["do dialogue","make a dialogue"],example_sent:"They had a productive dialogue about improving the school."},fill_blank:{sentence:"The ___ between the two characters felt very realistic.",sentence_cn:"两个角色之间的___感觉非常真实。",options:["dialogue","speech","text","writing"]},synonym_match:{synonyms:["conversation","discussion"]},error_fix:{wrong:"They did a dialogue about the problem.",right:"They had a dialogue about the problem.",hint:"dialogue通常用have（进行对话），不用do"}},
   {word:"director",ph:"/dɪˈrektər/",en:"A person who is in charge of an activity or organization",cn:"主任；导演；董事；总监",lv:"intermediate",pos:"n",tags:["general"],phrases:[{phrase:"film director", sent:"The film director won an award for her outstanding work.", sentCn:"这位电影导演因其出色的工作获奖。"},{phrase:"school director", sent:"The school director made important decisions about the curriculum.", sentCn:"学校主任就课程做出了重要决定。"},{phrase:"board of directors", sent:"The board of directors approved the new budget.", sentCn:"董事会批准了新预算。"}],ex:"She became the director of a famous art museum at age 40.",family:{noun:"director",verb:"direct",adj:"directive"},syn:["manager","head"],ant:[],collocation:{correct:["film director","board of directors","managing director"],distractors:["do director","make a director"],example_sent:"The managing director announced the new company policy."},fill_blank:{sentence:"The ___ of the school gave a speech at the opening ceremony.",sentence_cn:"学校___在开幕式上发表了讲话。",options:["director","teacher","student","manager"]},synonym_match:{synonyms:["manager","head"]},error_fix:{wrong:"She is a director of films.",right:"She is a film director.",hint:"film director是固定搭配，film放在director前面作修饰语"}}
+
+// ===== 第四批新词 (144个) - 听力高频词汇 =====
+  {word:"practitioner", ph:"/prækˈtɪʃənər/", en:"A person actively engaged in a profession", cn:"从业者；执业医师",
+    phrases:[
+      {phrase:"general practitioner", sent:"A general practitioner treats common illnesses.", sentCn:"全科医师治疗常见疾病。"},
+      {phrase:"medical practitioner", sent:"Every medical practitioner must be properly licensed.", sentCn:"每位执业医师都必须持有适当的执照。"}
+    ],
+    ex:"She is a general practitioner at the local clinic.",
+    family:{noun:"practitioner",verb:"practice",adj:"practical"}, syn:["doctor","professional"], ant:["amateur"],
+    lv:"intermediate", tags:["career"], pos:"n"},
+  {word:"highlight", ph:"/ˈhaɪlaɪt/", en:"To emphasize or draw attention to something important", cn:"强调；突出；精彩部分",
+    phrases:[
+      {phrase:"highlight the importance", sent:"She highlighted the importance of teamwork.", sentCn:"她强调了团队合作的重要性。"},
+      {phrase:"the highlight of", sent:"The concert was the highlight of the festival.", sentCn:"音乐会是这次节日的亮点。"}
+    ],
+    ex:"The report highlights the need for better education.",
+    family:{noun:"highlight",verb:"highlight",adj:"highlighted"}, syn:["emphasize","stress"], ant:["downplay"],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"suspicion", ph:"/səˈspɪʃən/", en:"A feeling that something is possible or likely", cn:"怀疑；嫌疑",
+    phrases:[
+      {phrase:"under suspicion", sent:"He was under suspicion of fraud.", sentCn:"他有欺诈嫌疑。"},
+      {phrase:"arouse suspicion", sent:"His behavior aroused suspicion among colleagues.", sentCn:"他的行为引起了同事们的怀疑。"}
+    ],
+    ex:"The police had strong suspicions about the suspect.",
+    family:{noun:"suspicion",verb:"suspect",adj:"suspicious",adv:"suspiciously"}, syn:["doubt","distrust"], ant:["trust"],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"medicine", ph:"/ˈmedɪsɪn/", en:"The science of treating and preventing illness", cn:"医学；药物",
+    phrases:[
+      {phrase:"take medicine", sent:"You should take medicine three times a day.", sentCn:"你应该每天吃三次药。"},
+      {phrase:"modern medicine", sent:"Modern medicine has greatly improved life expectancy.", sentCn:"现代医学大大提高了预期寿命。"}
+    ],
+    ex:"She decided to study medicine at university.",
+    family:{noun:"medicine",adj:"medical",adv:"medically"}, syn:["drug","treatment"], ant:[],
+    lv:"basic", tags:["health"], pos:"n"},
+  {word:"physician", ph:"/fɪˈzɪʃən/", en:"A doctor, especially one who treats diseases with medicine", cn:"医生；内科医师",
+    phrases:[
+      {phrase:"attending physician", sent:"The attending physician examined the patient carefully.", sentCn:"主治医师仔细检查了病人。"},
+      {phrase:"consult a physician", sent:"Consult a physician before taking any supplements.", sentCn:"服用任何补充剂前请咨询医生。"}
+    ],
+    ex:"The physician recommended a change in diet.",
+    family:{noun:"physician",adj:"physical"}, syn:["doctor","practitioner"], ant:[],
+    lv:"intermediate", tags:["health","career"], pos:"n"},
+  {word:"surgery", ph:"/ˈsɜːrdʒəri/", en:"Medical treatment involving cutting open the body", cn:"外科手术；手术室",
+    phrases:[
+      {phrase:"perform surgery", sent:"The surgeon performed surgery successfully.", sentCn:"外科医生成功地进行了手术。"},
+      {phrase:"heart surgery", sent:"Heart surgery requires years of training.", sentCn:"心脏手术需要多年的训练。"}
+    ],
+    ex:"The patient underwent surgery to remove the tumor.",
+    family:{noun:"surgery",noun2:"surgeon",adj:"surgical",adv:"surgically"}, syn:["operation","procedure"], ant:[],
+    lv:"intermediate", tags:["health"], pos:"n"},
+  {word:"unlawfully", ph:"/ʌnˈlɔːfəli/", en:"In a way that is not permitted by law", cn:"非法地；不合法地",
+    phrases:[
+      {phrase:"unlawfully obtained", sent:"The evidence was unlawfully obtained by the police.", sentCn:"证据是警方非法获取的。"},
+      {phrase:"act unlawfully", sent:"Anyone who acts unlawfully will face consequences.", sentCn:"任何非法行事的人都将面临后果。"}
+    ],
+    ex:"He was accused of acting unlawfully.",
+    family:{adj:"unlawful",adv:"unlawfully",ant_adj:"lawful"}, syn:["illegally","wrongfully"], ant:["lawfully","legally"],
+    lv:"advanced", tags:["law"], pos:"adv"},
+  {word:"qualified", ph:"/ˈkwɒlɪfaɪd/", en:"Having the skills or knowledge needed for something", cn:"有资格的；合格的",
+    phrases:[
+      {phrase:"highly qualified", sent:"We need highly qualified engineers for this project.", sentCn:"这个项目需要高素质的工程师。"},
+      {phrase:"qualified for", sent:"She is well qualified for the position.", sentCn:"她完全有资格胜任这个职位。"}
+    ],
+    ex:"Only qualified teachers can work in public schools.",
+    family:{verb:"qualify",noun:"qualification",adj:"qualified"}, syn:["certified","eligible"], ant:["unqualified"],
+    lv:"intermediate", tags:["career"], pos:"adj"},
+  {word:"surgeon", ph:"/ˈsɜːrdʒən/", en:"A doctor who performs operations", cn:"外科医生",
+    phrases:[
+      {phrase:"brain surgeon", sent:"Becoming a brain surgeon takes over a decade of training.", sentCn:"成为脑外科医生需要十多年的训练。"},
+      {phrase:"plastic surgeon", sent:"She consulted a plastic surgeon about the procedure.", sentCn:"她就手术程序咨询了整形外科医生。"}
+    ],
+    ex:"The surgeon operated on the patient for three hours.",
+    family:{noun:"surgeon",noun2:"surgery",adj:"surgical"}, syn:["doctor","operator"], ant:[],
+    lv:"intermediate", tags:["health","career"], pos:"n"},
+  {word:"overseas", ph:"/ˌoʊvərˈsiːz/", en:"In or to a foreign country across the sea", cn:"海外的；在国外",
+    phrases:[
+      {phrase:"overseas travel", sent:"Overseas travel has become more affordable.", sentCn:"海外旅行变得更加实惠。"},
+      {phrase:"work overseas", sent:"He decided to work overseas for two years.", sentCn:"他决定去海外工作两年。"}
+    ],
+    ex:"Many students choose to study overseas.",
+    family:{}, syn:["abroad","foreign"], ant:["domestic"],
+    lv:"intermediate", tags:["travel"], pos:"adv"},
+  {word:"retire", ph:"/rɪˈtaɪər/", en:"To stop working because of old age", cn:"退休；退役",
+    phrases:[
+      {phrase:"retire from", sent:"He retired from teaching after thirty years.", sentCn:"他在教了三十年后退休了。"},
+      {phrase:"retire early", sent:"Some people choose to retire early and travel.", sentCn:"有些人选择提前退休去旅行。"}
+    ],
+    ex:"She plans to retire at the age of sixty.",
+    family:{noun:"retirement",adj:"retired",noun2:"retiree"}, syn:["withdraw","resign"], ant:["work"],
+    lv:"intermediate", tags:["career"], pos:"v"},
+  {word:"entire", ph:"/ɪnˈtaɪər/", en:"Whole; with nothing missing", cn:"整个的；全部的",
+    phrases:[
+      {phrase:"the entire world", sent:"The news spread across the entire world.", sentCn:"这个消息传遍了全世界。"},
+      {phrase:"the entire family", sent:"The entire family gathered for the holiday.", sentCn:"全家人聚在一起过节。"}
+    ],
+    ex:"She spent the entire day reading books.",
+    family:{adv:"entirely",noun:"entirety"}, syn:["whole","complete"], ant:["partial"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"profession", ph:"/prəˈfeʃən/", en:"A type of job that requires special training", cn:"职业；专业",
+    phrases:[
+      {phrase:"medical profession", sent:"She entered the medical profession at age 25.", sentCn:"她25岁进入医疗行业。"},
+      {phrase:"by profession", sent:"He is a lawyer by profession.", sentCn:"他的职业是律师。"}
+    ],
+    ex:"Teaching is a noble profession.",
+    family:{noun:"profession",adj:"professional",adv:"professionally"}, syn:["career","occupation"], ant:[],
+    lv:"intermediate", tags:["career"], pos:"n"},
+  {word:"college", ph:"/ˈkɒlɪdʒ/", en:"An institution for higher education", cn:"大学；学院",
+    phrases:[
+      {phrase:"college student", sent:"As a college student, she worked part-time.", sentCn:"作为大学生，她做兼职工作。"},
+      {phrase:"go to college", sent:"Not everyone needs to go to college to succeed.", sentCn:"不是每个人都需要上大学才能成功。"}
+    ],
+    ex:"She was the first in her family to attend college.",
+    family:{adj:"collegiate"}, syn:["university","academy"], ant:[],
+    lv:"basic", tags:["education"], pos:"n"},
+  {word:"trial", ph:"/ˈtraɪəl/", en:"A test of something to see if it works", cn:"审判；试验；试用",
+    phrases:[
+      {phrase:"trial and error", sent:"Learning often involves trial and error.", sentCn:"学习通常涉及反复试验。"},
+      {phrase:"stand trial", sent:"The accused will stand trial next month.", sentCn:"被告将于下个月受审。"}
+    ],
+    ex:"The new drug is currently in clinical trials.",
+    family:{}, syn:["test","experiment"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"dentist", ph:"/ˈdentɪst/", en:"A person who treats problems with teeth", cn:"牙医",
+    phrases:[
+      {phrase:"go to the dentist", sent:"I need to go to the dentist for a checkup.", sentCn:"我需要去看牙医做检查。"},
+      {phrase:"dentist appointment", sent:"She made a dentist appointment for next week.", sentCn:"她预约了下周看牙医。"}
+    ],
+    ex:"You should visit the dentist twice a year.",
+    family:{noun:"dentist",noun2:"dentistry",adj:"dental"}, syn:["orthodontist"], ant:[],
+    lv:"basic", tags:["health","career"], pos:"n"},
+  {word:"campus", ph:"/ˈkæmpəs/", en:"The grounds of a university or college", cn:"校园；校区",
+    phrases:[
+      {phrase:"on campus", sent:"Most freshmen live on campus.", sentCn:"大多数大一新生住在校园里。"},
+      {phrase:"campus life", sent:"Campus life offers many exciting opportunities.", sentCn:"校园生活提供了许多令人兴奋的机会。"}
+    ],
+    ex:"The university campus is beautiful in autumn.",
+    family:{}, syn:["grounds","school"], ant:[],
+    lv:"intermediate", tags:["education"], pos:"n"},
+  {word:"position", ph:"/pəˈzɪʃən/", en:"A job or role in an organization", cn:"职位；位置；立场",
+    phrases:[
+      {phrase:"apply for a position", sent:"He applied for a position at the tech company.", sentCn:"他申请了那家科技公司的一个职位。"},
+      {phrase:"in a position to", sent:"I'm not in a position to make that decision.", sentCn:"我无法做出那个决定。"}
+    ],
+    ex:"She applied for a management position.",
+    family:{verb:"position",adj:"positive"}, syn:["role","post"], ant:[],
+    lv:"intermediate", tags:["career"], pos:"n"},
+  {word:"require", ph:"/rɪˈkwaɪər/", en:"To need something or make it necessary", cn:"需要；要求",
+    phrases:[
+      {phrase:"require attention", sent:"This matter requires immediate attention.", sentCn:"这件事需要立即关注。"},
+      {phrase:"be required to", sent:"All students are required to wear uniforms.", sentCn:"所有学生都必须穿校服。"}
+    ],
+    ex:"This job requires excellent communication skills.",
+    family:{noun:"requirement",adj:"required"}, syn:["need","demand"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"identification", ph:"/aɪˌdentɪfɪˈkeɪʃən/", en:"Proof of who you are, such as an ID card", cn:"身份证明；识别",
+    phrases:[
+      {phrase:"photo identification", sent:"You must show photo identification at the airport.", sentCn:"你必须在机场出示带照片的身份证明。"},
+      {phrase:"student identification", sent:"Your student identification card gives you library access.", sentCn:"学生证可以让你进入图书馆。"}
+    ],
+    ex:"Please bring valid identification to the exam.",
+    family:{verb:"identify",noun2:"identity",adj:"identifiable"}, syn:["ID","credentials"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"international", ph:"/ˌɪntərˈnæʃənəl/", en:"Relating to two or more countries", cn:"国际的",
+    phrases:[
+      {phrase:"international student", sent:"International students make up 20% of enrollment.", sentCn:"国际学生占招生人数的20%。"},
+      {phrase:"international trade", sent:"International trade benefits both countries.", sentCn:"国际贸易对两国都有利。"}
+    ],
+    ex:"The conference attracted international attention.",
+    family:{adv:"internationally",noun:"nation",adj2:"national"}, syn:["global","worldwide"], ant:["domestic","local"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"passport", ph:"/ˈpæspɔːrt/", en:"An official document for traveling abroad", cn:"护照",
+    phrases:[
+      {phrase:"passport control", sent:"There was a long queue at passport control.", sentCn:"护照检查处排着长队。"},
+      {phrase:"renew a passport", sent:"I need to renew my passport before the trip.", sentCn:"旅行前我需要续签护照。"}
+    ],
+    ex:"You need a valid passport to travel abroad.",
+    family:{}, syn:["travel document"], ant:[],
+    lv:"basic", tags:["travel"], pos:"n"},
+  {word:"account", ph:"/əˈkaʊnt/", en:"A record of money or an arrangement with a bank", cn:"账户；描述；原因",
+    phrases:[
+      {phrase:"take into account", sent:"We must take into account the cost of materials.", sentCn:"我们必须考虑材料成本。"},
+      {phrase:"on account of", sent:"The game was canceled on account of rain.", sentCn:"比赛因下雨而取消。"}
+    ],
+    ex:"She opened a bank account for savings.",
+    family:{noun:"account",adj:"accountable",noun2:"accountant"}, syn:["report","description"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"platform", ph:"/ˈplætfɔːrm/", en:"A raised area or a digital system for a purpose", cn:"平台；站台",
+    phrases:[
+      {phrase:"social media platform", sent:"Instagram is a popular social media platform.", sentCn:"Instagram是一个流行的社交媒体平台。"},
+      {phrase:"learning platform", sent:"This learning platform offers free courses.", sentCn:"这个学习平台提供免费课程。"}
+    ],
+    ex:"The company launched a new online learning platform.",
+    family:{}, syn:["stage","system"], ant:[],
+    lv:"intermediate", tags:["technology"], pos:"n"},
+  {word:"handshake", ph:"/ˈhændʃeɪk/", en:"An act of shaking someone's hand as a greeting", cn:"握手",
+    phrases:[
+      {phrase:"firm handshake", sent:"He greeted her with a firm handshake.", sentCn:"他用坚定的握手向她致意。"},
+      {phrase:"exchange handshakes", sent:"The leaders exchanged handshakes before the meeting.", sentCn:"领导人在会议前握手致意。"}
+    ],
+    ex:"A firm handshake shows confidence.",
+    family:{}, syn:["greeting"], ant:[],
+    lv:"basic", tags:["general"], pos:"n"},
+  {word:"career", ph:"/kəˈrɪr/", en:"A job or profession that you do for a long time", cn:"职业；事业",
+    phrases:[
+      {phrase:"career path", sent:"Choosing the right career path is important.", sentCn:"选择正确的职业道路很重要。"},
+      {phrase:"career goal", sent:"His career goal is to become a CEO.", sentCn:"他的职业目标是成为CEO。"}
+    ],
+    ex:"She built a successful career in technology.",
+    family:{}, syn:["profession","occupation"], ant:[],
+    lv:"intermediate", tags:["career"], pos:"n"},
+  {word:"personalize", ph:"/ˈpɜːrsənəlaɪz/", en:"To design or change something to suit a person", cn:"个性化；使个人化",
+    phrases:[
+      {phrase:"personalize the experience", sent:"The app lets you personalize the learning experience.", sentCn:"这个应用让你个性化学习体验。"},
+      {phrase:"personalized service", sent:"We offer personalized service to every customer.", sentCn:"我们为每位客户提供个性化服务。"}
+    ],
+    ex:"You can personalize your homepage settings.",
+    family:{adj:"personal",noun:"personality",adv:"personally",adj2:"personalized"}, syn:["customize","tailor"], ant:["standardize"],
+    lv:"intermediate", tags:["technology"], pos:"v"},
+  {word:"recommendation", ph:"/ˌrekəmenˈdeɪʃən/", en:"A suggestion about the best thing to do", cn:"推荐；建议",
+    phrases:[
+      {phrase:"letter of recommendation", sent:"You need two letters of recommendation for the application.", sentCn:"申请需要两封推荐信。"},
+      {phrase:"follow the recommendation", sent:"I followed the doctor's recommendation.", sentCn:"我遵照了医生的建议。"}
+    ],
+    ex:"The teacher wrote a strong recommendation letter.",
+    family:{verb:"recommend",adj:"recommended"}, syn:["suggestion","advice"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"directly", ph:"/dəˈrektli/", en:"In a straight line or without anything in between", cn:"直接地；径直地",
+    phrases:[
+      {phrase:"directly responsible", sent:"He is directly responsible for the project.", sentCn:"他直接负责这个项目。"},
+      {phrase:"speak directly", sent:"She prefers to speak directly rather than hint.", sentCn:"她喜欢直接说而不是暗示。"}
+    ],
+    ex:"You can contact the manager directly.",
+    family:{adj:"direct",noun:"direction",noun2:"director",adj2:"indirect"}, syn:["immediately","straight"], ant:["indirectly"],
+    lv:"intermediate", tags:["general"], pos:"adv"},
+  {word:"appointment", ph:"/əˈpɔɪntmənt/", en:"A formal arrangement to meet someone", cn:"预约；任命",
+    phrases:[
+      {phrase:"make an appointment", sent:"Please make an appointment before visiting.", sentCn:"来访前请预约。"},
+      {phrase:"keep an appointment", sent:"It's important to keep your appointments.", sentCn:"按时赴约很重要。"}
+    ],
+    ex:"I have a doctor's appointment at three o'clock.",
+    family:{verb:"appoint",adj:"appointed"}, syn:["meeting","booking"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"coach", ph:"/koʊtʃ/", en:"A person who trains people in sport or skills", cn:"教练；辅导；长途汽车",
+    phrases:[
+      {phrase:"head coach", sent:"He was appointed as head coach of the national team.", sentCn:"他被任命为国家队主教练。"},
+      {phrase:"coach someone", sent:"She coaches young athletes on weekends.", sentCn:"她周末指导年轻运动员。"}
+    ],
+    ex:"The basketball coach trained the team every day.",
+    family:{noun:"coaching"}, syn:["trainer","instructor"], ant:[],
+    lv:"basic", tags:["education","sport"], pos:"n"},
+  {word:"department", ph:"/dɪˈpɑːrtmənt/", en:"A section of an organization", cn:"部门；系",
+    phrases:[
+      {phrase:"department store", sent:"We bought gifts at the department store.", sentCn:"我们在百货商店买了礼物。"},
+      {phrase:"English department", sent:"The English department offers many elective courses.", sentCn:"英语系提供许多选修课。"}
+    ],
+    ex:"She works in the marketing department.",
+    family:{adj:"departmental"}, syn:["division","section"], ant:[],
+    lv:"intermediate", tags:["career","education"], pos:"n"},
+  {word:"assistant", ph:"/əˈsɪstənt/", en:"A person who helps someone with their work", cn:"助手；助理",
+    phrases:[
+      {phrase:"personal assistant", sent:"She hired a personal assistant to manage her schedule.", sentCn:"她雇了一位私人助理来管理日程。"},
+      {phrase:"teaching assistant", sent:"He worked as a teaching assistant during graduate school.", sentCn:"他在读研究生时担任助教。"}
+    ],
+    ex:"The teaching assistant helped students with homework.",
+    family:{verb:"assist",noun:"assistance"}, syn:["helper","aide"], ant:[],
+    lv:"intermediate", tags:["career"], pos:"n"},
+  {word:"mailroom", ph:"/ˈmeɪlruːm/", en:"A room where mail is sorted and distributed", cn:"收发室",
+    phrases:[
+      {phrase:"campus mailroom", sent:"Pick up your parcel from the campus mailroom.", sentCn:"从校园收发室取你的包裹。"},
+      {phrase:"mailroom clerk", sent:"The mailroom clerk sorts letters every morning.", sentCn:"收发室的职员每天早上分拣信件。"}
+    ],
+    ex:"The package was delivered to the campus mailroom.",
+    family:{}, syn:["post office"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"domestic", ph:"/dəˈmestɪk/", en:"Relating to a person's own country", cn:"国内的；家庭的",
+    phrases:[
+      {phrase:"domestic market", sent:"The company focuses on the domestic market.", sentCn:"公司专注于国内市场。"},
+      {phrase:"domestic flight", sent:"Domestic flights are cheaper than international ones.", sentCn:"国内航班比国际航班便宜。"}
+    ],
+    ex:"Domestic flights are cheaper than international ones.",
+    family:{adv:"domestically",verb:"domesticate"}, syn:["national","internal"], ant:["international","foreign"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"maximum", ph:"/ˈmæksɪməm/", en:"The greatest amount or level possible", cn:"最大值；最大的",
+    phrases:[
+      {phrase:"reach the maximum", sent:"The temperature reached the maximum for the year.", sentCn:"气温达到了今年的最高值。"},
+      {phrase:"maximum capacity", sent:"The stadium is at maximum capacity.", sentCn:"体育场已达到最大容量。"}
+    ],
+    ex:"The maximum speed on this road is 60 mph.",
+    family:{verb:"maximize",adj:"maximal"}, syn:["peak","highest"], ant:["minimum"],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"exceed", ph:"/ɪkˈsiːd/", en:"To go beyond a limit or amount", cn:"超过；超出",
+    phrases:[
+      {phrase:"exceed expectations", sent:"Her performance exceeded all expectations.", sentCn:"她的表现超出了所有人的预期。"},
+      {phrase:"exceed the limit", sent:"Don't exceed the speed limit.", sentCn:"不要超速。"}
+    ],
+    ex:"The cost must not exceed the budget.",
+    family:{adj:"exceeding",adv:"exceedingly",noun:"excess",adj2:"excessive"}, syn:["surpass","outdo"], ant:["fall short"],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"allow", ph:"/əˈlaʊ/", en:"To let someone do something", cn:"允许；让",
+    phrases:[
+      {phrase:"allow someone to", sent:"Her parents allowed her to stay up late.", sentCn:"她父母允许她熬夜。"},
+      {phrase:"not allowed", sent:"Smoking is not allowed in this building.", sentCn:"这栋楼内禁止吸烟。"}
+    ],
+    ex:"The school does not allow mobile phones in class.",
+    family:{noun:"allowance",adj:"allowable",adj2:"allowed"}, syn:["permit","let"], ant:["forbid","prohibit"],
+    lv:"basic", tags:["general"], pos:"v"},
+  {word:"document", ph:"/ˈdɒkjʊmənt/", en:"An official paper with written information", cn:"文件；记录",
+    phrases:[
+      {phrase:"official document", sent:"You need an official document to prove your identity.", sentCn:"你需要一份官方文件来证明身份。"},
+      {phrase:"document the process", sent:"We should document the entire process carefully.", sentCn:"我们应该仔细记录整个过程。"}
+    ],
+    ex:"Please submit all required documents by Friday.",
+    family:{noun:"documentation",adj:"documentary"}, syn:["record","file"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"necessary", ph:"/ˈnesəseri/", en:"Needed in order to achieve something", cn:"必要的；必需的",
+    phrases:[
+      {phrase:"if necessary", sent:"We can make changes if necessary.", sentCn:"如有必要我们可以做出改变。"},
+      {phrase:"absolutely necessary", sent:"Surgery is absolutely necessary in this case.", sentCn:"在这种情况下手术是绝对必要的。"}
+    ],
+    ex:"It is necessary to bring your ID card.",
+    family:{adv:"necessarily",noun:"necessity",adj2:"unnecessary"}, syn:["essential","required"], ant:["unnecessary"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"insurance", ph:"/ɪnˈʃʊrəns/", en:"Protection against risks, usually by paying money", cn:"保险",
+    phrases:[
+      {phrase:"health insurance", sent:"The company provides health insurance for all employees.", sentCn:"公司为所有员工提供医疗保险。"},
+      {phrase:"insurance policy", sent:"Please read your insurance policy carefully.", sentCn:"请仔细阅读你的保险单。"}
+    ],
+    ex:"Health insurance is very important for everyone.",
+    family:{verb:"insure",adj:"insured",noun2:"insurer"}, syn:["coverage","protection"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"certificate", ph:"/sərˈtɪfɪkət/", en:"An official document proving something", cn:"证书；证明",
+    phrases:[
+      {phrase:"birth certificate", sent:"You need a birth certificate to apply for a passport.", sentCn:"你需要出生证明来申请护照。"},
+      {phrase:"certificate program", sent:"He enrolled in a certificate program in data science.", sentCn:"他报名参加了数据科学证书课程。"}
+    ],
+    ex:"She received a certificate for completing the course.",
+    family:{verb:"certify",adj:"certified",noun:"certification"}, syn:["diploma","credential"], ant:[],
+    lv:"intermediate", tags:["education"], pos:"n"},
+  {word:"athletic", ph:"/æθˈletɪk/", en:"Physically strong and good at sport", cn:"运动的；体育的",
+    phrases:[
+      {phrase:"athletic ability", sent:"His athletic ability impressed the scouts.", sentCn:"他的运动能力给球探留下了深刻印象。"},
+      {phrase:"athletic scholarship", sent:"She won an athletic scholarship to college.", sentCn:"她获得了大学体育奖学金。"}
+    ],
+    ex:"She has an athletic build from years of training.",
+    family:{noun:"athlete",noun2:"athletics",adv:"athletically"}, syn:["sporty","fit"], ant:["unathletic"],
+    lv:"intermediate", tags:["sport"], pos:"adj"},
+  {word:"arrangement", ph:"/əˈreɪndʒmənt/", en:"A plan or preparation for something", cn:"安排；布置",
+    phrases:[
+      {phrase:"make arrangements", sent:"Please make arrangements for transportation.", sentCn:"请安排交通事宜。"},
+      {phrase:"seating arrangement", sent:"The seating arrangement was changed at the last minute.", sentCn:"座位安排在最后一刻被改变了。"}
+    ],
+    ex:"We made arrangements for the conference.",
+    family:{verb:"arrange",adj:"arranged",verb2:"rearrange"}, syn:["plan","preparation"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"semester", ph:"/sɪˈmestər/", en:"Half of the school or university year", cn:"学期",
+    phrases:[
+      {phrase:"fall semester", sent:"The fall semester starts in September.", sentCn:"秋季学期九月开学。"},
+      {phrase:"spring semester", sent:"I plan to study abroad in the spring semester.", sentCn:"我计划春季学期去国外留学。"}
+    ],
+    ex:"She took five courses this semester.",
+    family:{}, syn:["term"], ant:[],
+    lv:"intermediate", tags:["education"], pos:"n"},
+  {word:"course", ph:"/kɔːrs/", en:"A series of lessons on a particular subject", cn:"课程；路线",
+    phrases:[
+      {phrase:"of course", sent:"Of course, you are welcome to join us.", sentCn:"当然，欢迎你加入我们。"},
+      {phrase:"online course", sent:"She completed an online course in marketing.", sentCn:"她完成了一门市场营销在线课程。"}
+    ],
+    ex:"I enrolled in a computer science course.",
+    family:{}, syn:["class","program"], ant:[],
+    lv:"basic", tags:["education"], pos:"n"},
+  {word:"surprisingly", ph:"/sərˈpraɪzɪŋli/", en:"In a way that causes surprise", cn:"令人惊讶地",
+    phrases:[
+      {phrase:"surprisingly good", sent:"The food at the cafeteria was surprisingly good.", sentCn:"食堂的饭菜出人意料地好吃。"},
+      {phrase:"not surprisingly", sent:"Not surprisingly, the best students scored highest.", sentCn:"不出所料，最好的学生得分最高。"}
+    ],
+    ex:"The exam was surprisingly easy.",
+    family:{noun:"surprise",adj:"surprised",adj2:"surprising"}, syn:["unexpectedly","remarkably"], ant:["predictably"],
+    lv:"intermediate", tags:["general"], pos:"adv"},
+  {word:"challenging", ph:"/ˈtʃælɪndʒɪŋ/", en:"Difficult in an interesting way", cn:"有挑战性的",
+    phrases:[
+      {phrase:"challenging task", sent:"Building a robot is a challenging task.", sentCn:"制造机器人是一项有挑战性的任务。"},
+      {phrase:"find it challenging", sent:"Many students find math challenging.", sentCn:"许多学生觉得数学有挑战性。"}
+    ],
+    ex:"The course is challenging but rewarding.",
+    family:{noun:"challenge",verb:"challenge",noun2:"challenger"}, syn:["difficult","demanding"], ant:["easy"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"lifestyle", ph:"/ˈlaɪfstaɪl/", en:"The way a person lives", cn:"生活方式",
+    phrases:[
+      {phrase:"healthy lifestyle", sent:"Eating well is part of a healthy lifestyle.", sentCn:"健康饮食是健康生活方式的一部分。"},
+      {phrase:"lifestyle choice", sent:"Moving to the countryside was a lifestyle choice.", sentCn:"搬到农村是一种生活方式的选择。"}
+    ],
+    ex:"A healthy lifestyle includes regular exercise.",
+    family:{}, syn:["way of life"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"attainable", ph:"/əˈteɪnəbəl/", en:"Able to be achieved or reached", cn:"可达到的；可实现的",
+    phrases:[
+      {phrase:"attainable goal", sent:"Breaking the task into steps makes the goal more attainable.", sentCn:"把任务分解成步骤使目标更容易实现。"},
+      {phrase:"easily attainable", sent:"Success is easily attainable with hard work.", sentCn:"通过努力工作，成功是容易实现的。"}
+    ],
+    ex:"Set goals that are challenging yet attainable.",
+    family:{verb:"attain",noun:"attainment",ant_adj:"unattainable"}, syn:["achievable","reachable"], ant:["unattainable"],
+    lv:"advanced", tags:["general"], pos:"adj"},
+  {word:"practical", ph:"/ˈpræktɪkəl/", en:"Relating to real situations rather than ideas", cn:"实际的；实用的",
+    phrases:[
+      {phrase:"practical experience", sent:"Employers value practical experience over theory.", sentCn:"雇主看重实际经验甚于理论。"},
+      {phrase:"practical solution", sent:"We need a practical solution to this problem.", sentCn:"我们需要一个实际的解决方案。"}
+    ],
+    ex:"She gave us some practical advice on saving money.",
+    family:{noun:"practice",adv:"practically",noun2:"practicality"}, syn:["useful","realistic"], ant:["impractical","theoretical"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"roadmap", ph:"/ˈroʊdmæp/", en:"A plan or strategy for achieving something", cn:"路线图；计划",
+    phrases:[
+      {phrase:"strategic roadmap", sent:"The team created a strategic roadmap for the project.", sentCn:"团队为项目制定了战略路线图。"},
+      {phrase:"roadmap to success", sent:"Education is a roadmap to success.", sentCn:"教育是通往成功的路线图。"}
+    ],
+    ex:"The company released a roadmap for future development.",
+    family:{}, syn:["plan","blueprint"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"fellow", ph:"/ˈfeloʊ/", en:"A person in the same group or situation", cn:"同伴；同事；家伙",
+    phrases:[
+      {phrase:"fellow student", sent:"My fellow students helped me prepare for the exam.", sentCn:"我的同学帮我准备考试。"},
+      {phrase:"research fellow", sent:"He works as a research fellow at the university.", sentCn:"他在大学里担任研究员。"}
+    ],
+    ex:"She discussed the project with her fellow students.",
+    family:{noun:"fellowship"}, syn:["peer","colleague"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"professor", ph:"/prəˈfesər/", en:"A teacher of the highest rank at a university", cn:"教授",
+    phrases:[
+      {phrase:"associate professor", sent:"She was promoted to associate professor last year.", sentCn:"她去年晋升为副教授。"},
+      {phrase:"professor of", sent:"He is a professor of economics at Harvard.", sentCn:"他是哈佛大学的经济学教授。"}
+    ],
+    ex:"The professor gave an inspiring lecture on history.",
+    family:{noun:"profession",adj:"professional"}, syn:["lecturer","academic"], ant:[],
+    lv:"intermediate", tags:["education","career"], pos:"n"},
+  {word:"librarian", ph:"/laɪˈbreriən/", en:"A person who works in a library", cn:"图书管理员",
+    phrases:[
+      {phrase:"school librarian", sent:"The school librarian organizes reading events.", sentCn:"学校图书管理员组织阅读活动。"},
+      {phrase:"ask the librarian", sent:"Ask the librarian if you need help finding a book.", sentCn:"如果你需要帮助找书，可以问图书管理员。"}
+    ],
+    ex:"The librarian helped me find the reference books.",
+    family:{noun:"library"}, syn:["archivist"], ant:[],
+    lv:"intermediate", tags:["education","career"], pos:"n"},
+  {word:"interpersonal", ph:"/ˌɪntərˈpɜːrsənəl/", en:"Relating to relationships between people", cn:"人际的；人际关系的",
+    phrases:[
+      {phrase:"interpersonal skills", sent:"Employers look for strong interpersonal skills.", sentCn:"雇主看重强大的人际交往能力。"},
+      {phrase:"interpersonal relationship", sent:"Building interpersonal relationships takes time and effort.", sentCn:"建立人际关系需要时间和努力。"}
+    ],
+    ex:"Good interpersonal skills are essential for teamwork.",
+    family:{adj:"personal",noun:"person",noun2:"personality"}, syn:["social","relational"], ant:[],
+    lv:"advanced", tags:["general"], pos:"adj"},
+  {word:"relationship", ph:"/rɪˈleɪʃənʃɪp/", en:"The way two people or groups feel about each other", cn:"关系；联系",
+    phrases:[
+      {phrase:"build a relationship", sent:"It takes time to build a trusting relationship.", sentCn:"建立信任关系需要时间。"},
+      {phrase:"close relationship", sent:"She has a close relationship with her sister.", sentCn:"她和姐姐关系很亲密。"}
+    ],
+    ex:"They have a close relationship with their neighbors.",
+    family:{verb:"relate",adj:"related",noun:"relation",noun2:"relative"}, syn:["connection","bond"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"closely", ph:"/ˈkloʊsli/", en:"In a careful or near way", cn:"紧密地；仔细地",
+    phrases:[
+      {phrase:"closely related", sent:"The two species are closely related.", sentCn:"这两个物种密切相关。"},
+      {phrase:"work closely with", sent:"We work closely with local communities.", sentCn:"我们与当地社区密切合作。"}
+    ],
+    ex:"The police are closely monitoring the situation.",
+    family:{adj:"close",noun:"closeness"}, syn:["carefully","tightly"], ant:["loosely","distantly"],
+    lv:"intermediate", tags:["general"], pos:"adv"},
+  {word:"enhance", ph:"/ɪnˈhæns/", en:"To improve the quality or value of something", cn:"增强；提高",
+    phrases:[
+      {phrase:"enhance performance", sent:"Regular practice can enhance your performance.", sentCn:"定期练习可以提高你的表现。"},
+      {phrase:"enhance the quality", sent:"Technology helps enhance the quality of education.", sentCn:"技术有助于提高教育质量。"}
+    ],
+    ex:"Reading can enhance your vocabulary skills.",
+    family:{noun:"enhancement",adj:"enhanced"}, syn:["improve","boost"], ant:["diminish","reduce"],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"self-confidence", ph:"/ˌself ˈkɒnfɪdəns/", en:"Belief in your own abilities", cn:"自信",
+    phrases:[
+      {phrase:"build self-confidence", sent:"Sports help children build self-confidence.", sentCn:"运动帮助孩子建立自信。"},
+      {phrase:"lack of self-confidence", sent:"A lack of self-confidence can hold you back.", sentCn:"缺乏自信会阻碍你的发展。"}
+    ],
+    ex:"Public speaking can build self-confidence.",
+    family:{adj:"confident",noun:"confidence",adj2:"self-confident"}, syn:["self-assurance"], ant:["self-doubt"],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"digest", ph:"/daɪˈdʒest/", en:"To break down food or to understand information", cn:"消化；理解",
+    phrases:[
+      {phrase:"easy to digest", sent:"The textbook presents ideas in an easy to digest format.", sentCn:"教科书以容易理解的形式呈现内容。"},
+      {phrase:"digest food", sent:"Your body needs enzymes to digest food properly.", sentCn:"你的身体需要酶来正确消化食物。"}
+    ],
+    ex:"It takes time to digest complex information.",
+    family:{noun:"digestion",adj:"digestive"}, syn:["absorb","process"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"memorize", ph:"/ˈmeməraɪz/", en:"To learn something so you can remember it exactly", cn:"记住；背诵",
+    phrases:[
+      {phrase:"memorize facts", sent:"It's not enough to just memorize facts.", sentCn:"仅仅背诵事实是不够的。"},
+      {phrase:"easy to memorize", sent:"Short poems are easy to memorize.", sentCn:"短诗容易记忆。"}
+    ],
+    ex:"Students need to memorize vocabulary every day.",
+    family:{noun:"memory",adj:"memorable",noun2:"memorization"}, syn:["remember","learn by heart"], ant:["forget"],
+    lv:"intermediate", tags:["education"], pos:"v"},
+  {word:"integrate", ph:"/ˈɪntɪɡreɪt/", en:"To combine or become part of a group", cn:"整合；融入",
+    phrases:[
+      {phrase:"integrate into", sent:"It takes time to integrate into a new culture.", sentCn:"融入新文化需要时间。"},
+      {phrase:"fully integrated", sent:"The system is now fully integrated.", sentCn:"系统现已完全整合。"}
+    ],
+    ex:"The school aims to integrate technology into teaching.",
+    family:{noun:"integration",adj:"integrated",adj2:"integral"}, syn:["combine","merge"], ant:["separate"],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"obtain", ph:"/əbˈteɪn/", en:"To get something, especially by effort", cn:"获得；得到",
+    phrases:[
+      {phrase:"obtain permission", sent:"You must obtain permission before entering.", sentCn:"进入前必须获得许可。"},
+      {phrase:"obtain information", sent:"We obtained information from reliable sources.", sentCn:"我们从可靠来源获得了信息。"}
+    ],
+    ex:"You can obtain a visa at the embassy.",
+    family:{adj:"obtainable",adj2:"unobtainable"}, syn:["get","acquire"], ant:["lose"],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"naturally", ph:"/ˈnætʃərəli/", en:"In a natural way; of course", cn:"自然地；当然",
+    phrases:[
+      {phrase:"come naturally", sent:"Leadership comes naturally to some people.", sentCn:"领导力对某些人来说是天生的。"},
+      {phrase:"naturally occurring", sent:"This mineral is naturally occurring in the soil.", sentCn:"这种矿物质在土壤中天然存在。"}
+    ],
+    ex:"She speaks English naturally and fluently.",
+    family:{adj:"natural",noun:"nature",adj2:"unnatural"}, syn:["of course","obviously"], ant:["artificially"],
+    lv:"intermediate", tags:["general"], pos:"adv"},
+  {word:"critical", ph:"/ˈkrɪtɪkəl/", en:"Extremely important or expressing disapproval", cn:"批判的；关键的；危急的",
+    phrases:[
+      {phrase:"critical thinking", sent:"Schools should teach critical thinking skills.", sentCn:"学校应该教授批判性思维能力。"},
+      {phrase:"play a critical role", sent:"Teachers play a critical role in education.", sentCn:"教师在教育中起着关键作用。"}
+    ],
+    ex:"Critical thinking is an important skill for students.",
+    family:{noun:"critic",noun2:"criticism",verb:"criticize",adv:"critically"}, syn:["crucial","essential"], ant:["unimportant"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"estimate", ph:"/ˈestɪmeɪt/", en:"To guess the value or amount of something", cn:"估计；估算",
+    phrases:[
+      {phrase:"rough estimate", sent:"Can you give me a rough estimate of the cost?", sentCn:"你能给我一个大概的费用估计吗？"},
+      {phrase:"estimate the number", sent:"It is difficult to estimate the number of stars.", sentCn:"很难估计星星的数量。"}
+    ],
+    ex:"The project cost was estimated at two million dollars.",
+    family:{noun:"estimation",adj:"estimated",verb:"overestimate",verb2:"underestimate"}, syn:["calculate","approximate"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"determine", ph:"/dɪˈtɜːrmɪn/", en:"To find out or decide something", cn:"确定；决定",
+    phrases:[
+      {phrase:"determine the cause", sent:"Scientists are trying to determine the cause of the disease.", sentCn:"科学家正在试图确定疾病的原因。"},
+      {phrase:"be determined to", sent:"She is determined to succeed.", sentCn:"她下定决心要成功。"}
+    ],
+    ex:"Tests will determine whether the drug is safe.",
+    family:{noun:"determination",adj:"determined"}, syn:["decide","establish"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"basic", ph:"/ˈbeɪsɪk/", en:"Forming the most important part; simple", cn:"基本的；基础的",
+    phrases:[
+      {phrase:"basic knowledge", sent:"You need basic knowledge of math to start this course.", sentCn:"开始这门课需要基本的数学知识。"},
+      {phrase:"basic skills", sent:"Reading and writing are basic skills.", sentCn:"阅读和写作是基本技能。"}
+    ],
+    ex:"Everyone should learn basic first aid skills.",
+    family:{adv:"basically",noun:"basics"}, syn:["fundamental","elementary"], ant:["advanced","complex"],
+    lv:"basic", tags:["general"], pos:"adj"},
+  {word:"priority", ph:"/praɪˈɒrɪti/", en:"Something that is more important than others", cn:"优先；优先事项",
+    phrases:[
+      {phrase:"top priority", sent:"Safety is our top priority.", sentCn:"安全是我们的首要任务。"},
+      {phrase:"give priority to", sent:"We should give priority to environmental protection.", sentCn:"我们应该优先考虑环境保护。"}
+    ],
+    ex:"Education should be a top priority for every country.",
+    family:{verb:"prioritize",adj:"prior"}, syn:["preference","precedence"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"achievable", ph:"/əˈtʃiːvəbəl/", en:"Able to be reached or accomplished", cn:"可实现的；可达到的",
+    phrases:[
+      {phrase:"achievable target", sent:"Set achievable targets for each week.", sentCn:"为每周设定可实现的目标。"},
+      {phrase:"realistic and achievable", sent:"Your plan should be realistic and achievable.", sentCn:"你的计划应该是现实的和可实现的。"}
+    ],
+    ex:"With hard work, anything is achievable.",
+    family:{verb:"achieve",noun:"achievement",noun2:"achiever"}, syn:["attainable","feasible"], ant:["unachievable"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"complicated", ph:"/ˈkɒmplɪkeɪtɪd/", en:"Consisting of many parts and difficult to understand", cn:"复杂的",
+    phrases:[
+      {phrase:"get complicated", sent:"Things can get complicated when you add more rules.", sentCn:"当你增加更多规则时，事情会变得复杂。"},
+      {phrase:"complicated process", sent:"Applying for a visa is a complicated process.", sentCn:"申请签证是一个复杂的过程。"}
+    ],
+    ex:"The instructions are too complicated to follow.",
+    family:{verb:"complicate",noun:"complication",adj2:"uncomplicated"}, syn:["complex","difficult"], ant:["simple"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"advantage", ph:"/ədˈvæntɪdʒ/", en:"A condition that puts you in a better position", cn:"优势；有利条件",
+    phrases:[
+      {phrase:"take advantage of", sent:"You should take advantage of this opportunity.", sentCn:"你应该利用这个机会。"},
+      {phrase:"competitive advantage", sent:"Innovation provides a competitive advantage.", sentCn:"创新提供了竞争优势。"}
+    ],
+    ex:"Speaking two languages gives you a big advantage.",
+    family:{adj:"advantageous",ant_noun:"disadvantage"}, syn:["benefit","edge"], ant:["disadvantage"],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"disadvantage", ph:"/ˌdɪsədˈvæntɪdʒ/", en:"Something that makes success less likely", cn:"劣势；不利条件",
+    phrases:[
+      {phrase:"at a disadvantage", sent:"Students without internet are at a disadvantage.", sentCn:"没有互联网的学生处于劣势。"},
+      {phrase:"disadvantage of", sent:"One disadvantage of living in the city is the noise.", sentCn:"住在城市的一个缺点是噪音。"}
+    ],
+    ex:"The main disadvantage is the high cost.",
+    family:{adj:"disadvantaged",ant_noun:"advantage"}, syn:["drawback","downside"], ant:["advantage"],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"effective", ph:"/ɪˈfektɪv/", en:"Producing the result that is wanted", cn:"有效的",
+    phrases:[
+      {phrase:"cost-effective", sent:"Online learning is a cost-effective solution.", sentCn:"在线学习是一种经济有效的解决方案。"},
+      {phrase:"effective method", sent:"This is the most effective method of teaching.", sentCn:"这是最有效的教学方法。"}
+    ],
+    ex:"Regular exercise is effective in reducing stress.",
+    family:{noun:"effect",adv:"effectively",noun2:"effectiveness",adj2:"ineffective"}, syn:["efficient","successful"], ant:["ineffective"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"reliable", ph:"/rɪˈlaɪəbəl/", en:"Able to be trusted or depended on", cn:"可靠的；可信赖的",
+    phrases:[
+      {phrase:"reliable source", sent:"Make sure you use reliable sources for research.", sentCn:"确保你使用可靠的来源进行研究。"},
+      {phrase:"reliable information", sent:"We need reliable information to make a decision.", sentCn:"我们需要可靠的信息来做决定。"}
+    ],
+    ex:"He is a reliable friend who always keeps his promises.",
+    family:{verb:"rely",noun:"reliance",noun2:"reliability",adj2:"unreliable"}, syn:["dependable","trustworthy"], ant:["unreliable"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"method", ph:"/ˈmeθəd/", en:"A way of doing something in a planned way", cn:"方法；办法",
+    phrases:[
+      {phrase:"teaching method", sent:"The new teaching method improved test scores.", sentCn:"新的教学方法提高了考试成绩。"},
+      {phrase:"research method", sent:"Each research method has its advantages.", sentCn:"每种研究方法都有其优势。"}
+    ],
+    ex:"Scientists use different methods to collect data.",
+    family:{noun:"methodology",adj:"methodical",adv:"methodically"}, syn:["approach","technique"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"investment", ph:"/ɪnˈvestmənt/", en:"The act of putting money into something to make a profit", cn:"投资",
+    phrases:[
+      {phrase:"make an investment", sent:"They decided to make an investment in renewable energy.", sentCn:"他们决定投资可再生能源。"},
+      {phrase:"return on investment", sent:"The return on investment was higher than expected.", sentCn:"投资回报率高于预期。"}
+    ],
+    ex:"Education is the best investment you can make.",
+    family:{verb:"invest",noun:"investor",adj:"invested"}, syn:["funding","contribution"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"assign", ph:"/əˈsaɪn/", en:"To give someone a task or job to do", cn:"分配；指派",
+    phrases:[
+      {phrase:"assign a task", sent:"The manager assigned a task to each team member.", sentCn:"经理给每个团队成员分配了任务。"},
+      {phrase:"be assigned to", sent:"She was assigned to the research department.", sentCn:"她被分配到研究部门。"}
+    ],
+    ex:"The teacher assigned homework for the weekend.",
+    family:{noun:"assignment",adj:"assigned",verb2:"reassign"}, syn:["allocate","designate"], ant:[],
+    lv:"intermediate", tags:["education","career"], pos:"v"},
+  {word:"aside", ph:"/əˈsaɪd/", en:"To one side; out of the way", cn:"旁边；另外",
+    phrases:[
+      {phrase:"set aside", sent:"Set aside some time for exercise every day.", sentCn:"每天留出一些时间锻炼。"},
+      {phrase:"aside from", sent:"Aside from English, she also speaks French.", sentCn:"除了英语，她还会说法语。"}
+    ],
+    ex:"She put her book aside and listened carefully.",
+    family:{}, syn:["apart","besides"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"adv"},
+  {word:"essay", ph:"/ˈeseɪ/", en:"A short piece of writing on a particular subject", cn:"文章；论文；散文",
+    phrases:[
+      {phrase:"write an essay", sent:"Students must write an essay for the final exam.", sentCn:"学生必须为期末考试写一篇论文。"},
+      {phrase:"essay topic", sent:"Choose an essay topic that interests you.", sentCn:"选择一个你感兴趣的论文题目。"}
+    ],
+    ex:"She wrote an essay about climate change.",
+    family:{noun:"essayist"}, syn:["composition","article"], ant:[],
+    lv:"intermediate", tags:["education"], pos:"n"},
+  {word:"major", ph:"/ˈmeɪdʒər/", en:"Very large or important; a university subject", cn:"主要的；专业",
+    phrases:[
+      {phrase:"major in", sent:"He decided to major in computer science.", sentCn:"他决定主修计算机科学。"},
+      {phrase:"major role", sent:"Technology plays a major role in modern education.", sentCn:"技术在现代教育中起着重要作用。"}
+    ],
+    ex:"She chose psychology as her college major.",
+    family:{noun:"majority",ant_adj:"minor"}, syn:["main","primary"], ant:["minor"],
+    lv:"intermediate", tags:["education","general"], pos:"adj"},
+  {word:"combine", ph:"/kəmˈbaɪn/", en:"To join or mix two or more things together", cn:"结合；合并",
+    phrases:[
+      {phrase:"combine with", sent:"Combine theory with practice for better results.", sentCn:"理论与实践相结合，效果更好。"},
+      {phrase:"combine efforts", sent:"We should combine our efforts to solve this problem.", sentCn:"我们应该联合努力解决这个问题。"}
+    ],
+    ex:"The recipe combines sweet and sour flavors.",
+    family:{noun:"combination",adj:"combined"}, syn:["merge","blend"], ant:["separate"],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"assignment", ph:"/əˈsaɪnmənt/", en:"A task or piece of work given to someone", cn:"作业；任务",
+    phrases:[
+      {phrase:"homework assignment", sent:"She completed the homework assignment on time.", sentCn:"她按时完成了家庭作业。"},
+      {phrase:"writing assignment", sent:"The writing assignment requires at least 500 words.", sentCn:"写作作业要求至少500字。"}
+    ],
+    ex:"The assignment is due next Monday.",
+    family:{verb:"assign",adj:"assigned",verb2:"reassign"}, syn:["task","project"], ant:[],
+    lv:"intermediate", tags:["education"], pos:"n"},
+  {word:"submit", ph:"/səbˈmɪt/", en:"To give something to someone for a decision", cn:"提交；递交",
+    phrases:[
+      {phrase:"submit a report", sent:"You must submit a report every month.", sentCn:"你必须每月提交一份报告。"},
+      {phrase:"submit online", sent:"Students can submit their work online.", sentCn:"学生可以在线提交作业。"}
+    ],
+    ex:"Please submit your application before the deadline.",
+    family:{noun:"submission",adj:"submitted",verb2:"resubmit"}, syn:["hand in","turn in"], ant:["withdraw"],
+    lv:"intermediate", tags:["education"], pos:"v"},
+  {word:"activity", ph:"/ækˈtɪvɪti/", en:"Something that someone does for enjoyment or a purpose", cn:"活动；行动",
+    phrases:[
+      {phrase:"outdoor activity", sent:"Hiking is a popular outdoor activity.", sentCn:"远足是一种流行的户外活动。"},
+      {phrase:"physical activity", sent:"Regular physical activity is good for your health.", sentCn:"定期体育活动有益于你的健康。"}
+    ],
+    ex:"The school offers many extracurricular activities.",
+    family:{adj:"active",verb:"activate",adv:"actively",noun:"activist"}, syn:["event","exercise"], ant:["inactivity"],
+    lv:"basic", tags:["general"], pos:"n"},
+  {word:"additionally", ph:"/əˈdɪʃənəli/", en:"As an extra fact or in addition", cn:"另外；此外",
+    phrases:[
+      {phrase:"additionally required", sent:"A cover letter is additionally required.", sentCn:"还需要一封求职信。"}
+    ],
+    ex:"Additionally, students must complete a group project.",
+    family:{noun:"addition",adj:"additional",verb:"add"}, syn:["furthermore","moreover"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"adv"},
+  {word:"period", ph:"/ˈpɪriəd/", en:"A length of time", cn:"时期；阶段；课时",
+    phrases:[
+      {phrase:"time period", sent:"The project was completed within the time period.", sentCn:"项目在规定时间内完成了。"},
+      {phrase:"a period of", sent:"After a period of study, he passed the exam.", sentCn:"经过一段时间的学习，他通过了考试。"}
+    ],
+    ex:"This was a difficult period in her life.",
+    family:{adj:"periodic",adv:"periodically",noun:"periodical"}, syn:["era","phase"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"earn", ph:"/ɜːrn/", en:"To receive money for work done", cn:"赚取；获得",
+    phrases:[
+      {phrase:"earn a living", sent:"It's hard to earn a living as a freelance artist.", sentCn:"作为自由艺术家谋生很难。"},
+      {phrase:"earn a degree", sent:"He worked hard to earn a degree in law.", sentCn:"他努力学习获得了法学学位。"}
+    ],
+    ex:"She earns a good salary as an engineer.",
+    family:{noun:"earnings",adj:"earned",noun2:"earner"}, syn:["make","gain"], ant:["spend","lose"],
+    lv:"basic", tags:["career"], pos:"v"},
+  {word:"absence", ph:"/ˈæbsəns/", en:"The state of being away from a place", cn:"缺席；不在",
+    phrases:[
+      {phrase:"in the absence of", sent:"In the absence of evidence, the case was dismissed.", sentCn:"由于缺乏证据，案件被驳回。"},
+      {phrase:"leave of absence", sent:"She took a leave of absence for medical reasons.", sentCn:"她因医疗原因请了假。"}
+    ],
+    ex:"His absence from school was noticed by the teacher.",
+    family:{adj:"absent",noun:"absentee"}, syn:["nonattendance","lack"], ant:["presence","attendance"],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"choice", ph:"/tʃɔɪs/", en:"The act of choosing between two or more things", cn:"选择；选项",
+    phrases:[
+      {phrase:"make a choice", sent:"Sometimes you have to make a difficult choice.", sentCn:"有时你必须做出艰难的选择。"},
+      {phrase:"first choice", sent:"This university is my first choice.", sentCn:"这所大学是我的首选。"}
+    ],
+    ex:"You have the freedom to make your own choices.",
+    family:{verb:"choose",adj:"chosen"}, syn:["option","selection"], ant:[],
+    lv:"basic", tags:["general"], pos:"n"},
+  {word:"experienced", ph:"/ɪkˈspɪriənst/", en:"Having knowledge or skill from doing something", cn:"有经验的；经验丰富的",
+    phrases:[
+      {phrase:"highly experienced", sent:"She is a highly experienced surgeon.", sentCn:"她是一位经验丰富的外科医生。"},
+      {phrase:"experienced in", sent:"He is experienced in project management.", sentCn:"他在项目管理方面经验丰富。"}
+    ],
+    ex:"We need an experienced teacher for this position.",
+    family:{noun:"experience",adj2:"inexperienced"}, syn:["skilled","seasoned"], ant:["inexperienced"],
+    lv:"intermediate", tags:["career"], pos:"adj"},
+  {word:"festival", ph:"/ˈfestɪvəl/", en:"A special day or period for celebration", cn:"节日；节庆",
+    phrases:[
+      {phrase:"film festival", sent:"The Cannes Film Festival is held annually in France.", sentCn:"戛纳电影节每年在法国举行。"},
+      {phrase:"traditional festival", sent:"The Spring Festival is the most important traditional festival in China.", sentCn:"春节是中国最重要的传统节日。"}
+    ],
+    ex:"The music festival attracts thousands of visitors.",
+    family:{adj:"festive",noun:"festivity"}, syn:["celebration","carnival"], ant:[],
+    lv:"basic", tags:["general"], pos:"n"},
+  {word:"hike", ph:"/haɪk/", en:"A long walk in the countryside", cn:"远足；徒步旅行",
+    phrases:[
+      {phrase:"go for a hike", sent:"Let's go for a hike this weekend.", sentCn:"这个周末去远足吧。"},
+      {phrase:"hiking trail", sent:"This hiking trail offers beautiful views.", sentCn:"这条远足小径风景优美。"}
+    ],
+    ex:"We went on a five-mile hike through the mountains.",
+    family:{noun:"hiking",noun2:"hiker"}, syn:["trek","walk"], ant:[],
+    lv:"basic", tags:["sport","nature"], pos:"n"},
+  {word:"peace", ph:"/piːs/", en:"A state of calm without war or disturbance", cn:"和平；平静",
+    phrases:[
+      {phrase:"peace of mind", sent:"Financial security brings peace of mind.", sentCn:"财务安全带来内心的平静。"},
+      {phrase:"at peace", sent:"She felt at peace in the quiet garden.", sentCn:"她在安静的花园里感到平静。"}
+    ],
+    ex:"Everyone hopes for world peace.",
+    family:{adj:"peaceful",adv:"peacefully",noun:"peacemaker"}, syn:["harmony","tranquility"], ant:["war","conflict"],
+    lv:"basic", tags:["general"], pos:"n"},
+  {word:"woodland", ph:"/ˈwʊdlənd/", en:"Land covered with trees", cn:"林地；森林",
+    phrases:[
+      {phrase:"woodland area", sent:"The woodland area is home to rare birds.", sentCn:"林地是稀有鸟类的栖息地。"},
+      {phrase:"ancient woodland", sent:"Ancient woodland should be protected by law.", sentCn:"古老的林地应该受法律保护。"}
+    ],
+    ex:"Many species live in ancient woodland.",
+    family:{noun:"wood",adj:"wooded"}, syn:["forest","grove"], ant:[],
+    lv:"intermediate", tags:["nature"], pos:"n"},
+  {word:"guide", ph:"/ɡaɪd/", en:"A person who shows others the way", cn:"指导；导游；指南",
+    phrases:[
+      {phrase:"tour guide", sent:"Our tour guide spoke three languages.", sentCn:"我们的导游会说三种语言。"},
+      {phrase:"study guide", sent:"The study guide helped me prepare for the exam.", sentCn:"学习指南帮我准备考试。"}
+    ],
+    ex:"The tour guide showed us around the museum.",
+    family:{noun:"guidance",noun2:"guideline",adj:"guided"}, syn:["leader","advisor"], ant:[],
+    lv:"basic", tags:["travel","education"], pos:"n"},
+  {word:"informative", ph:"/ɪnˈfɔːrmətɪv/", en:"Providing a lot of useful information", cn:"信息量大的；增长知识的",
+    phrases:[
+      {phrase:"informative speech", sent:"She gave an informative speech about climate change.", sentCn:"她做了一个关于气候变化的知识性演讲。"},
+      {phrase:"highly informative", sent:"The book is highly informative and well-written.", sentCn:"这本书信息量大且写得好。"}
+    ],
+    ex:"The documentary was very informative.",
+    family:{verb:"inform",noun:"information",adj:"informed"}, syn:["educational","instructive"], ant:["uninformative"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"accessible", ph:"/əkˈsesəbəl/", en:"Able to be reached or used easily", cn:"可进入的；可获得的",
+    phrases:[
+      {phrase:"easily accessible", sent:"The information is easily accessible online.", sentCn:"这些信息可以很容易地在网上获得。"},
+      {phrase:"wheelchair accessible", sent:"All buildings should be wheelchair accessible.", sentCn:"所有建筑物都应该方便轮椅通行。"}
+    ],
+    ex:"The library should be accessible to all students.",
+    family:{noun:"access",noun2:"accessibility",adj2:"inaccessible"}, syn:["available","reachable"], ant:["inaccessible"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"walk", ph:"/wɔːk/", en:"To move on foot at a normal speed", cn:"走路；散步",
+    phrases:[
+      {phrase:"go for a walk", sent:"Let's go for a walk after dinner.", sentCn:"晚饭后我们去散步吧。"},
+      {phrase:"walk of life", sent:"People from all walks of life attended the event.", sentCn:"各行各业的人都参加了活动。"}
+    ],
+    ex:"I walk to school every morning.",
+    family:{noun:"walking",noun2:"walker"}, syn:["stroll","hike"], ant:["run"],
+    lv:"basic", tags:["general"], pos:"v"},
+  {word:"ensure", ph:"/ɪnˈʃʊr/", en:"To make certain that something happens", cn:"确保；保证",
+    phrases:[
+      {phrase:"ensure safety", sent:"We must ensure the safety of all participants.", sentCn:"我们必须确保所有参与者的安全。"},
+      {phrase:"ensure that", sent:"Ensure that you bring your ID to the exam.", sentCn:"确保你带身份证参加考试。"}
+    ],
+    ex:"Please ensure all doors are locked before leaving.",
+    family:{adj:"ensured"}, syn:["guarantee","make sure"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"comfort", ph:"/ˈkʌmfərt/", en:"A state of being relaxed and free from pain", cn:"舒适；安慰",
+    phrases:[
+      {phrase:"comfort zone", sent:"Growth happens outside your comfort zone.", sentCn:"成长发生在舒适区之外。"},
+      {phrase:"take comfort in", sent:"She took comfort in her friends' support.", sentCn:"她从朋友的支持中得到了安慰。"}
+    ],
+    ex:"Step out of your comfort zone and try new things.",
+    family:{adj:"comfortable",adj2:"comforting",adj3:"uncomfortable",adv:"comfortably"}, syn:["ease","relief"], ant:["discomfort"],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"lowland", ph:"/ˈloʊlənd/", en:"Low-lying flat land", cn:"低地；平原",
+    phrases:[
+      {phrase:"lowland region", sent:"Rice grows well in lowland regions.", sentCn:"水稻在低地地区生长良好。"},
+      {phrase:"lowland forest", sent:"Lowland forest habitats are under threat.", sentCn:"低地森林栖息地受到威胁。"}
+    ],
+    ex:"The lowland areas are prone to flooding.",
+    family:{adj:"low",noun:"land",ant_noun:"highland"}, syn:["plain","valley"], ant:["highland"],
+    lv:"intermediate", tags:["nature"], pos:"n"},
+  {word:"presence", ph:"/ˈprezəns/", en:"The state of being in a place", cn:"存在；出席",
+    phrases:[
+      {phrase:"in the presence of", sent:"He felt nervous in the presence of the CEO.", sentCn:"在CEO面前他感到紧张。"},
+      {phrase:"online presence", sent:"Every business needs a strong online presence.", sentCn:"每家企业都需要强大的在线影响力。"}
+    ],
+    ex:"Her presence made everyone feel more relaxed.",
+    family:{adj:"present",noun:"presentation",ant_noun:"absence"}, syn:["attendance","existence"], ant:["absence"],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"welcoming", ph:"/ˈwelkəmɪŋ/", en:"Friendly and making you feel at ease", cn:"热情的；欢迎的",
+    phrases:[
+      {phrase:"welcoming atmosphere", sent:"The café has a warm and welcoming atmosphere.", sentCn:"这家咖啡馆有温暖热情的氛围。"},
+      {phrase:"welcoming smile", sent:"She greeted us with a welcoming smile.", sentCn:"她用热情的微笑迎接我们。"}
+    ],
+    ex:"The staff were very welcoming and helpful.",
+    family:{verb:"welcome",adj:"welcomed"}, syn:["friendly","hospitable"], ant:["unwelcoming"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"torch", ph:"/tɔːrtʃ/", en:"A small portable light powered by batteries", cn:"手电筒；火把",
+    phrases:[
+      {phrase:"carry a torch", sent:"Always carry a torch when exploring caves.", sentCn:"探洞时要带手电筒。"},
+      {phrase:"Olympic torch", sent:"The Olympic torch was carried through the city.", sentCn:"奥运火炬在城市中传递。"}
+    ],
+    ex:"Take a torch if you go hiking at night.",
+    family:{}, syn:["flashlight","lantern"], ant:[],
+    lv:"basic", tags:["general"], pos:"n"},
+  {word:"essential", ph:"/ɪˈsenʃəl/", en:"Absolutely necessary or extremely important", cn:"必要的；基本的",
+    phrases:[
+      {phrase:"essential skills", sent:"Communication is one of the most essential skills.", sentCn:"沟通是最基本的技能之一。"},
+      {phrase:"absolutely essential", sent:"A good night's sleep is absolutely essential for health.", sentCn:"良好的睡眠对健康绝对必要。"}
+    ],
+    ex:"Water is essential for all living things.",
+    family:{adv:"essentially",noun:"essence"}, syn:["necessary","vital"], ant:["unnecessary"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"inappropriately", ph:"/ˌɪnəˈproʊpriətli/", en:"In a way that is not right for the situation", cn:"不恰当地",
+    phrases:[
+      {phrase:"dressed inappropriately", sent:"She was dressed inappropriately for the occasion.", sentCn:"她的着装不适合这个场合。"},
+      {phrase:"act inappropriately", sent:"Students who act inappropriately may face consequences.", sentCn:"行为不当的学生可能面临后果。"}
+    ],
+    ex:"He behaved inappropriately at the formal dinner.",
+    family:{adj:"inappropriate",adj2:"appropriate",adv2:"appropriately"}, syn:["improperly","unsuitably"], ant:["appropriately"],
+    lv:"advanced", tags:["general"], pos:"adv"},
+  {word:"permission", ph:"/pərˈmɪʃən/", en:"The act of allowing someone to do something", cn:"许可；允许",
+    phrases:[
+      {phrase:"ask for permission", sent:"Always ask for permission before borrowing things.", sentCn:"借东西前要先请求许可。"},
+      {phrase:"without permission", sent:"He left the class without permission.", sentCn:"他未经许可离开了教室。"}
+    ],
+    ex:"You need permission to use the laboratory.",
+    family:{verb:"permit",adj:"permitted",adj2:"permissible"}, syn:["approval","consent"], ant:["prohibition"],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"introduce", ph:"/ˌɪntrəˈduːs/", en:"To make someone known to another person", cn:"介绍；引入",
+    phrases:[
+      {phrase:"introduce yourself", sent:"Please introduce yourself to the class.", sentCn:"请向全班介绍你自己。"},
+      {phrase:"introduce a new policy", sent:"The government plans to introduce a new policy.", sentCn:"政府计划引入一项新政策。"}
+    ],
+    ex:"Let me introduce you to my colleague.",
+    family:{noun:"introduction",adj:"introductory",adj2:"introduced"}, syn:["present","launch"], ant:[],
+    lv:"basic", tags:["general"], pos:"v"},
+  {word:"principle", ph:"/ˈprɪnsəpəl/", en:"A basic truth or rule of behavior", cn:"原则；原理",
+    phrases:[
+      {phrase:"basic principle", sent:"Respect is a basic principle of good communication.", sentCn:"尊重是良好沟通的基本原则。"},
+      {phrase:"in principle", sent:"I agree with you in principle.", sentCn:"原则上我同意你的看法。"}
+    ],
+    ex:"The principle of equality applies to everyone.",
+    family:{adj:"principled",adj2:"unprincipled"}, syn:["rule","standard"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"photography", ph:"/fəˈtɒɡrəfi/", en:"The art or practice of taking photographs", cn:"摄影；摄影术",
+    phrases:[
+      {phrase:"photography skills", sent:"His photography skills have improved greatly.", sentCn:"他的摄影技巧大大提高了。"},
+      {phrase:"digital photography", sent:"Digital photography has replaced film in most areas.", sentCn:"数码摄影在大多数领域取代了胶片。"}
+    ],
+    ex:"She has a passion for wildlife photography.",
+    family:{noun:"photograph",noun2:"photographer",adj:"photographic"}, syn:["photo","imaging"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"short", ph:"/ʃɔːrt/", en:"Not long in length or time", cn:"短的；矮的；简短的",
+    phrases:[
+      {phrase:"in short", sent:"In short, the project was a great success.", sentCn:"简而言之，这个项目非常成功。"},
+      {phrase:"short of", sent:"We are short of volunteers this year.", sentCn:"今年我们缺少志愿者。"}
+    ],
+    ex:"The lecture was short but very informative.",
+    family:{verb:"shorten",adv:"shortly",noun:"shortage",noun2:"shortcut"}, syn:["brief","concise"], ant:["long","tall"],
+    lv:"basic", tags:["general"], pos:"adj"},
+  {word:"photographic", ph:"/ˌfoʊtəˈɡræfɪk/", en:"Relating to photography", cn:"摄影的；逼真的",
+    phrases:[
+      {phrase:"photographic memory", sent:"His photographic memory helped him ace the exam.", sentCn:"他的过目不忘的记忆力帮他在考试中取得了优异成绩。"},
+      {phrase:"photographic equipment", sent:"Bring your own photographic equipment to the workshop.", sentCn:"带上你自己的摄影设备来参加工作坊。"}
+    ],
+    ex:"She has a photographic memory for details.",
+    family:{noun:"photograph",noun2:"photographer",noun3:"photography"}, syn:["visual","pictorial"], ant:[],
+    lv:"advanced", tags:["general"], pos:"adj"},
+  {word:"multiple", ph:"/ˈmʌltɪpəl/", en:"Having or involving several parts or elements", cn:"多重的；多个的",
+    phrases:[
+      {phrase:"multiple choice", sent:"The exam consists of multiple choice questions.", sentCn:"考试由选择题组成。"},
+      {phrase:"multiple times", sent:"I've called him multiple times but got no answer.", sentCn:"我打了他好几次电话都没人接。"}
+    ],
+    ex:"She received multiple offers from different companies.",
+    family:{verb:"multiply",noun:"multiplication"}, syn:["several","numerous"], ant:["single"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"registration", ph:"/ˌredʒɪˈstreɪʃən/", en:"The process of recording information officially", cn:"登记；注册",
+    phrases:[
+      {phrase:"registration fee", sent:"There is a small registration fee for the event.", sentCn:"活动需要交少量注册费。"},
+      {phrase:"registration form", sent:"Please fill out the registration form completely.", sentCn:"请完整填写注册表。"}
+    ],
+    ex:"Online registration closes at midnight.",
+    family:{verb:"register",adj:"registered"}, syn:["enrollment","signup"], ant:[],
+    lv:"intermediate", tags:["education"], pos:"n"},
+  {word:"receive", ph:"/rɪˈsiːv/", en:"To be given or presented with something", cn:"收到；接收",
+    phrases:[
+      {phrase:"receive an award", sent:"She received an award for her research.", sentCn:"她因研究获得了奖项。"},
+      {phrase:"receive feedback", sent:"It's important to receive feedback from others.", sentCn:"接受他人的反馈很重要。"}
+    ],
+    ex:"Did you receive my email yesterday?",
+    family:{noun:"receipt",noun2:"receiver",adj:"received",noun3:"reception"}, syn:["get","obtain"], ant:["give","send"],
+    lv:"basic", tags:["general"], pos:"v"},
+  {word:"refund", ph:"/ˈriːfʌnd/", en:"Money given back because of a return or cancellation", cn:"退款",
+    phrases:[
+      {phrase:"full refund", sent:"The store offered a full refund for the defective product.", sentCn:"商店为有缺陷的产品提供了全额退款。"},
+      {phrase:"request a refund", sent:"You can request a refund within 30 days.", sentCn:"你可以在30天内申请退款。"}
+    ],
+    ex:"We will give you a full refund if you're not satisfied.",
+    family:{adj:"refundable",adj2:"nonrefundable"}, syn:["reimbursement","repayment"], ant:["charge"],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"structure", ph:"/ˈstrʌktʃər/", en:"The way something is built, organized, or arranged", cn:"结构；构造",
+    phrases:[
+      {phrase:"organizational structure", sent:"The company changed its organizational structure.", sentCn:"公司改变了组织结构。"},
+      {phrase:"sentence structure", sent:"Understanding sentence structure helps improve writing.", sentCn:"理解句子结构有助于提高写作。"}
+    ],
+    ex:"The sentence structure in English differs from Chinese.",
+    family:{adj:"structural",adv:"structurally",verb:"restructure"}, syn:["framework","arrangement"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"thematic", ph:"/θɪˈmætɪk/", en:"Relating to a particular theme or subject", cn:"主题的；专题的",
+    phrases:[
+      {phrase:"thematic approach", sent:"The course uses a thematic approach to teaching.", sentCn:"这门课程采用主题式教学法。"},
+      {phrase:"thematic analysis", sent:"Researchers conducted a thematic analysis of the data.", sentCn:"研究人员对数据进行了主题分析。"}
+    ],
+    ex:"The museum has a thematic exhibition on ancient art.",
+    family:{noun:"theme",adv:"thematically"}, syn:["topical"], ant:[],
+    lv:"advanced", tags:["education"], pos:"adj"},
+  {word:"theme", ph:"/θiːm/", en:"The main subject of a piece of writing or discussion", cn:"主题；题目",
+    phrases:[
+      {phrase:"main theme", sent:"Love is the main theme of the novel.", sentCn:"爱情是这部小说的主题。"},
+      {phrase:"theme park", sent:"We spent the whole day at the theme park.", sentCn:"我们在主题公园玩了一整天。"}
+    ],
+    ex:"The theme of the conference is sustainable development.",
+    family:{adj:"thematic",adv:"thematically"}, syn:["topic","subject"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"throughout", ph:"/θruːˈaʊt/", en:"In every part of; during the whole time of", cn:"遍及；自始至终",
+    phrases:[
+      {phrase:"throughout the year", sent:"The park is open throughout the year.", sentCn:"公园全年开放。"},
+      {phrase:"throughout history", sent:"People have valued education throughout history.", sentCn:"纵观历史，人们一直重视教育。"}
+    ],
+    ex:"She remained calm throughout the interview.",
+    family:{}, syn:["during","across"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"prep"},
+  {word:"organize", ph:"/ˈɔːrɡənaɪz/", en:"To arrange or plan something in an orderly way", cn:"组织；安排",
+    phrases:[
+      {phrase:"organize an event", sent:"Who will organize the school sports day?", sentCn:"谁来组织学校运动会？"},
+      {phrase:"well-organized", sent:"The conference was well-organized and informative.", sentCn:"会议组织得很好，信息量大。"}
+    ],
+    ex:"The students organized a charity event.",
+    family:{noun:"organization",adj:"organized",noun2:"organizer",verb2:"reorganize"}, syn:["arrange","coordinate"], ant:["disorganize"],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"focus", ph:"/ˈfoʊkəs/", en:"To pay attention to one particular thing", cn:"集中；重点",
+    phrases:[
+      {phrase:"focus on", sent:"The project focuses on improving water quality.", sentCn:"这个项目重点关注改善水质。"},
+      {phrase:"main focus", sent:"The main focus of the meeting was budget cuts.", sentCn:"会议的重点是削减预算。"}
+    ],
+    ex:"You need to focus on your studies.",
+    family:{adj:"focused",adj2:"unfocused",adj3:"focal"}, syn:["concentrate","center"], ant:["distract"],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"emphasize", ph:"/ˈemfəsaɪz/", en:"To give special importance to something", cn:"强调；着重",
+    phrases:[
+      {phrase:"strongly emphasize", sent:"I want to strongly emphasize this point.", sentCn:"我想着重强调这一点。"},
+      {phrase:"emphasize the need", sent:"The report emphasizes the need for reform.", sentCn:"报告强调了改革的必要性。"}
+    ],
+    ex:"The teacher emphasized the importance of reading.",
+    family:{noun:"emphasis",adj:"emphatic",adv:"emphatically"}, syn:["stress","highlight"], ant:["downplay"],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"appropriate", ph:"/əˈproʊpriət/", en:"Suitable or right for a particular situation", cn:"适当的；恰当的",
+    phrases:[
+      {phrase:"appropriate behavior", sent:"Students should display appropriate behavior in class.", sentCn:"学生在课堂上应该表现得体。"},
+      {phrase:"age-appropriate", sent:"Choose age-appropriate books for your children.", sentCn:"为你的孩子选择适龄的书籍。"}
+    ],
+    ex:"Please wear appropriate clothing for the interview.",
+    family:{adv:"appropriately",adj2:"inappropriate",adv2:"inappropriately"}, syn:["suitable","proper"], ant:["inappropriate"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"tailor", ph:"/ˈteɪlər/", en:"To make or adapt for a particular purpose", cn:"裁缝；定制",
+    phrases:[
+      {phrase:"tailor-made", sent:"This program is tailor-made for beginners.", sentCn:"这个项目是为初学者量身定做的。"},
+      {phrase:"tailor to", sent:"The training is tailored to individual skill levels.", sentCn:"培训是根据个人技能水平定制的。"}
+    ],
+    ex:"We tailor our courses to meet students' needs.",
+    family:{adj:"tailored",noun:"tailoring"}, syn:["customize","adapt"], ant:["standardize"],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"passionate", ph:"/ˈpæʃənət/", en:"Having very strong feelings about something", cn:"热情的；充满激情的",
+    phrases:[
+      {phrase:"passionate about", sent:"He is passionate about environmental protection.", sentCn:"他对环保充满热情。"},
+      {phrase:"passionate speech", sent:"The leader gave a passionate speech about equality.", sentCn:"领导发表了关于平等的热情洋溢的演讲。"}
+    ],
+    ex:"She is passionate about teaching children.",
+    family:{noun:"passion",adv:"passionately",adj2:"dispassionate"}, syn:["enthusiastic","devoted"], ant:["indifferent","apathetic"],
+    lv:"intermediate", tags:["general"], pos:"adj"},
+  {word:"expert", ph:"/ˈekspɜːrt/", en:"A person with special knowledge or skill", cn:"专家；能手",
+    phrases:[
+      {phrase:"expert advice", sent:"Seek expert advice before making financial decisions.", sentCn:"做出财务决定前寻求专家建议。"},
+      {phrase:"expert in", sent:"He is considered an expert in marine biology.", sentCn:"他被认为是海洋生物学方面的专家。"}
+    ],
+    ex:"She is an expert in artificial intelligence.",
+    family:{noun:"expertise",adv:"expertly"}, syn:["specialist","authority"], ant:["amateur","novice"],
+    lv:"intermediate", tags:["career"], pos:"n"},
+  {word:"undergo", ph:"/ˌʌndərˈɡoʊ/", en:"To experience or be subjected to something", cn:"经历；接受(手术等)",
+    phrases:[
+      {phrase:"undergo surgery", sent:"He will undergo surgery next week.", sentCn:"他下周将接受手术。"},
+      {phrase:"undergo training", sent:"All new employees must undergo training.", sentCn:"所有新员工都必须接受培训。"}
+    ],
+    ex:"The building will undergo major renovations.",
+    family:{adj:"undergone"}, syn:["experience","endure"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"accept", ph:"/əkˈsept/", en:"To agree to receive or do something", cn:"接受；认可",
+    phrases:[
+      {phrase:"accept responsibility", sent:"He accepted responsibility for the mistake.", sentCn:"他承担了错误的责任。"},
+      {phrase:"widely accepted", sent:"This theory is widely accepted by scientists.", sentCn:"这个理论被科学家们广泛接受。"}
+    ],
+    ex:"She accepted the job offer immediately.",
+    family:{noun:"acceptance",adj:"acceptable",adj2:"unacceptable"}, syn:["receive","agree"], ant:["reject","decline"],
+    lv:"basic", tags:["general"], pos:"v"},
+  {word:"weekly", ph:"/ˈwiːkli/", en:"Done, produced, or occurring once a week", cn:"每周的；周刊",
+    phrases:[
+      {phrase:"weekly report", sent:"The manager expects a weekly progress report.", sentCn:"经理期望每周一份进度报告。"},
+      {phrase:"weekly basis", sent:"The club meets on a weekly basis.", sentCn:"俱乐部每周聚会一次。"}
+    ],
+    ex:"We have a weekly meeting every Monday.",
+    family:{noun:"week",noun2:"weekday",noun3:"weekend"}, syn:["every week"], ant:["daily","monthly"],
+    lv:"basic", tags:["general"], pos:"adj"},
+  {word:"language", ph:"/ˈlæŋɡwɪdʒ/", en:"A system of communication used by people", cn:"语言",
+    phrases:[
+      {phrase:"body language", sent:"Body language can reveal a lot about a person.", sentCn:"肢体语言可以透露很多关于一个人的信息。"},
+      {phrase:"language barrier", sent:"The language barrier made communication difficult.", sentCn:"语言障碍使沟通变得困难。"}
+    ],
+    ex:"Learning a foreign language takes time and practice.",
+    family:{adj:"linguistic",noun:"linguist",adj2:"multilingual"}, syn:["tongue","speech"], ant:[],
+    lv:"basic", tags:["education"], pos:"n"},
+  {word:"potential", ph:"/pəˈtenʃəl/", en:"Having the ability to develop into something", cn:"潜力；可能的",
+    phrases:[
+      {phrase:"reach full potential", sent:"Good teachers help students reach their full potential.", sentCn:"好老师帮助学生发挥全部潜力。"},
+      {phrase:"potential risk", sent:"We must consider the potential risks of this plan.", sentCn:"我们必须考虑这个计划的潜在风险。"}
+    ],
+    ex:"Every student has the potential to succeed.",
+    family:{adv:"potentially"}, syn:["possible","prospect"], ant:["impossibility"],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"identify", ph:"/aɪˈdentɪfaɪ/", en:"To recognize or be able to name someone or something", cn:"识别；确认",
+    phrases:[
+      {phrase:"identify the problem", sent:"The first step is to identify the problem.", sentCn:"第一步是确定问题。"},
+      {phrase:"identify with", sent:"Many readers identify with the main character.", sentCn:"许多读者能与主角产生共鸣。"}
+    ],
+    ex:"Can you identify the bird in this picture?",
+    family:{noun:"identity",noun2:"identification",adj:"identifiable"}, syn:["recognize","distinguish"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"placement", ph:"/ˈpleɪsmənt/", en:"The act of putting something in a particular position", cn:"安置；放置；实习",
+    phrases:[
+      {phrase:"work placement", sent:"She did a three-month work placement at a law firm.", sentCn:"她在一家律师事务所做了三个月的实习。"},
+      {phrase:"placement test", sent:"New students must take a placement test.", sentCn:"新生必须参加分班考试。"}
+    ],
+    ex:"The university offers work placement opportunities.",
+    family:{verb:"place",adj:"placed",verb2:"replace",noun:"displacement"}, syn:["position","assignment"], ant:[],
+    lv:"intermediate", tags:["education","career"], pos:"n"},
+  {word:"contact", ph:"/ˈkɒntækt/", en:"To communicate with someone, usually by phone or email", cn:"联系；接触",
+    phrases:[
+      {phrase:"contact information", sent:"Leave your contact information at the front desk.", sentCn:"请在前台留下你的联系方式。"},
+      {phrase:"stay in contact", sent:"We stayed in contact after graduation.", sentCn:"毕业后我们保持联系。"}
+    ],
+    ex:"Please contact us if you have any questions.",
+    family:{adj:"contacted",adj2:"contactable"}, syn:["reach","communicate"], ant:[],
+    lv:"basic", tags:["general"], pos:"v"},
+  {word:"register", ph:"/ˈredʒɪstər/", en:"To put your name on an official list", cn:"注册；登记",
+    phrases:[
+      {phrase:"register for", sent:"She registered for three courses this semester.", sentCn:"她这学期注册了三门课程。"},
+      {phrase:"register online", sent:"You can register online through the school website.", sentCn:"你可以通过学校网站在线注册。"}
+    ],
+    ex:"You must register for the course before classes begin.",
+    family:{noun:"registration",adj:"registered",noun2:"registrar"}, syn:["enroll","sign up"], ant:[],
+    lv:"intermediate", tags:["education"], pos:"v"},
+  {word:"automatically", ph:"/ˌɔːtəˈmætɪkli/", en:"Without a person's control; by itself", cn:"自动地",
+    phrases:[
+      {phrase:"automatically saved", sent:"Your work is automatically saved every five minutes.", sentCn:"你的工作每五分钟自动保存一次。"},
+      {phrase:"happen automatically", sent:"Learning doesn't happen automatically; it requires effort.", sentCn:"学习不会自动发生，它需要努力。"}
+    ],
+    ex:"The door opens automatically when you approach.",
+    family:{adj:"automatic",verb:"automate",noun:"automation"}, syn:["mechanically"], ant:["manually"],
+    lv:"intermediate", tags:["technology"], pos:"adv"},
+  {word:"participate", ph:"/pɑːrˈtɪsɪpeɪt/", en:"To take part in an activity or event", cn:"参加；参与",
+    phrases:[
+      {phrase:"participate in", sent:"She participated in the school debate competition.", sentCn:"她参加了学校辩论赛。"},
+      {phrase:"actively participate", sent:"Students who actively participate learn more.", sentCn:"积极参与的学生学到更多。"}
+    ],
+    ex:"All students are encouraged to participate in sports.",
+    family:{noun:"participation",noun2:"participant"}, syn:["join","take part"], ant:["abstain","withdraw"],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"factor", ph:"/ˈfæktər/", en:"A fact or situation that influences a result", cn:"因素；要素",
+    phrases:[
+      {phrase:"key factor", sent:"Price is a key factor in consumer decisions.", sentCn:"价格是消费者决策的关键因素。"},
+      {phrase:"risk factor", sent:"Smoking is a major risk factor for lung cancer.", sentCn:"吸烟是肺癌的主要危险因素。"}
+    ],
+    ex:"Weather is an important factor in planning outdoor events.",
+    family:{}, syn:["element","component"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"n"},
+  {word:"involve", ph:"/ɪnˈvɒlv/", en:"To include as a necessary part", cn:"涉及；包含",
+    phrases:[
+      {phrase:"involve in", sent:"He was involved in planning the school festival.", sentCn:"他参与了学校节日的策划。"},
+      {phrase:"deeply involved", sent:"She is deeply involved in community work.", sentCn:"她深度参与社区工作。"}
+    ],
+    ex:"The project involves working with international teams.",
+    family:{noun:"involvement",adj:"involved"}, syn:["include","engage"], ant:["exclude"],
+    lv:"intermediate", tags:["general"], pos:"v"},
+  {word:"evaluate", ph:"/ɪˈvæljueɪt/", en:"To judge the value or condition of something", cn:"评估；评价",
+    phrases:[
+      {phrase:"evaluate performance", sent:"Managers evaluate employee performance annually.", sentCn:"经理每年评估员工表现。"},
+      {phrase:"carefully evaluate", sent:"Carefully evaluate all options before deciding.", sentCn:"在做决定之前仔细评估所有选项。"}
+    ],
+    ex:"Teachers evaluate students' progress every semester.",
+    family:{noun:"evaluation",noun2:"evaluator",verb2:"reevaluate"}, syn:["assess","judge"], ant:[],
+    lv:"intermediate", tags:["education"], pos:"v"},
+  {word:"select", ph:"/sɪˈlekt/", en:"To choose something from a group", cn:"选择；挑选",
+    phrases:[
+      {phrase:"carefully select", sent:"We carefully select our teaching materials.", sentCn:"我们仔细挑选教学材料。"},
+      {phrase:"select from", sent:"Students can select from a variety of courses.", sentCn:"学生可以从各种课程中选择。"}
+    ],
+    ex:"Please select one answer from the options below.",
+    family:{noun:"selection",adj:"selective",adv:"selectively",adj2:"selected"}, syn:["choose","pick"], ant:[],
+    lv:"intermediate", tags:["general"], pos:"v"},
 ];
 
 /* ═══ HELPERS ═══ */
