@@ -149,8 +149,8 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
         word, x: baseX, y: H + 20,
         vx: (Math.random() - 0.5) * 1.2,
         vy: -(10 + Math.random() * 2), // strong upward - reaches top half
-        rotation: Math.random() * Math.PI * 2,
-        rotSpeed: (Math.random() - 0.5) * 0.03,
+        rotation: 0,
+        rotSpeed: 0,
         fruit: ft, isBomb, isAnswer,
         sliced: false, missed: false,
         delay,
@@ -301,7 +301,6 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
           f.active = true;
           if (f.sliced) continue;
           f.x += f.vx; f.y += f.vy; f.vy += GRAVITY;
-          f.rotation += f.rotSpeed;
           if (f.y > H + FRUIT_R * 2 && !f.missed) {
             f.missed = true;
             if (f.isAnswer) {
@@ -395,9 +394,7 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
         ctx.lineWidth = 3;
         ctx.stroke();
         ctx.shadowBlur = 0;
-        // Emoji - big and centered, no rotation so it's readable
-        ctx.save();
-        ctx.rotate(-f.rotation); // cancel parent rotation for emoji
+        // Emoji - big and centered
         ctx.font = `${FRUIT_R}px sans-serif`;
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(f.fruit.emoji, 0, 0);
@@ -407,7 +404,6 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
         const tw = ctx.measureText(f.word).width;
         const pillW = tw + 16, pillH = wordFontSize + 10, pillY = FRUIT_R + 12;
         ctx.fillStyle = "rgba(0,0,0,0.85)";
-        // Rounded rect manually
         const px = -pillW/2, py2 = pillY - pillH/2, pr = 6;
         ctx.beginPath();
         ctx.moveTo(px+pr, py2); ctx.lineTo(px+pillW-pr, py2); ctx.arcTo(px+pillW, py2, px+pillW, py2+pr, pr);
@@ -417,7 +413,6 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
         ctx.closePath(); ctx.fill();
         ctx.fillStyle = "#fff";
         ctx.fillText(f.word, 0, pillY + 1);
-        ctx.restore();
         ctx.restore();
       }
 
