@@ -34,13 +34,19 @@ const BOMB = { emoji:"💣", color:"#333", sliceColor:"#ff0000" };
 // Sound effects
 const _sfx = {
   _ctx: null,
-  _getCtx() { if(!this._ctx) try{this._ctx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){} return this._ctx; },
+  _getCtx() {
+    if(!this._ctx) try{this._ctx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}
+    if(this._ctx&&this._ctx.state==='suspended') this._ctx.resume();
+    return this._ctx;
+  },
   _tone(f,t,v,s,d) {
     const ctx=this._getCtx();if(!ctx)return;
-    const o=ctx.createOscillator(),g=ctx.createGain();
-    o.connect(g);g.connect(ctx.destination);o.type=t;o.frequency.value=f;
-    g.gain.setValueAtTime(v,ctx.currentTime+s);g.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+s+d);
-    o.start(ctx.currentTime+s);o.stop(ctx.currentTime+s+d);
+    try{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);o.type=t;o.frequency.value=f;
+      g.gain.setValueAtTime(v*2,ctx.currentTime+s);g.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+s+d);
+      o.start(ctx.currentTime+s);o.stop(ctx.currentTime+s+d);
+    }catch(e){}
   },
   slice(combo) {
     try {
@@ -287,7 +293,7 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
     const dpr = window.devicePixelRatio || 1;
     canvas.width = W * dpr;
     canvas.height = H * dpr;
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const loop = () => {
       try {
