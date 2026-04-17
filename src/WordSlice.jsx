@@ -440,31 +440,37 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
       ctx.globalAlpha = 1;
 
       // === HUD ===
-      // Question prompt at top
+      // Question prompt at bottom
       const q = g.questions[g.currentQ];
       if (q) {
-        ctx.fillStyle = "rgba(0,0,0,0.6)";
-        ctx.fillRect(0, 0, W, 52);
+        ctx.fillStyle = "rgba(0,0,0,0.75)";
+        ctx.fillRect(0, H - 50, W, 50);
         ctx.fillStyle = "#fff";
         ctx.font = "bold 20px 'Nunito',sans-serif";
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText(q.cn, W / 2, 27);
+        ctx.fillText(q.cn, W / 2, H - 25);
       }
 
       // Score - left
       ctx.fillStyle = "#f8d830";
       ctx.font = "bold 15px 'Nunito',sans-serif";
       ctx.textAlign = "left"; ctx.textBaseline = "top";
-      ctx.fillText(`⭐ ${g.score}`, 12, 58);
+      ctx.fillText(`⭐ ${g.score}`, 12, 10);
 
       // Lives - right
       ctx.textAlign = "right";
       const cfg = DIFF[g.difficulty];
-      ctx.fillText("❤️".repeat(g.lives) + "🖤".repeat(Math.max(0, cfg.lives - g.lives)), W - 12, 58);
+      ctx.fillText("❤️".repeat(g.lives) + "🖤".repeat(Math.max(0, cfg.lives - g.lives)), W - 12, 10);
 
       // Difficulty badge
       ctx.fillStyle = cfg.color; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
-      ctx.fillText(cfg.label, W / 2, 58);
+      ctx.fillText(cfg.label, W / 2, 14);
+
+      // Progress bar
+      ctx.fillStyle = "rgba(255,255,255,0.15)";
+      ctx.fillRect(12, 30, W - 24, 3);
+      ctx.fillStyle = "#f8d830";
+      ctx.fillRect(12, 30, (W - 24) * (g.questions.length > 0 ? g.currentQ / g.questions.length : 0), 3);
 
       // Combo
       if (g.combo >= 2) {
@@ -474,14 +480,8 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
         ctx.font = `bold ${fs}px 'Nunito',sans-serif`;
         ctx.textAlign = "center";
         const label = g.combo >= 6 ? `🌟 ${g.combo}x COMBO!!!` : g.combo >= 4 ? `⚡ ${g.combo}x COMBO!!` : `🔥 ${g.combo}x COMBO!`;
-        ctx.fillText(label, W / 2, 90);
+        ctx.fillText(label, W / 2, 52);
       }
-
-      // Progress bar
-      ctx.fillStyle = "rgba(255,255,255,0.15)";
-      ctx.fillRect(12, 76, W - 24, 3);
-      ctx.fillStyle = "#f8d830";
-      ctx.fillRect(12, 76, (W - 24) * (g.questions.length > 0 ? g.currentQ / g.questions.length : 0), 3);
 
       // Answer result overlay
       if (g.answerResult) {
