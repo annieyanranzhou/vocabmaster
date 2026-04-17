@@ -434,7 +434,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
   // ===== PLAYING =====
   return (
     <div style={{position:"fixed",inset:0,zIndex:9999,background:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <canvas ref={canvasRef} width={GAME_W} height={GAME_H} style={{width:"100vw",height:"100vh",touchAction:"none",objectFit:"cover"}}/>
+      <canvas ref={canvasRef} width={GAME_W} height={GAME_H} style={{maxWidth:"100vw",maxHeight:"100vh",width:"auto",height:"100vh",touchAction:"none"}}/>
     </div>
   );
 }
