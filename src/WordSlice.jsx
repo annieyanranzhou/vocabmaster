@@ -120,7 +120,7 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
       lives: cfg.lives, difficulty: diff,
       fruits: [], slicedParts: [], particles: [],
       state: "waiting", // waiting -> thrown -> answered -> next -> done
-      throwTimer: 30,
+      throwTimer: 15,
       answerTimer: 0,
       answerResult: null,
       frameCount: 0,
@@ -141,20 +141,20 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
     
     g.fruits = q.options.map((word, i) => {
       const isAnswer = word === q.answer;
-      const isBomb = !isAnswer && Math.random() < 0.25; // 25% chance non-answer is a bomb
+      const isBomb = !isAnswer && Math.random() < 0.25;
       const ft = isBomb ? BOMB : fruitTypes[i % fruitTypes.length];
-      const baseX = spacing * (i + 1) + (Math.random() - 0.5) * 40;
-      const delay = i * 8 + Math.random() * 10;
+      const baseX = spacing * (i + 1) + (Math.random() - 0.5) * 30;
+      const delay = i * 5; // stagger launch by 5 frames each
       return {
-        word, x: baseX, y: H + FRUIT_R + delay * 3,
-        vx: (Math.random() - 0.5) * 2,
-        vy: -(g.cfg.speed + Math.random() * 1.5),
+        word, x: baseX, y: H + 20,
+        vx: (Math.random() - 0.5) * 1.2,
+        vy: -(9 + Math.random() * 2.5), // strong upward throw
         rotation: Math.random() * Math.PI * 2,
         rotSpeed: (Math.random() - 0.5) * 0.08,
         fruit: ft, isBomb, isAnswer,
         sliced: false, missed: false,
         delay,
-        active: false, // becomes active after delay
+        active: false,
       };
     });
     g.state = "thrown";
