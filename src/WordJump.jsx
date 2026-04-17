@@ -28,19 +28,23 @@ const _sfx = {
   _ctx: null,
   _getCtx() {
     if (!this._ctx) try { this._ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){}
+    // Mobile browsers require resume after user gesture
+    if (this._ctx && this._ctx.state === 'suspended') this._ctx.resume();
     return this._ctx;
   },
   _tone(freq, type, vol, start, dur) {
     const ctx = this._getCtx(); if(!ctx) return;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.type = type;
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(vol, ctx.currentTime + start);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + start + dur);
-    osc.start(ctx.currentTime + start);
-    osc.stop(ctx.currentTime + start + dur);
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(vol, ctx.currentTime + start);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + start + dur);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + dur);
+    } catch(e){}
   },
   jump() {
     const ctx = this._getCtx(); if(!ctx) return;
@@ -51,7 +55,7 @@ const _sfx = {
       osc.type = "square";
       osc.frequency.setValueAtTime(300, ctx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.08);
-      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
       osc.start(); osc.stop(ctx.currentTime + 0.12);
     } catch(e){}
@@ -88,7 +92,7 @@ const _sfx = {
       osc.type = "sawtooth";
       osc.frequency.setValueAtTime(220, ctx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.25);
-      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
       osc.start(); osc.stop(ctx.currentTime + 0.3);
     } catch(e){}
@@ -220,6 +224,12 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
     if(screen!=="playing") return;
     const canvas=canvasRef.current; if(!canvas) return;
     const ctx=canvas.getContext("2d");
+    
+    // HiDPI support - set once
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = GAME_W * dpr;
+    canvas.height = GAME_H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // use setTransform instead of scale to avoid accumulation
 
     const update=()=>{
       const g=gameRef.current; if(!g) return; g.frameCount++;
@@ -341,19 +351,24 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
       }
 
       ctx.fillStyle="#fff";ctx.font="bold 14px 'Nunito',sans-serif";ctx.textAlign="left";ctx.textBaseline="top";
-      ctx.fillText(`⭐ ${g.score}`,10,10);
+      ctx.fillText(`⭐ ${g.score}`,10,8);
       const cfg=DIFF[g.difficulty];
-      ctx.fillStyle=cfg.color;ctx.font="bold 11px sans-serif";ctx.textAlign="center";ctx.fillText(cfg.label,GAME_W/2,42);
-      ctx.textAlign="right";ctx.fillStyle="#fff";ctx.fillText("❤️".repeat(g.lives)+"🖤".repeat(Math.max(0,cfg.lives-g.lives)),GAME_W-10,10);
+      ctx.textAlign="right";ctx.fillStyle="#fff";ctx.fillText("❤️".repeat(g.lives)+"🖤".repeat(Math.max(0,cfg.lives-g.lives)),GAME_W-10,8);
 
+      // Progress bar
+      ctx.fillStyle="rgba(255,255,255,0.3)";ctx.fillRect(10,28,GAME_W-20,3);
+      ctx.fillStyle=C.star;ctx.fillRect(10,28,(GAME_W-20)*(g.questions.length>0?g.currentQ/g.questions.length:0),3);
+
+      // Difficulty badge
+      ctx.fillStyle=cfg.color;ctx.font="bold 11px sans-serif";ctx.textAlign="center";ctx.fillText(cfg.label,GAME_W/2,38);
+
+      // Combo - below progress bar with room
       if(g.combo>=2){
         const cc=["#f8d830","#ff8c00","#ff4444","#ff00ff","#00ffff","#fff"];
         ctx.fillStyle=cc[Math.min(g.combo-2,cc.length-1)];
-        ctx.font=`bold ${Math.min(24,16+g.combo)}px 'Nunito',sans-serif`;ctx.textAlign="center";
-        ctx.fillText(g.combo>=6?`🌟 ${g.combo}连击!!!`:g.combo>=4?`⚡ ${g.combo}连击!!`:`🔥 ${g.combo}连击!`,GAME_W/2,10);
+        ctx.font=`bold ${Math.min(26,18+g.combo)}px 'Nunito',sans-serif`;ctx.textAlign="center";
+        ctx.fillText(g.combo>=6?`🌟 ${g.combo}连击!!!`:g.combo>=4?`⚡ ${g.combo}连击!!`:`🔥 ${g.combo}连击!`,GAME_W/2,56);
       }
-      ctx.fillStyle="rgba(255,255,255,0.3)";ctx.fillRect(10,28,GAME_W-20,4);
-      ctx.fillStyle=C.star;ctx.fillRect(10,28,(GAME_W-20)*(g.questions.length>0?g.currentQ/g.questions.length:0),4);
 
       if(g.hitResult&&g.state==="hit"){
         const hr=g.hitResult;
@@ -364,8 +379,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
         ctx.strokeText(msg,GAME_W/2,GAME_H/2-20);ctx.fillText(msg,GAME_W/2,GAME_H/2-20);
         if(hr.correct&&g.combo>=2){ctx.font="bold 18px 'Nunito',sans-serif";ctx.fillStyle=C.star;ctx.fillText(`+${10+(g.combo-1)*5} 连击奖励!`,GAME_W/2,GAME_H/2+15);}
       }
-      ctx.fillStyle="rgba(255,255,255,0.4)";ctx.font="11px sans-serif";ctx.textAlign="center";
-      ctx.fillText("← 点左移 | 点击跳跃 | 点右移 →",GAME_W/2,GAME_H-6);
+      // (hint removed - already shown in menu)
     };
 
     const loop=()=>{update();draw();frameRef.current=requestAnimationFrame(loop);};
@@ -434,7 +448,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
   // ===== PLAYING =====
   return (
     <div style={{position:"fixed",inset:0,zIndex:9999,background:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <canvas ref={canvasRef} width={GAME_W} height={GAME_H} style={{maxWidth:"100vw",maxHeight:"100vh",imageRendering:"pixelated",touchAction:"none"}}/>
+      <canvas ref={canvasRef} style={{maxWidth:"100vw",maxHeight:"100vh",width:GAME_W,height:GAME_H,touchAction:"none"}}/>
     </div>
   );
 }

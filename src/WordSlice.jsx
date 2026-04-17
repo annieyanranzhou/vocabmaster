@@ -34,13 +34,19 @@ const BOMB = { emoji:"💣", color:"#333", sliceColor:"#ff0000" };
 // Sound effects
 const _sfx = {
   _ctx: null,
-  _getCtx() { if(!this._ctx) try{this._ctx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){} return this._ctx; },
+  _getCtx() {
+    if(!this._ctx) try{this._ctx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}
+    if(this._ctx&&this._ctx.state==='suspended') this._ctx.resume();
+    return this._ctx;
+  },
   _tone(f,t,v,s,d) {
     const ctx=this._getCtx();if(!ctx)return;
-    const o=ctx.createOscillator(),g=ctx.createGain();
-    o.connect(g);g.connect(ctx.destination);o.type=t;o.frequency.value=f;
-    g.gain.setValueAtTime(v,ctx.currentTime+s);g.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+s+d);
-    o.start(ctx.currentTime+s);o.stop(ctx.currentTime+s+d);
+    try{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);o.type=t;o.frequency.value=f;
+      g.gain.setValueAtTime(v*2,ctx.currentTime+s);g.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+s+d);
+      o.start(ctx.currentTime+s);o.stop(ctx.currentTime+s+d);
+    }catch(e){}
   },
   slice(combo) {
     try {
@@ -282,6 +288,12 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
     if (screen !== "playing") return;
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext("2d");
+    
+    // HiDPI support
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const loop = () => {
       try {
@@ -519,8 +531,7 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
       }
 
       // Hint
-      ctx.fillStyle = "rgba(255,255,255,0.25)"; ctx.font = "11px sans-serif"; ctx.textAlign = "center";
-      ctx.fillText("滑动手指切开正确单词的水果", W/2, H - 8);
+      // (hint removed - shown in menu)
 
       } catch(err) { console.error("WordSlice loop error:", err); }
       frameRef.current = requestAnimationFrame(loop);
@@ -593,7 +604,7 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
   // ===== PLAYING =====
   return (
     <div style={{position:"fixed",inset:0,zIndex:9999,background:"#0a0a1a",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <canvas ref={canvasRef} width={W} height={H} style={{maxWidth:"100vw",maxHeight:"100vh",touchAction:"none",cursor:"crosshair"}}/>
+      <canvas ref={canvasRef} style={{maxWidth:"100vw",maxHeight:"100vh",width:W,height:H,touchAction:"none",cursor:"crosshair"}}/>
     </div>
   );
 }

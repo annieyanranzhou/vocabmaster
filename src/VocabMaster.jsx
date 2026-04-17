@@ -8961,22 +8961,7 @@ export default function VocabMaster() {
                           <div style={{fontSize:10,fontWeight:600,opacity:0.85,marginTop:2}}>20题 · 全词库</div>
                         </button>
                       </div>
-                      <button onClick={()=>setShowWordJump(true)}
-                        style={{background:"linear-gradient(135deg,#e44040,#ff6b35)",border:"none",color:"#fff",
-                          padding:"14px",borderRadius:16,cursor:"pointer",fontSize:15,fontWeight:800,
-                          boxShadow:"0 4px 16px rgba(228,64,64,0.3)",
-                          display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                        🍄 单词跳跳
-                        <span style={{fontSize:11,fontWeight:600,opacity:0.9}}>撞砖块学单词</span>
-                      </button>
-                      <button onClick={()=>setShowWordSlice(true)}
-                        style={{background:"linear-gradient(135deg,#9c27b0,#e91e63)",border:"none",color:"#fff",
-                          padding:"14px",borderRadius:16,cursor:"pointer",fontSize:15,fontWeight:800,
-                          boxShadow:"0 4px 16px rgba(156,39,176,0.3)",
-                          display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                        🍉 切水果
-                        <span style={{fontSize:11,fontWeight:600,opacity:0.9}}>滑动切单词</span>
-                      </button>
+
                       {/* P1b: 听说错题 + 语法错题入口 */}
                       {(wrongListen.length>0 || wrongDrills.length>0) && (
                         <div style={{display:"grid",gridTemplateColumns:wrongListen.length>0&&wrongDrills.length>0?"1fr 1fr":"1fr",gap:8}}>
@@ -9036,6 +9021,31 @@ export default function VocabMaster() {
               <div style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>🦁 狮子王 · 🧊 冰雪奇缘 · 🧙 哈利波特</div>
             </div>
             <div style={{fontSize:20,color:"rgba(255,255,255,0.4)"}}>›</div>
+          </div>
+
+          {/* ══ 英语游戏入口 ══ */}
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:14,fontWeight:800,color:"#5A7A9A",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>🎮 英语游戏</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div onClick={()=>setShowWordJump(true)}
+                style={{cursor:"pointer",background:"linear-gradient(135deg,#1a2a4a,#2a1a3a)",borderRadius:16,padding:"16px",textAlign:"center",
+                  boxShadow:"0 4px 16px rgba(0,0,0,0.15)",transition:"transform 0.2s"}}
+                onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+                onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
+                <div style={{fontSize:32,marginBottom:6}}>🍄</div>
+                <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>单词跳跳</div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginTop:2}}>撞砖块学单词</div>
+              </div>
+              <div onClick={()=>setShowWordSlice(true)}
+                style={{cursor:"pointer",background:"linear-gradient(135deg,#2a0a2e,#1a1a3e)",borderRadius:16,padding:"16px",textAlign:"center",
+                  boxShadow:"0 4px 16px rgba(0,0,0,0.15)",transition:"transform 0.2s"}}
+                onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+                onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
+                <div style={{fontSize:32,marginBottom:6}}>🍉</div>
+                <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>切水果</div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginTop:2}}>滑动切单词</div>
+              </div>
+            </div>
           </div>
         </div>
       )}
