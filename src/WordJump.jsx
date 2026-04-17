@@ -107,7 +107,19 @@ const C = {
 };
 
 function shuffle(arr) { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
-function pickDistractors(correct, pool, count) { return shuffle(pool.filter(w=>w.word!==correct.word)).slice(0,count); }
+
+function pickDistractors(correctWord, pool, count) {
+  // Filter out any word that matches the answer (by word string, not object reference)
+  const others = pool.filter(w => w.word !== correctWord);
+  // Also deduplicate by word string
+  const seen = new Set();
+  const unique = [];
+  for (const w of shuffle(others)) {
+    if (!seen.has(w.word)) { seen.add(w.word); unique.push(w); }
+    if (unique.length >= count) break;
+  }
+  return unique;
+}
 
 export default function WordJump({ vocab = [], onClose, onScore }) {
   const canvasRef = useRef(null);
@@ -130,10 +142,13 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
   const buildQuestions = useCallback((diff) => {
     const cfg = DIFF[diff]; const pool = getPool(diff);
     if (!pool.length) return [];
-    return shuffle(pool).slice(0, cfg.questions).map(w => ({
-      answer: w.word, cn: w.cn,
-      options: shuffle([w, ...pickDistractors(w, pool, cfg.distractors)]).map(o => o.word),
-    }));
+    return shuffle(pool).slice(0, cfg.questions).map(w => {
+      const distractors = pickDistractors(w.word, pool, cfg.distractors);
+      const optionWords = shuffle([w.word, ...distractors.map(d => d.word)]);
+      // Safety: ensure answer is definitely in options
+      if (!optionWords.includes(w.word)) optionWords[0] = w.word;
+      return { answer: w.word, cn: w.cn, options: optionWords };
+    });
   }, [getPool]);
 
   const initGame = useCallback((diff) => {
@@ -146,8 +161,26 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
       clouds:[{x:50,y:60,w:70},{x:200,y:40,w:90},{x:320,y:80,w:60}], frameCount:0,
       spawnBlocks(q) {
         if(!q) return [];
-        const ys = diff==="advanced" ? shuffle([210,270,330,370]).slice(0,q.options.length) : shuffle([230,290,350]).slice(0,q.options.length);
-        return q.options.map((word,i) => ({ word, x:-BLOCK_W-i*180-Math.random()*60, y:ys[i], hit:false, speed:cfg.blockSpeed+Math.random()*0.3 }));
+        // Spread blocks vertically with guaranteed minimum gap (BLOCK_H + 16px)
+        const count = q.options.length;
+        const minGap = BLOCK_H + 18; // 36 + 18 = 54px minimum between block tops
+        const topY = 200; // highest block position (reachable by jump)
+        const bottomY = GROUND_Y - CHAR_H - 30; // lowest, still above character standing
+        const range = bottomY - topY; // available vertical space
+        // Evenly distribute then add small random jitter
+        const positions = [];
+        for (let i = 0; i < count; i++) {
+          const baseY = topY + (range / (count + 1)) * (i + 1);
+          const jitter = (Math.random() - 0.5) * 20;
+          positions.push(Math.round(Math.max(topY, Math.min(bottomY - BLOCK_H, baseY + jitter))));
+        }
+        // Sort and enforce minimum gap
+        positions.sort((a, b) => a - b);
+        for (let i = 1; i < positions.length; i++) {
+          if (positions[i] - positions[i-1] < minGap) positions[i] = positions[i-1] + minGap;
+        }
+        const shuffledPositions = shuffle(positions);
+        return q.options.map((word,i) => ({ word, x:-BLOCK_W-i*200-Math.random()*40, y:shuffledPositions[i], hit:false, speed:cfg.blockSpeed+Math.random()*0.2 }));
       },
     };
   }, [buildQuestions]);
