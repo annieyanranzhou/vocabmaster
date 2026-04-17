@@ -23,10 +23,10 @@ const CHAR_W = 36;
 const CHAR_H = 44;
 const BLOCK_W = 100;
 const BLOCK_H = 36;
-const GRAVITY = 0.55;
-const JUMP_VEL = -11.5;
+const GRAVITY = 0.48;
+const JUMP_VEL = -14;
 const MOVE_SPEED = 4.5;
-const BLOCK_SPEED = 1.2;
+const BLOCK_SPEED = 1.1;
 
 // Pixel art character colors
 const C = {
@@ -121,7 +121,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
       frameCount: 0,
       spawnBlocks: function(q) {
         if (!q) return [];
-        const y_positions = [100, 170, 240];
+        const y_positions = [230, 290, 350];
         const shuffledY = shuffle(y_positions);
         return q.options.map((word, i) => ({
           word,
