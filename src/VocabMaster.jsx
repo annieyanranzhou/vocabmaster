@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import GameMode from './GameMode.jsx';
+import WordJump from './WordJump.jsx';
 import PetSystem, { addPetFood } from './PetSystem.jsx';
 
 /* ═══ SUPABASE CLIENT ═══ */
@@ -8145,6 +8146,7 @@ export default function VocabMaster() {
 
   const [tab,setTab]=useState("today");
   const [showGame,setShowGame]=useState(false);
+  const [showWordJump,setShowWordJump]=useState(false);
   const [showMovieRead,setShowMovieRead]=useState(false);
   const [userAccess,setUserAccess]=useState(null);   // 用户访问权限
   const [accessLoaded,setAccessLoaded]=useState(false);
@@ -8763,8 +8765,29 @@ export default function VocabMaster() {
           <MovieReadScreen onClose={()=>setShowMovieRead(false)}/>
         </div>
       )}
+      {showWordJump&&(
+        <WordJump vocab={VOCAB} onClose={()=>setShowWordJump(false)} onScore={(s)=>{
+          if(s>0){
+            setTotal(t=>{ const nt=t+15; totalRef.current=nt; return nt; });
+            userDidActivity.current=true;
+          }
+        }}/>
+      )}
+
+      {showGame&&!showWordJump&&(
+        <div style={{position:"fixed",top:12,right:12,zIndex:1001}}>
+          <button onClick={()=>{setShowWordJump(true);}} style={{
+            padding:"8px 14px",fontSize:13,fontWeight:800,
+            background:"linear-gradient(135deg,#e44040,#ff6b35)",color:"#fff",
+            border:"none",borderRadius:8,cursor:"pointer",
+            boxShadow:"0 3px 10px rgba(228,64,64,0.4)",
+            animation:"pulse 2s ease infinite"
+          }}>🍄 单词跳跳</button>
+        </div>
+      )}
+
       {showGame&&(
-        <GameMode supabase={supabase} authUser={authUser} onClose={()=>setShowGame(false)}
+        <GameMode supabase={supabase} authUser={authUser} onClose={()=>{setShowGame(false);setShowWordJump(false);}}
           onProgress={({answered, correct})=>{
             // Sync game mode results to main progress
             setTotal(t=>{ const nt=t+answered; totalRef.current=nt; return nt; });
