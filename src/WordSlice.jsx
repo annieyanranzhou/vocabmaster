@@ -148,7 +148,7 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
       return {
         word, x: baseX, y: H + 20,
         vx: (Math.random() - 0.5) * 1.2,
-        vy: -(9 + Math.random() * 2.5), // strong upward throw
+        vy: -(7 + Math.random() * 1.5), // upward throw - moderate speed
         rotation: Math.random() * Math.PI * 2,
         rotSpeed: (Math.random() - 0.5) * 0.08,
         fruit: ft, isBomb, isAnswer,
@@ -177,6 +177,8 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
           g.combo = 0;
           g.lives--;
           g.answerResult = { type: "bomb", timer: 50 };
+          g.state = "answered";
+          g.answerTimer = 50;
           // Explosion particles
           for (let i = 0; i < 20; i++) {
             g.particles.push({
@@ -381,23 +383,34 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
         ctx.save();
         ctx.translate(f.x, f.y);
         ctx.rotate(f.rotation);
-        // Circle background
+        // Circle background - solid and bright
         ctx.beginPath();
         ctx.arc(0, 0, FRUIT_R, 0, Math.PI * 2);
-        ctx.fillStyle = f.fruit.color + "44";
+        ctx.fillStyle = f.fruit.color + "bb";
         ctx.fill();
-        ctx.strokeStyle = f.fruit.color;
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2.5;
         ctx.stroke();
-        // Emoji
-        ctx.font = `${FRUIT_R * 1.1}px sans-serif`;
+        // Emoji - bigger
+        ctx.font = `${FRUIT_R * 1.3}px sans-serif`;
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(f.fruit.emoji, 0, -2);
-        // Word label
+        // Word label - with dark pill background for readability
         ctx.rotate(-f.rotation); // Keep text upright
+        const wordFontSize = f.word.length > 10 ? 11 : f.word.length > 7 ? 12 : 14;
+        ctx.font = `bold ${wordFontSize}px 'Nunito',sans-serif`;
+        const tw = ctx.measureText(f.word).width;
+        ctx.fillStyle = "rgba(0,0,0,0.7)";
+        const pillW = tw + 14, pillH = wordFontSize + 8, pillY = FRUIT_R + 8;
+        const px = -pillW/2, py2 = pillY - pillH/2, pr = 5;
+        ctx.beginPath();
+        ctx.moveTo(px+pr, py2); ctx.lineTo(px+pillW-pr, py2); ctx.arcTo(px+pillW, py2, px+pillW, py2+pr, pr);
+        ctx.lineTo(px+pillW, py2+pillH-pr); ctx.arcTo(px+pillW, py2+pillH, px+pillW-pr, py2+pillH, pr);
+        ctx.lineTo(px+pr, py2+pillH); ctx.arcTo(px, py2+pillH, px, py2+pillH-pr, pr);
+        ctx.lineTo(px, py2+pr); ctx.arcTo(px, py2, px+pr, py2, pr);
+        ctx.closePath(); ctx.fill();
         ctx.fillStyle = "#fff";
-        ctx.font = `bold ${f.word.length > 8 ? 11 : 13}px 'Nunito',sans-serif`;
-        ctx.fillText(f.word, 0, FRUIT_R + 14);
+        ctx.fillText(f.word, 0, pillY + 1);
         ctx.restore();
       }
 
