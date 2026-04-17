@@ -220,6 +220,12 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
     if(screen!=="playing") return;
     const canvas=canvasRef.current; if(!canvas) return;
     const ctx=canvas.getContext("2d");
+    
+    // HiDPI support
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = GAME_W * dpr;
+    canvas.height = GAME_H * dpr;
+    ctx.scale(dpr, dpr);
 
     const update=()=>{
       const g=gameRef.current; if(!g) return; g.frameCount++;
@@ -364,8 +370,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
         ctx.strokeText(msg,GAME_W/2,GAME_H/2-20);ctx.fillText(msg,GAME_W/2,GAME_H/2-20);
         if(hr.correct&&g.combo>=2){ctx.font="bold 18px 'Nunito',sans-serif";ctx.fillStyle=C.star;ctx.fillText(`+${10+(g.combo-1)*5} 连击奖励!`,GAME_W/2,GAME_H/2+15);}
       }
-      ctx.fillStyle="rgba(255,255,255,0.4)";ctx.font="11px sans-serif";ctx.textAlign="center";
-      ctx.fillText("← 点左移 | 点击跳跃 | 点右移 →",GAME_W/2,GAME_H-6);
+      // (hint removed - already shown in menu)
     };
 
     const loop=()=>{update();draw();frameRef.current=requestAnimationFrame(loop);};
@@ -434,7 +439,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
   // ===== PLAYING =====
   return (
     <div style={{position:"fixed",inset:0,zIndex:9999,background:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <canvas ref={canvasRef} width={GAME_W} height={GAME_H} style={{maxWidth:"100vw",maxHeight:"100vh",width:"auto",height:"100vh",touchAction:"none"}}/>
+      <canvas ref={canvasRef} style={{maxWidth:"100vw",maxHeight:"100vh",width:GAME_W,height:GAME_H,touchAction:"none"}}/>
     </div>
   );
 }
