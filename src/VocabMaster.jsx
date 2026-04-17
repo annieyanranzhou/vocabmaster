@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import GameMode from './GameMode.jsx';
 import WordJump from './WordJump.jsx';
+import WordSlice from './WordSlice.jsx';
 import PetSystem, { addPetFood } from './PetSystem.jsx';
 
 /* ═══ SUPABASE CLIENT ═══ */
@@ -8147,6 +8148,7 @@ export default function VocabMaster() {
   const [tab,setTab]=useState("today");
   const [showGame,setShowGame]=useState(false);
   const [showWordJump,setShowWordJump]=useState(false);
+  const [showWordSlice,setShowWordSlice]=useState(false);
   const [showMovieRead,setShowMovieRead]=useState(false);
   const [userAccess,setUserAccess]=useState(null);   // 用户访问权限
   const [accessLoaded,setAccessLoaded]=useState(false);
@@ -8765,6 +8767,15 @@ export default function VocabMaster() {
           <MovieReadScreen onClose={()=>setShowMovieRead(false)}/>
         </div>
       )}
+      {showWordSlice&&(
+        <WordSlice vocab={VOCAB} onClose={()=>setShowWordSlice(false)} onScore={(s)=>{
+          if(s>0){
+            setTotal(t=>{ const nt=t+15; totalRef.current=nt; return nt; });
+            userDidActivity.current=true;
+          }
+        }}/>
+      )}
+
       {showWordJump&&(
         <WordJump vocab={VOCAB} onClose={()=>setShowWordJump(false)} onScore={(s)=>{
           if(s>0){
@@ -8957,6 +8968,14 @@ export default function VocabMaster() {
                           display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
                         🍄 单词跳跳
                         <span style={{fontSize:11,fontWeight:600,opacity:0.9}}>撞砖块学单词</span>
+                      </button>
+                      <button onClick={()=>setShowWordSlice(true)}
+                        style={{background:"linear-gradient(135deg,#9c27b0,#e91e63)",border:"none",color:"#fff",
+                          padding:"14px",borderRadius:16,cursor:"pointer",fontSize:15,fontWeight:800,
+                          boxShadow:"0 4px 16px rgba(156,39,176,0.3)",
+                          display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                        🍉 切水果
+                        <span style={{fontSize:11,fontWeight:600,opacity:0.9}}>滑动切单词</span>
                       </button>
                       {/* P1b: 听说错题 + 语法错题入口 */}
                       {(wrongListen.length>0 || wrongDrills.length>0) && (

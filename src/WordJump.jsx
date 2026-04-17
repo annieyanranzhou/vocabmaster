@@ -337,7 +337,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
       if(q&&g.state!=="done"){
         ctx.fillStyle="rgba(0,0,0,0.7)";const py=GROUND_Y+12;ctx.fillRect(10,py,GAME_W-20,40);
         ctx.fillStyle="#fff";ctx.font="bold 16px 'Nunito',sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
-        ctx.fillText(`找到: ${q.cn}`,GAME_W/2,py+20);
+        ctx.fillText(q.cn,GAME_W/2,py+20);
       }
 
       ctx.fillStyle="#fff";ctx.font="bold 14px 'Nunito',sans-serif";ctx.textAlign="left";ctx.textBaseline="top";
