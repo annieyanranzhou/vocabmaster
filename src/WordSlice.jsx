@@ -10,7 +10,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 const W = 380, H = 560;
 const FRUIT_R = 38;
-const GRAVITY = 0.18;
+const GRAVITY = 0.12;
 
 const DIFF = {
   basic:        { label:"🌱 基础", sub:"Basic",  color:"#48a838", interval:100, speed:5.5, count:12, lives:4, opts:3 },
@@ -148,7 +148,7 @@ export default function WordSlice({ vocab = [], onClose, onScore }) {
       return {
         word, x: baseX, y: H + 20,
         vx: (Math.random() - 0.5) * 1.2,
-        vy: -(7 + Math.random() * 1.5), // upward throw - moderate speed
+        vy: -(10 + Math.random() * 2), // strong upward - reaches top half
         rotation: Math.random() * Math.PI * 2,
         rotSpeed: (Math.random() - 0.5) * 0.03,
         fruit: ft, isBomb, isAnswer,
