@@ -8774,18 +8774,6 @@ export default function VocabMaster() {
         }}/>
       )}
 
-      {showGame&&!showWordJump&&(
-        <div style={{position:"fixed",top:12,right:12,zIndex:1001}}>
-          <button onClick={()=>{setShowWordJump(true);}} style={{
-            padding:"8px 14px",fontSize:13,fontWeight:800,
-            background:"linear-gradient(135deg,#e44040,#ff6b35)",color:"#fff",
-            border:"none",borderRadius:8,cursor:"pointer",
-            boxShadow:"0 3px 10px rgba(228,64,64,0.4)",
-            animation:"pulse 2s ease infinite"
-          }}>🍄 单词跳跳</button>
-        </div>
-      )}
-
       {showGame&&(
         <GameMode supabase={supabase} authUser={authUser} onClose={()=>{setShowGame(false);setShowWordJump(false);}}
           onProgress={({answered, correct})=>{
@@ -8962,6 +8950,14 @@ export default function VocabMaster() {
                           <div style={{fontSize:10,fontWeight:600,opacity:0.85,marginTop:2}}>20题 · 全词库</div>
                         </button>
                       </div>
+                      <button onClick={()=>setShowWordJump(true)}
+                        style={{background:"linear-gradient(135deg,#e44040,#ff6b35)",border:"none",color:"#fff",
+                          padding:"14px",borderRadius:16,cursor:"pointer",fontSize:15,fontWeight:800,
+                          boxShadow:"0 4px 16px rgba(228,64,64,0.3)",
+                          display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                        🍄 单词跳跳
+                        <span style={{fontSize:11,fontWeight:600,opacity:0.9}}>撞砖块学单词</span>
+                      </button>
                       {/* P1b: 听说错题 + 语法错题入口 */}
                       {(wrongListen.length>0 || wrongDrills.length>0) && (
                         <div style={{display:"grid",gridTemplateColumns:wrongListen.length>0&&wrongDrills.length>0?"1fr 1fr":"1fr",gap:8}}>
