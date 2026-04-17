@@ -28,6 +28,105 @@ const JUMP_VEL = -14;
 const MOVE_SPEED = 4.5;
 const BLOCK_SPEED = 1.1;
 
+// ===== 🎵 Sound Effects (Web Audio API, no files needed) =====
+const _sfx = {
+  _ctx: null,
+  _getCtx() {
+    if (!this._ctx) this._ctx = new (window.AudioContext || window.webkitAudioContext)();
+    return this._ctx;
+  },
+  jump() {
+    try {
+      const ctx = this._getCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = "square";
+      osc.frequency.setValueAtTime(300, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+      osc.start(); osc.stop(ctx.currentTime + 0.12);
+    } catch(e){}
+  },
+  bump() {
+    try {
+      const ctx = this._getCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = "square";
+      osc.frequency.setValueAtTime(180, ctx.currentTime);
+      osc.frequency.setValueAtTime(160, ctx.currentTime + 0.04);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+      osc.start(); osc.stop(ctx.currentTime + 0.1);
+    } catch(e){}
+  },
+  coin() {
+    try {
+      const ctx = this._getCtx();
+      [988, 1319].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = "square";
+        osc.frequency.value = freq;
+        const t = ctx.currentTime + i * 0.07;
+        gain.gain.setValueAtTime(0.15, t);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+        osc.start(t); osc.stop(t + 0.15);
+      });
+    } catch(e){}
+  },
+  wrong() {
+    try {
+      const ctx = this._getCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.25);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      osc.start(); osc.stop(ctx.currentTime + 0.3);
+    } catch(e){}
+  },
+  gameOver() {
+    try {
+      const ctx = this._getCtx();
+      [392, 330, 262, 196].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = "square";
+        osc.frequency.value = freq;
+        const t = ctx.currentTime + i * 0.2;
+        gain.gain.setValueAtTime(0.12, t);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+        osc.start(t); osc.stop(t + 0.3);
+      });
+    } catch(e){}
+  },
+  comboHit() {
+    try {
+      const ctx = this._getCtx();
+      [784, 988, 1175, 1319].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = "square";
+        osc.frequency.value = freq;
+        const t = ctx.currentTime + i * 0.06;
+        gain.gain.setValueAtTime(0.13, t);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.12);
+        osc.start(t); osc.stop(t + 0.12);
+      });
+    } catch(e){}
+  },
+};
+
 // Pixel art character colors
 const C = {
   bg: "#5c94fc",
@@ -152,6 +251,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
     if (g.char.onGround) {
       g.char.vy = JUMP_VEL;
       g.char.onGround = false;
+      _sfx.jump();
     }
   }, []);
 
@@ -291,10 +391,12 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
             ) {
               b.hit = true;
               g.char.vy = 2; // bounce down
+              _sfx.bump();
               const isCorrect = b.word === q.answer;
               if (isCorrect) {
                 g.score += 10 + g.combo * 5;
                 g.combo++;
+                if (g.combo >= 3) _sfx.comboHit(); else _sfx.coin();
                 // Coin particles
                 for (let i = 0; i < 8; i++) {
                   g.particles.push({
@@ -309,6 +411,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
               } else {
                 g.combo = 0;
                 g.lives--;
+                _sfx.wrong();
                 // Wrong particles
                 for (let i = 0; i < 5; i++) {
                   g.particles.push({
@@ -341,6 +444,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
         if (allGone && g.state === "active") {
           g.combo = 0;
           g.lives--;
+          _sfx.wrong();
           g.state = "hit";
           g.hitResult = {
             correct: false,
@@ -361,6 +465,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
           g.currentQ++;
           if (g.currentQ >= g.questions.length || g.lives <= 0) {
             g.state = "done";
+            _sfx.gameOver();
             setFinalScore(g.score);
             setTotalQ(g.questions.length);
             setScreen("result");
