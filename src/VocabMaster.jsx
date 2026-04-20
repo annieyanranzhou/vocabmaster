@@ -46,6 +46,29 @@ const supabase = (() => {
         localStorage.removeItem("sb_refresh");
         localStorage.removeItem("sb_user");
       },
+      async resetPassword(email) {
+        const r = await fetch(`${SUPABASE_URL}/auth/v1/recover`, {
+          method:"POST", headers,
+          body: JSON.stringify({ email })
+        });
+        if (!r.ok) {
+          const d = await r.json().catch(()=>({}));
+          throw new Error(d.msg || d.error_description || "发送失败，请稍后再试");
+        }
+        return true;
+      },
+      async updatePassword(accessToken, newPassword) {
+        const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+          method:"PUT",
+          headers: { ...headers, "Authorization": `Bearer ${accessToken}` },
+          body: JSON.stringify({ password: newPassword })
+        });
+        if (!r.ok) {
+          const d = await r.json().catch(()=>({}));
+          throw new Error(d.msg || d.error_description || "密码更新失败");
+        }
+        return true;
+      },
       async refreshToken() {
         const refresh = localStorage.getItem("sb_refresh");
         if (!refresh) return false;
@@ -458,29 +481,27 @@ const playCelebrationSound = () => {
 
 /* ═══ COLORS ═══ */
 const C = {
-  // ══ Maxima 配色方案 ══
-  bg:"#EEF2FF",          // 淡蓝灰背景（比纯白更有层次）
+  bg:"#F7F9FF",          // 冰雾白背景
   card:"#FFFFFF",         // 卡片白
-  primary:"#2E57D8",      // 宝蓝 Cobalt - 主色
-  secondary:"#F14D2C",    // 橙红 Orange - 副色/CTA
-  accent:"#2BD0C4",       // 青绿 Teal - 成功/辅助按钮
-  success:"#2BD0C4",      // 青绿 Teal
-  error:"#F14D2C",        // 橙红 Orange
-  gold:"#FFB93C",         // 暖黄 Yellow - 积分/连击/卡片高亮
-  text:"#1A1A2E",         // 深色正文（保持不变）
-  tl:"#7A8BB5",           // 蓝灰 - 辅助文字
+  primary:"#4DB6FF",      // 极光蓝 - 主色
+  secondary:"#9B6FFF",    // 星云紫 - 副色
+  accent:"#3CC87A",       // 薄荷绿 - 成功/按钮
+  success:"#3CC87A",      // 薄荷绿
+  error:"#FF6B6B",        // 珊瑚红
+  gold:"#F8C740",         // 活力黄 - 积分/连击
+  text:"#1A1A2E",         // 深夜蓝 - 正文
+  tl:"#8A9BBF",           // 蓝灰 - 辅助文字
   tm:"#3D4A6B",           // 中深蓝 - 次级文字
-  mint:"#D4F5EE",         // 淡青绿（Teal浅色）
-  lav:"#FFE8D8",          // 淡橙（Orange浅色）
-  peach:"#FFF5D8",        // 奶油 Cream
-  sky:"#D8E4FF",          // 淡宝蓝（Cobalt浅色）
-  nav:"#2E57D8",          // 宝蓝导航栏
-  pink:"#F9C5D1",         // 粉色装饰
+  mint:"#C8F5E0",         // 淡绿
+  lav:"#EAE4FF",          // 淡紫
+  peach:"#FFF4D4",        // 淡黄
+  sky:"#D8EEFF",          // 淡蓝
+  nav:"#1A1A2E",          // 导航栏深色
   // 渐变色（用于按钮/标题）
-  grad1:"linear-gradient(135deg,#2E57D8,#2BD0C4)",   // 宝蓝→青绿
-  grad2:"linear-gradient(135deg,#FFB93C,#F14D2C)",   // 暖黄→橙红（挑战赛）
-  grad3:"linear-gradient(135deg,#2BD0C4,#2E57D8)",   // 青绿→宝蓝（成功）
-  grad4:"linear-gradient(135deg,#F14D2C,#FFB93C)",   // 橙红→暖黄（高级词）
+  grad1:"linear-gradient(135deg,#4DB6FF,#9B6FFF)",   // 蓝→紫
+  grad2:"linear-gradient(135deg,#F8C740,#FF8C5A)",   // 黄→橙（挑战赛）
+  grad3:"linear-gradient(135deg,#3CC87A,#4DB6FF)",   // 绿→蓝（成功）
+  grad4:"linear-gradient(135deg,#9B6FFF,#FF6B6B)",   // 紫→红（高级词）
 };
 AUDIO_HASH_MAP = _AUDIO_MAP; // alias for listen_fill
 
@@ -4647,7 +4668,7 @@ function Speak({text,rate=0.88,size=36,color=C.primary,style:sx={}}) {
   };
   return <button onClick={go} style={{width:size,height:size,borderRadius:"50%",border:"none",cursor:"pointer",background:on?hexToRgba(color,0.15):hexToRgba(color,0.08),color,fontSize:size*0.45,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s",transform:on?"scale(1.15)":"scale(1)",boxShadow:on?`0 0 0 4px ${hexToRgba(color,0.2)}`:"none",flexShrink:0,...sx}}>{on?"🔊":"🔈"}</button>;
 }
-function Confetti({active}){if(!active)return null;const ps=Array.from({length:40},(_,i)=>({i,x:Math.random()*100,d:Math.random()*0.5,dur:1+Math.random()*1.5,c:["#2E57D8","#FFB93C","#F14D2C","#2BD0C4","#F9C5D1","#FFB93C"][i%6],s:6+Math.random()*8}));return <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:999,overflow:"hidden"}}>{ps.map(p=><div key={p.i} style={{position:"absolute",top:"-10%",left:`${p.x}%`,width:p.s,height:p.s*1.4,background:p.c,borderRadius:p.i%3===0?"50%":"2px",animation:`cfall ${p.dur}s ease-in ${p.d}s forwards`,transform:`rotate(${Math.random()*360}deg)`}}/>)}</div>;}
+function Confetti({active}){if(!active)return null;const ps=Array.from({length:40},(_,i)=>({i,x:Math.random()*100,d:Math.random()*0.5,dur:1+Math.random()*1.5,c:["#4DB6FF","#9B6FFF","#3CC87A","#F8C740","#FF6B6B","#F8C740"][i%6],s:6+Math.random()*8}));return <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:999,overflow:"hidden"}}>{ps.map(p=><div key={p.i} style={{position:"absolute",top:"-10%",left:`${p.x}%`,width:p.s,height:p.s*1.4,background:p.c,borderRadius:p.i%3===0?"50%":"2px",animation:`cfall ${p.dur}s ease-in ${p.d}s forwards`,transform:`rotate(${Math.random()*360}deg)`}}/>)}</div>;}
 
 /* ═══ LEARN CARD — Word → Phrases (with sentences!) → Sentence → cycle ═══ */
 function LearnCard({exercise,onDone}) {
@@ -4736,8 +4757,8 @@ function LearnCard({exercise,onDone}) {
 
       {step===2&&(
         <div onClick={nextStep} style={{width:"100%",borderRadius:24,cursor:"pointer",background:`linear-gradient(135deg,${C.sky},${C.mint})`,padding:"36px 24px",display:"flex",flexDirection:"column",alignItems:"center",gap:16,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.accent}33`,animation:"slideUp 0.4s ease"}}>
-          <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:"#2BD0C4",fontWeight:800}}>📝 Sentence</div>
-          <div style={{fontSize:24,fontWeight:800,color:"#2BD0C4"}}>{w.word}</div>
+          <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:"#3CC87A",fontWeight:800}}>📝 Sentence</div>
+          <div style={{fontSize:24,fontWeight:800,color:"#3CC87A"}}>{w.word}</div>
           <div style={{fontSize:20,color:C.text,lineHeight:1.8,textAlign:"center",fontWeight:500,maxWidth:400}}>"{w.ex}"</div>
           <div style={{fontSize:15,color:"#8a7000",fontWeight:600,background:"rgba(255,220,50,0.15)",padding:"8px 18px",borderRadius:12,border:"1.5px solid rgba(255,200,0,0.25)",textAlign:"center",maxWidth:380}}>🇨🇳 {w.cn} — {w.en}</div>
           <Speak text={w.ex} rate={0.82} size={44} color={C.accent}/>
@@ -4835,7 +4856,7 @@ function ChoiceQ({exercise,onDone}) {
       onDone(correct);
     },400);
   };
-  const oc=["#FF6B35","#2E57D8","#00B4D8","#2DC653"];
+  const oc=["#FF6B35","#7B2D8E","#00B4D8","#2DC653"];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:22,width:"100%",maxWidth:440}}>
       <div style={{textAlign:"center"}}>
@@ -5694,9 +5715,9 @@ function FollowReadQ({exercise, onDone}) {
         {recordBlob && (
           <button onClick={playUserRecording} disabled={playingUser}
             style={{display:"flex",alignItems:"center",gap:6,padding:"10px 20px",borderRadius:14,
-              background:playingUser?"linear-gradient(135deg,#F14D2C,#FF8C5A)":"#fff",
-              border:playingUser?"none":"2px solid #F14D2C33",
-              color:playingUser?"#fff":"#F14D2C",cursor:"pointer",fontSize:14,fontWeight:700,
+              background:playingUser?"linear-gradient(135deg,#FF6B6B,#FF8C5A)":"#fff",
+              border:playingUser?"none":"2px solid #FF6B6B33",
+              color:playingUser?"#fff":"#FF6B6B",cursor:"pointer",fontSize:14,fontWeight:700,
               transition:"all 0.2s"}}>
             {playingUser ? "🎧 回放中..." : "🎧 我的录音"}
           </button>
@@ -5709,7 +5730,7 @@ function FollowReadQ({exercise, onDone}) {
           {!recording ? (
             <button onClick={startRecording}
               style={{width:80,height:80,borderRadius:"50%",
-                background:"linear-gradient(135deg,#F14D2C,#FF8C5A)",
+                background:"linear-gradient(135deg,#FF6B6B,#FF8C5A)",
                 border:"4px solid #fff",boxShadow:"0 4px 20px rgba(255,107,83,0.4)",
                 cursor:"pointer",fontSize:32,color:"#fff",
                 display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
@@ -5718,7 +5739,7 @@ function FollowReadQ({exercise, onDone}) {
           ) : (
             <button onClick={stopRecording}
               style={{width:80,height:80,borderRadius:"50%",
-                background:"linear-gradient(135deg,#FF3333,#F14D2C)",
+                background:"linear-gradient(135deg,#FF3333,#FF6B6B)",
                 border:"4px solid #fff",boxShadow:"0 4px 20px rgba(255,50,50,0.5)",
                 cursor:"pointer",fontSize:28,color:"#fff",
                 display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto",
@@ -5742,7 +5763,7 @@ function FollowReadQ({exercise, onDone}) {
         <div style={{textAlign:"center"}}>
           {/* Score circle */}
           <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",
-            background:score>=80?"linear-gradient(135deg,#2BD0C4,#00B4D8)":score>=60?"linear-gradient(135deg,#FFB93C,#FF8C5A)":"linear-gradient(135deg,#F14D2C,#FF3333)",
+            background:score>=80?"linear-gradient(135deg,#3CC87A,#00B4D8)":score>=60?"linear-gradient(135deg,#F8C740,#FF8C5A)":"linear-gradient(135deg,#FF6B6B,#FF3333)",
             borderRadius:20,padding:"14px 28px",marginBottom:12,
             boxShadow:"0 4px 16px rgba(0,0,0,0.12)"}}>
             <div style={{fontSize:24,fontWeight:900,color:"#fff"}}>{score}%</div>
@@ -5774,7 +5795,7 @@ function FollowReadQ({exercise, onDone}) {
             </button>
             <button onClick={handleNext}
               style={{flex:1,padding:"14px",borderRadius:14,
-                background:score>=60?"linear-gradient(135deg,#2BD0C4,#00B4D8)":"linear-gradient(135deg,#FF8C5A,#F14D2C)",
+                background:score>=60?"linear-gradient(135deg,#3CC87A,#00B4D8)":"linear-gradient(135deg,#FF8C5A,#FF6B6B)",
                 border:"none",color:"#fff",cursor:"pointer",fontSize:14,fontWeight:800}}>
               {score>=60?"✓ 下一题":"→ 跳过"}
             </button>
@@ -5790,7 +5811,7 @@ function FollowReadQ({exercise, onDone}) {
 // ══════════════════════════════════════════
 const MOVIE_LINES = {
   lion_king: {
-    name:"The Lion King", cn:"狮子王", emoji:"🦁", color:"#FFB93C",
+    name:"The Lion King", cn:"狮子王", emoji:"🦁", color:"#F8C740",
     lines:[
       {id:"lk1",line:"Remember who you are. You are my son and the one true king.",cnLine:"记住你是谁。你是我的儿子，唯一的真正国王。",character:"Mufasa",difficulty:1},
       {id:"lk2",line:"The past can hurt. But the way I see it, you can either run from it or learn from it.",cnLine:"过去可能会伤害你。但我认为，你可以选择逃避，也可以选择从中学习。",character:"Rafiki",difficulty:2},
@@ -5810,7 +5831,7 @@ const MOVIE_LINES = {
     ]
   },
   harry_potter: {
-    name:"Harry Potter", cn:"哈利·波特", emoji:"🧙", color:"#F14D2C",
+    name:"Harry Potter", cn:"哈利·波特", emoji:"🧙", color:"#9B6FFF",
     lines:[
       {id:"hp1",line:"It does not do to dwell on dreams and forget to live.",cnLine:"沉溺于梦想而忘记生活是不可取的。",character:"Dumbledore",difficulty:2},
       {id:"hp2",line:"Happiness can be found even in the darkest of times.",cnLine:"即使在最黑暗的时刻也能找到幸福。",character:"Dumbledore",difficulty:1},
@@ -5848,7 +5869,7 @@ function MovieReadScreen({ onClose }) {
   // Movie selection screen
   if (!selectedMovie) {
     return (
-      <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Nunito','Noto Sans SC',system-ui,sans-serif",padding:"24px 16px"}}>
+      <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",padding:"24px 16px"}}>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
           <button onClick={onClose} style={{background:C.card,border:"2px solid #ffd4d4",color:C.error,padding:"8px 14px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>✕</button>
           <div>
@@ -5937,7 +5958,7 @@ function MovieReadScreen({ onClose }) {
   };
 
   return (
-    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Nunito','Noto Sans SC',system-ui,sans-serif",padding:"20px 16px 100px"}}>
+    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",padding:"20px 16px 100px"}}>
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
         <button onClick={()=>setSelectedMovie(null)} style={{background:C.card,border:`2px solid ${movie.color}33`,color:movie.color,padding:"8px 14px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>← 返回</button>
@@ -5965,7 +5986,7 @@ function MovieReadScreen({ onClose }) {
             </div>
           </div>
           <div style={{display:"flex",gap:3}}>
-            {[1,2,3].map(s=><span key={s} style={{fontSize:10,color:s<=currentLine.difficulty?"#FFB93C":"rgba(255,255,255,0.2)"}}>★</span>)}
+            {[1,2,3].map(s=><span key={s} style={{fontSize:10,color:s<=currentLine.difficulty?"#F8C740":"rgba(255,255,255,0.2)"}}>★</span>)}
           </div>
         </div>
 
@@ -5992,7 +6013,7 @@ function MovieReadScreen({ onClose }) {
           {phase==="idle"&&(
             <button onClick={startRec}
               style={{display:"flex",alignItems:"center",gap:6,padding:"10px 18px",borderRadius:14,
-                background:"linear-gradient(135deg,#F14D2C,#FF8C5A)",border:"none",
+                background:"linear-gradient(135deg,#FF6B6B,#FF8C5A)",border:"none",
                 color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700}}>
               🎙️ 开始跟读
             </button>
@@ -7713,7 +7734,7 @@ Include: word, cn (Chinese meaning), en (English definition), ex (example senten
         {/* Header */}
         <div style={{background:C.nav,borderRadius:"24px 24px 0 0",padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div>
-            <div style={{fontSize:11,color:"#2E57D8",fontWeight:700,letterSpacing:3}}>TEACHER</div>
+            <div style={{fontSize:11,color:"#4DB6FF",fontWeight:700,letterSpacing:3}}>TEACHER</div>
             <div style={{fontSize:20,fontWeight:900,color:"#fff"}}>🏫 教师控制台</div>
           </div>
           <button onClick={onClose} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#fff",width:36,height:36,borderRadius:10,cursor:"pointer",fontSize:18}}>✕</button>
@@ -7725,7 +7746,7 @@ Include: word, cn (Chinese meaning), en (English definition), ex (example senten
             <button key={t} onClick={()=>setTab(t)}
               style={{flex:1,padding:"9px 4px",borderRadius:10,border:"none",cursor:"pointer",
                 background:tab===t?"#fff":"transparent",
-                color:tab===t?C.primary:"#7A8BB5",fontWeight:tab===t?800:600,fontSize:12,
+                color:tab===t?C.primary:"#8A9BBF",fontWeight:tab===t?800:600,fontSize:12,
                 boxShadow:tab===t?"0 2px 8px rgba(0,0,0,0.08)":"none",transition:"all 0.2s"}}>
               {l}
             </button>
@@ -7881,7 +7902,7 @@ Include: word, cn (Chinese meaning), en (English definition), ex (example senten
                   setGeneratedCodes(Array.isArray(codes)?codes:[]);
                   setLoading(false);
                 }} disabled={loading}
-                style={{width:"100%",padding:"12px",borderRadius:12,background:"#2E57D8",border:"none",color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer"}}>
+                style={{width:"100%",padding:"12px",borderRadius:12,background:"#4DB6FF",border:"none",color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer"}}>
                   {loading?"生成中...":` 生成 ${genCount} 个访问码`}
                 </button>
               </div>
@@ -7896,7 +7917,7 @@ Include: word, cn (Chinese meaning), en (English definition), ex (example senten
                         <span style={{flex:1,fontFamily:"monospace",fontSize:16,fontWeight:900,letterSpacing:3,color:"#1A1A2E"}}>{c.code}</span>
                         <span style={{fontSize:11,color:"#5A7A9A"}}>{c.type==="month"?"30天":c.type==="year"?"365天":"永久"}</span>
                         <button onClick={()=>navigator.clipboard?.writeText(c.code)}
-                          style={{fontSize:11,padding:"3px 8px",borderRadius:6,border:"1px solid #2E57D8",color:"#2E57D8",background:"none",cursor:"pointer"}}>复制</button>
+                          style={{fontSize:11,padding:"3px 8px",borderRadius:6,border:"1px solid #4DB6FF",color:"#4DB6FF",background:"none",cursor:"pointer"}}>复制</button>
                       </div>
                     ))}
                   </div>
@@ -7995,17 +8016,65 @@ function StudentPanel({ onClose, onStartCustomQuiz }) {
 
 /* ═══ AUTH SCREEN ═══ */
 function AuthScreen({ onLogin }) {
-  const [mode, setMode] = useState("login"); // login | signup
+  const [mode, setMode] = useState("login"); // login | signup | reset | newpw
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
   const [username, setUsername] = useState("");
   const [className, setClassName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [recoveryToken, setRecoveryToken] = useState("");
+
+  // 检测 URL 中的 recovery token（学员点邮件链接后跳转回来）
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.includes("type=recovery")) {
+      const params = new URLSearchParams(hash.replace("#","?"));
+      const token = params.get("access_token");
+      if (token) {
+        setRecoveryToken(token);
+        setMode("newpw");
+        // 清理 URL hash
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    }
+  }, []);
 
   const handle = async () => {
     setError(""); setSuccess("");
+
+    // 设置新密码模式
+    if (mode === "newpw") {
+      if (!password || password.length < 6) { setError("新密码至少6位"); return; }
+      if (password !== password2) { setError("两次密码不一致"); return; }
+      setLoading(true);
+      try {
+        await supabase.auth.updatePassword(recoveryToken, password);
+        setSuccess("密码修改成功！请用新密码登录。");
+        setMode("login");
+        setPassword(""); setPassword2(""); setRecoveryToken("");
+      } catch(e) {
+        setError(e.message);
+      } finally { setLoading(false); }
+      return;
+    }
+
+    // 发送重置邮件模式
+    if (mode === "reset") {
+      if (!email) { setError("请填写邮箱"); return; }
+      setLoading(true);
+      try {
+        await supabase.auth.resetPassword(email);
+        setSuccess("重置链接已发送到你的邮箱，请查看收件箱（含垃圾邮件）。");
+      } catch(e) {
+        setError(e.message);
+      } finally { setLoading(false); }
+      return;
+    }
+
+    // 登录/注册模式
     if (!email || !password) { setError("请填写邮箱和密码"); return; }
     if (mode === "signup" && !username) { setError("请填写昵称"); return; }
     setLoading(true);
@@ -8046,20 +8115,32 @@ function AuthScreen({ onLogin }) {
           <div style={{fontSize:13,color:"#8A8494"}}>VocabMaster · 高考英语词汇</div>
         </div>
 
-        {/* Mode toggle */}
-        <div style={{display:"flex",background:"#FFE8D8",borderRadius:14,padding:4,marginBottom:24}}>
-          {[["login","登录"],["signup","注册"]].map(([m,l])=>(
-            <button key={m} onClick={()=>{setMode(m);setError("");setSuccess("");}}
-              style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
-                background:mode===m?"#fff":"transparent",
-                color:mode===m?"#2E57D8":"#7A8BB5",
-                fontWeight:mode===m?800:600,fontSize:14,
-                boxShadow:mode===m?"0 2px 8px rgba(0,0,0,0.08)":"none",
-                transition:"all 0.2s"}}>
-              {l}
-            </button>
-          ))}
-        </div>
+        {/* Mode toggle / header */}
+        {mode === "newpw" ? (
+          <div style={{textAlign:"center",marginBottom:24}}>
+            <div style={{fontSize:18,fontWeight:800,color:"#1A1A2E",marginBottom:6}}>🔐 设置新密码</div>
+            <div style={{fontSize:13,color:"#8A9BBF"}}>请输入你的新密码（至少6位）</div>
+          </div>
+        ) : mode === "reset" ? (
+          <div style={{textAlign:"center",marginBottom:24}}>
+            <div style={{fontSize:18,fontWeight:800,color:"#1A1A2E",marginBottom:6}}>🔑 找回密码</div>
+            <div style={{fontSize:13,color:"#8A9BBF"}}>输入注册邮箱，我们会发送重置链接</div>
+          </div>
+        ) : (
+          <div style={{display:"flex",background:"#EAE4FF",borderRadius:14,padding:4,marginBottom:24}}>
+            {[["login","登录"],["signup","注册"]].map(([m,l])=>(
+              <button key={m} onClick={()=>{setMode(m);setError("");setSuccess("");}}
+                style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
+                  background:mode===m?"#fff":"transparent",
+                  color:mode===m?"#4DB6FF":"#8A9BBF",
+                  fontWeight:mode===m?800:600,fontSize:14,
+                  boxShadow:mode===m?"0 2px 8px rgba(0,0,0,0.08)":"none",
+                  transition:"all 0.2s"}}>
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {mode==="signup" && (
@@ -8070,12 +8151,48 @@ function AuthScreen({ onLogin }) {
                 onChange={e=>setClassName(e.target.value)}/>
             </>
           )}
-          <input style={inp} type="email" placeholder="邮箱" value={email}
-            onChange={e=>setEmail(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&handle()}/>
-          <input style={inp} type="password" placeholder="密码（至少6位）" value={password}
-            onChange={e=>setPassword(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&handle()}/>
+
+          {/* 设置新密码模式：两个密码框 */}
+          {mode==="newpw" ? (
+            <>
+              <input style={inp} type="password" placeholder="新密码（至少6位）" value={password}
+                onChange={e=>setPassword(e.target.value)}/>
+              <input style={inp} type="password" placeholder="确认新密码" value={password2}
+                onChange={e=>setPassword2(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handle()}/>
+            </>
+          ) : mode==="reset" ? (
+            /* 找回密码模式：只有邮箱 */
+            <>
+              <input style={inp} type="email" placeholder="注册邮箱" value={email}
+                onChange={e=>setEmail(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handle()}/>
+              <div style={{textAlign:"center",marginTop:-4}}>
+                <span onClick={()=>{setMode("login");setError("");setSuccess("");}}
+                  style={{fontSize:13,color:"#4DB6FF",cursor:"pointer",fontWeight:600}}>
+                  ← 返回登录
+                </span>
+              </div>
+            </>
+          ) : (
+            /* 登录/注册模式：邮箱+密码 */
+            <>
+              <input style={inp} type="email" placeholder="邮箱" value={email}
+                onChange={e=>setEmail(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handle()}/>
+              <input style={inp} type="password" placeholder="密码（至少6位）" value={password}
+                onChange={e=>setPassword(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handle()}/>
+              {mode==="login" && (
+                <div style={{textAlign:"right",marginTop:-4}}>
+                  <span onClick={()=>{setMode("reset");setError("");setSuccess("");}}
+                    style={{fontSize:13,color:"#4DB6FF",cursor:"pointer",fontWeight:600}}>
+                    忘记密码？
+                  </span>
+                </div>
+              )}
+            </>
+          )}
 
           {error && <div style={{fontSize:13,color:"#CC2222",background:"#FFE8E8",borderRadius:10,padding:"10px 14px",fontWeight:600}}>{error}</div>}
           {success && <div style={{fontSize:13,color:"#1A7A4A",background:"#E8FFF4",borderRadius:10,padding:"10px 14px",fontWeight:600}}>{success}</div>}
@@ -8084,14 +8201,19 @@ function AuthScreen({ onLogin }) {
             style={{background:C.grad1,border:"none",color:"#fff",
               padding:"18px",borderRadius:14,cursor:loading?"wait":"pointer",fontSize:16,fontWeight:800,
               boxShadow:"0 6px 20px rgba(255,107,53,0.3)",marginTop:4,opacity:loading?0.7:1}}>
-            {loading?"请稍候...":(mode==="login"?"登录 →":"注册 →")}
+            {loading?"请稍候...":(
+              mode==="login"?"登录 →":
+              mode==="signup"?"注册 →":
+              mode==="reset"?"发送重置链接 →":
+              "确认修改密码 →"
+            )}
           </button>
         </div>
 
         <div style={{textAlign:"center",marginTop:16,fontSize:12,color:"#bbb"}}>
           学生使用邮箱注册 · 老师账号请联系管理员
         </div>
-        <div style={{textAlign:"center",marginTop:8,fontSize:11,color:"#F14D2C",background:"#FFE8D8",borderRadius:10,padding:"8px 12px"}}>
+        <div style={{textAlign:"center",marginTop:8,fontSize:11,color:"#9B6FFF",background:"#F0EBFF",borderRadius:10,padding:"8px 12px"}}>
           📢 建议使用 <strong>Chrome浏览器</strong> 以获得最佳朗读效果
         </div>
       </div>
@@ -8747,8 +8869,8 @@ export default function VocabMaster() {
   const filtered=VOCAB.filter(w=>{const ms=w.word.toLowerCase().includes(search.toLowerCase())||w.en.toLowerCase().includes(search.toLowerCase())||w.cn.includes(search);return ms&&(lvFilter==="all"||w.lv===lvFilter)&&(posFilter==="all"||w.pos===posFilter);});
 
   return (
-    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Nunito','Noto Sans SC',system-ui,sans-serif",color:C.text,position:"relative"}}>
-      <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Nunito','Segoe UI',sans-serif",color:C.text,position:"relative"}}>
+      <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
       <style>{`@keyframes cfall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:0}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}*{box-sizing:border-box}button:active{transform:scale(0.96)!important}::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:rgba(255,107,53,0.2);border-radius:8px}#cal-strip::-webkit-scrollbar{display:none}#cal-strip{-ms-overflow-style:none;scrollbar-width:none}`}</style>
       <Confetti active={showConfetti}/>
       <div style={{position:"fixed",top:-80,right:-80,width:300,height:300,borderRadius:"50%",background:"rgba(255,107,53,0.07)",filter:"blur(60px)",pointerEvents:"none"}}/>
@@ -8822,8 +8944,8 @@ export default function VocabMaster() {
           ].map(t=>(
             <button key={t.id} onClick={()=>{if(t.id==="game"){setShowGame(true);return;}setShowGame(false);setTab(t.id);if(screen!=="home")setScreen("home");}} style={{flex:1,padding:"10px 0 8px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
               <span style={{fontSize:20}}>{t.icon}</span>
-              <span style={{fontSize:11,fontWeight:700,color:(t.id==="game"?showGame:(!showGame&&tab===t.id))?"#2E57D8":"#5A7A9A"}}>{t.label}</span>
-              {(t.id==="game"?showGame:(!showGame&&tab===t.id))&&<div style={{width:20,height:3,borderRadius:2,background:"#2E57D8",marginTop:1}}/>}
+              <span style={{fontSize:11,fontWeight:700,color:(t.id==="game"?showGame:(!showGame&&tab===t.id))?"#4DB6FF":"#5A7A9A"}}>{t.label}</span>
+              {(t.id==="game"?showGame:(!showGame&&tab===t.id))&&<div style={{width:20,height:3,borderRadius:2,background:"#4DB6FF",marginTop:1}}/>}
             </button>
           ))}
         </div>
@@ -8833,7 +8955,7 @@ export default function VocabMaster() {
         <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
           <div style={{textAlign:"center",marginBottom:36,animation:"slideUp 0.6s ease"}}>
             <div style={{fontSize:48,marginBottom:8,animation:"float 3s ease-in-out infinite"}}>📚</div>
-            <div style={{fontSize:11,letterSpacing:5,textTransform:"uppercase",color:"#2E57D8",fontWeight:800,marginBottom:8}}>高考 English</div>
+            <div style={{fontSize:11,letterSpacing:5,textTransform:"uppercase",color:"#4DB6FF",fontWeight:800,marginBottom:8}}>高考 English</div>
             <h1 style={{fontSize:40,fontWeight:900,lineHeight:1.1,margin:0}}>Vocab<span style={{background:C.grad1,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Master</span></h1>
             {authUser&&(
               <div style={{marginTop:12,display:"flex",alignItems:"center",justifyContent:"center",gap:8,flexWrap:"wrap"}}>
@@ -8946,7 +9068,7 @@ export default function VocabMaster() {
                       </button>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                         <button onClick={startWrongBook}
-                          style={{background:wrongVocab.length>0?"linear-gradient(135deg,#F14D2C,#FF8C5A)":C.card,
+                          style={{background:wrongVocab.length>0?"linear-gradient(135deg,#FF6B6B,#FF8C5A)":C.card,
                             border:wrongVocab.length>0?"none":`1px solid ${C.primary}22`,
                             color:wrongVocab.length>0?"#fff":C.tl,
                             padding:"12px 8px",borderRadius:14,cursor:wrongVocab.length>0?"pointer":"default",
@@ -8979,7 +9101,7 @@ export default function VocabMaster() {
                           )}
                           {wrongDrills.length>0 && (
                             <button onClick={()=>{setTab("drills");setDrillType(null);setDrillMode(null);setDrillStage(null);}}
-                              style={{background:"linear-gradient(135deg,#F14D2C,#F14D2C)",border:"none",color:"#fff",
+                              style={{background:"linear-gradient(135deg,#9B6FFF,#FF6B6B)",border:"none",color:"#fff",
                                 padding:"12px 8px",borderRadius:14,cursor:"pointer",fontSize:13,fontWeight:800}}>
                               ✏️ 语法错题
                               <div style={{fontSize:10,fontWeight:600,opacity:0.85,marginTop:2}}>
@@ -8998,7 +9120,7 @@ export default function VocabMaster() {
                     const done=mastered.has(w.word);
                     return (
                       <div key={w.word} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderRadius:16,background:done?`${C.success}10`:C.card,border:`1.5px solid ${done?C.success+"44":"#E8EEFF"}`,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-                        <div style={{width:32,height:32,borderRadius:10,background:done?`${C.success}20`:["#D8EEFF","#FFE8D8","#C8F5E0","#FFF4D4","#C8F5E0","#FFE8E8","#D8EEFF","#FFE8D8"][i],display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:done?C.success:["#2E57D8","#F14D2C","#2BD0C4","#FFB93C","#2BD0C4","#F14D2C","#2E57D8","#F14D2C"][i],flexShrink:0}}>{done?"✓":(i+1)}</div>
+                        <div style={{width:32,height:32,borderRadius:10,background:done?`${C.success}20`:["#D8EEFF","#EAE4FF","#C8F5E0","#FFF4D4","#C8F5E0","#FFE8E8","#D8EEFF","#EAE4FF"][i],display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:done?C.success:["#4DB6FF","#9B6FFF","#3CC87A","#F8C740","#3CC87A","#FF6B6B","#4DB6FF","#9B6FFF"][i],flexShrink:0}}>{done?"✓":(i+1)}</div>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:15,fontWeight:800,color:C.text}}>{w.word}</div>
                           <div style={{fontSize:12,color:C.tl,fontWeight:600}}>{w.cn}</div>
@@ -9066,10 +9188,10 @@ export default function VocabMaster() {
                   <div style={{fontSize:16,fontWeight:900,color:"#fff"}}>⚡ {challengeScore}</div>
                   {streak>=2&&<div style={{fontSize:10,color:"rgba(255,255,255,0.9)",fontWeight:700}}>×{Math.min(streak,5)} 倍率!</div>}
                 </div>
-              : streak>0&&<div style={{fontSize:14,fontWeight:800,color:"#FFB93C",background:"rgba(248,199,64,0.1)",padding:"4px 12px",borderRadius:20}}>🔥{streak}</div>
+              : streak>0&&<div style={{fontSize:14,fontWeight:800,color:"#F8C740",background:"rgba(248,199,64,0.1)",padding:"4px 12px",borderRadius:20}}>🔥{streak}</div>
             }
           </div>
-          <div style={{height:8,background:"rgba(255,107,53,0.08)",borderRadius:8,marginBottom:wrongQueue.length>0?6:18,overflow:"hidden"}}><div style={{height:"100%",width:`${prog}%`,background:"linear-gradient(90deg,#2E57D8,#2BD0C4)",borderRadius:8,transition:"width 0.4s ease"}}/></div>
+          <div style={{height:8,background:"rgba(255,107,53,0.08)",borderRadius:8,marginBottom:wrongQueue.length>0?6:18,overflow:"hidden"}}><div style={{height:"100%",width:`${prog}%`,background:"linear-gradient(90deg,#4DB6FF,#3CC87A)",borderRadius:8,transition:"width 0.4s ease"}}/></div>
           {wrongQueue.length>0&&!challengeMode&&(
             <div style={{fontSize:11,color:C.error,fontWeight:700,textAlign:"center",marginBottom:14,background:`${C.error}10`,borderRadius:8,padding:"4px 10px"}}>
               🔁 {wrongQueue.length} 题答错，做完后会重复练习
@@ -9128,7 +9250,7 @@ export default function VocabMaster() {
           <h2 style={{fontSize:32,fontWeight:900,margin:"0 0 6px"}}>{correct/res.length>=0.8?"太棒了!":correct/res.length>=0.5?"继续加油!":"再接再厉!"}</h2>
           <p style={{color:C.tl,fontSize:15,marginBottom:24}}>{correct/res.length>=0.8?"Outstanding!":correct/res.length>=0.5?"Keep going!":"Practice more!"}</p>
           <div style={{display:"flex",justifyContent:"center",marginBottom:24}}>
-            <div style={{width:120,height:120,borderRadius:"50%",background:`conic-gradient(#2BD0C4 ${correct/res.length*360}deg, #E8FFF4 0deg)`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 32px rgba(45,198,83,0.15)"}}>
+            <div style={{width:120,height:120,borderRadius:"50%",background:`conic-gradient(#3CC87A ${correct/res.length*360}deg, #E8FFF4 0deg)`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 32px rgba(45,198,83,0.15)"}}>
               <div style={{width:92,height:92,borderRadius:"50%",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column"}}><div style={{fontSize:28,fontWeight:900,color:C.success}}>{correct}</div><div style={{fontSize:11,color:C.tl}}>/{res.length}</div></div>
             </div>
           </div>
@@ -9215,7 +9337,7 @@ export default function VocabMaster() {
               const open=expanded===w.word;
               const isAdv=w.lv==="advanced";
               const isInt=w.lv==="intermediate";
-              const badgeColor=isAdv?"#2E57D8":isInt?"#00B4D8":"#2DC653";
+              const badgeColor=isAdv?"#7B2D8E":isInt?"#00B4D8":"#2DC653";
               const badgeText=isAdv?"高级":isInt?"中级":"基础";
               return (
                 <div key={w.word}>
@@ -9255,11 +9377,11 @@ export default function VocabMaster() {
                   {open&&(
                     <div style={{padding:"12px 8px 20px",backgroundColor:"#faf7ff",borderBottom:"2px solid #e0dae8"}}>
                       <div style={{marginBottom:6}}>
-                        <span style={{color:"#2E57D8",fontFamily:"'JetBrains Mono',monospace",fontSize:14}}>{w.ph}</span>
+                        <span style={{color:"#7B2D8E",fontFamily:"'JetBrains Mono',monospace",fontSize:14}}>{w.ph}</span>
                       </div>
                       <div style={{color:"#1A1A2E",fontSize:15,lineHeight:1.7,marginBottom:6}}>
                         {w.en}
-                        <button onClick={()=>speakNow(w.en,0.85)} style={{marginLeft:8,width:24,height:24,borderRadius:"50%",border:"none",backgroundColor:"#f3e8ff",color:"#2E57D8",fontSize:11,cursor:"pointer",verticalAlign:"middle"}}>🔈</button>
+                        <button onClick={()=>speakNow(w.en,0.85)} style={{marginLeft:8,width:24,height:24,borderRadius:"50%",border:"none",backgroundColor:"#f3e8ff",color:"#7B2D8E",fontSize:11,cursor:"pointer",verticalAlign:"middle"}}>🔈</button>
                       </div>
                       <div style={{color:"#F4A236",fontSize:15,padding:"8px 12px",backgroundColor:"#FFF8E8",borderRadius:8,border:"1px solid #fde8c8",marginBottom:10,fontWeight:600}}>
                         🇨🇳 {w.cn}
@@ -9275,7 +9397,7 @@ export default function VocabMaster() {
                       {w.family&&(
                         <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
                           {Object.entries(w.family).map(([k,v])=>(
-                            <span key={k} style={{fontSize:11,padding:"2px 8px",borderRadius:8,backgroundColor:"#f3e8ff",color:"#2E57D8",fontWeight:600}}>{k}: {v}</span>
+                            <span key={k} style={{fontSize:11,padding:"2px 8px",borderRadius:8,backgroundColor:"#f3e8ff",color:"#7B2D8E",fontWeight:600}}>{k}: {v}</span>
                           ))}
                         </div>
                       )}
@@ -9292,7 +9414,7 @@ export default function VocabMaster() {
                           <div key={i} style={{marginBottom:8,paddingLeft:8,borderLeft:"3px solid "+["#FF6B35","#00B4D8","#F4A236"][i%3]}}>
                             <div style={{fontSize:14,fontWeight:700,color:"#1A1A2E"}}>
                               {p.phrase}
-                              <button onClick={()=>speakNow(p.phrase)} style={{marginLeft:6,width:22,height:22,borderRadius:"50%",border:"none",backgroundColor:"#f5f0fa",color:"#2E57D8",fontSize:10,cursor:"pointer",verticalAlign:"middle"}}>🔈</button>
+                              <button onClick={()=>speakNow(p.phrase)} style={{marginLeft:6,width:22,height:22,borderRadius:"50%",border:"none",backgroundColor:"#f5f0fa",color:"#7B2D8E",fontSize:10,cursor:"pointer",verticalAlign:"middle"}}>🔈</button>
                             </div>
                             <div style={{fontSize:13,color:"#5C5470",fontStyle:"italic",lineHeight:1.5}}>
                               "{p.sent}"
@@ -9435,7 +9557,7 @@ export default function VocabMaster() {
                       }catch(e){setAccessMsg({type:"err",text:e.message||"激活失败"});}
                       setAccessLoading(false);
                     }} disabled={accessLoading}
-                    style={{padding:"12px 18px",borderRadius:12,background:"#2E57D8",border:"none",color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    style={{padding:"12px 18px",borderRadius:12,background:"#4DB6FF",border:"none",color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",whiteSpace:"nowrap"}}>
                     {accessLoading?"...":"激活"}</button>
                   </div>
                   {accessMsg&&<div style={{fontSize:13,color:accessMsg.type==="ok"?"#4CAF7D":"#FF5A5A",fontWeight:700}}>{accessMsg.text}</div>}
@@ -9459,7 +9581,7 @@ export default function VocabMaster() {
               <div style={{background:C.card,borderRadius:20,padding:"20px",boxShadow:"0 4px 16px rgba(0,0,0,0.04)"}}>
                 <div style={{fontSize:14,fontWeight:800,color:C.tm,marginBottom:12}}>🏫 教师控制台</div>
                 <button onClick={()=>setTeacherScreen("dashboard")}
-                  style={{width:"100%",background:"linear-gradient(135deg,#2E57D8,#F14D2C)",border:"none",color:"#fff",padding:"13px",borderRadius:14,cursor:"pointer",fontSize:14,fontWeight:800}}>
+                  style={{width:"100%",background:"linear-gradient(135deg,#4DB6FF,#9B6FFF)",border:"none",color:"#fff",padding:"13px",borderRadius:14,cursor:"pointer",fontSize:14,fontWeight:800}}>
                   进入教师端 →
                 </button>
               </div>
@@ -9479,11 +9601,11 @@ export default function VocabMaster() {
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             {[
               {type:"adverbial",icon:"🔗",title:"状语从句",sub:"Adverbial Clauses",desc:"时间/原因/条件/让步/目的/结果 状语从句",color:C.secondary},
-              {type:"noun_clause",icon:"📝",title:"名词性从句",sub:"Noun Clauses",desc:"主语从句 / 宾语从句 / 表语从句 / 同位语从句",color:"#F14D2C"},
+              {type:"noun_clause",icon:"📝",title:"名词性从句",sub:"Noun Clauses",desc:"主语从句 / 宾语从句 / 表语从句 / 同位语从句",color:"#9B6FFF"},
               {type:"attributive",icon:"🔍",title:"定语从句",sub:"Attributive Clauses",desc:"who / whom / whose / which / that / where / when",color:C.gold},
               {type:"preposition",icon:"📍",title:"介词专项",sub:"Prepositions",desc:"in / on / at / by / with / for / of / to ...",color:C.accent},
               {type:"tense",icon:"⏰",title:"动词时态",sub:"Verb Tenses",desc:"一般现在 / 过去完成 / 现在进行 / 将来 ...",color:C.primary},
-              {type:"passive",icon:"🔄",title:"被动语态",sub:"Passive Voice",desc:"is/are done · was/were done · has been done · will be done ...",color:"#F14D2C"},
+              {type:"passive",icon:"🔄",title:"被动语态",sub:"Passive Voice",desc:"is/are done · was/were done · has been done · will be done ...",color:"#FF6B6B"},
               {type:"double_consonant",icon:"✍️",title:"双写变形",sub:"Double Consonant",desc:"prefer→preferred · stop→stopped · occur→occurred 重读闭音节规则",color:"#FF8C5A"},
               {type:"cloze",icon:"📄",title:"完型填空专项",sub:"Cloze Test",desc:"根据语境选词 · 词义辨析 · 语篇逻辑 模拟高考完型填空",color:"#7C5CE3"},
               {type:"listening",icon:"🎧",title:"听力专项",sub:"Listening",desc:"听音选词 · 听句填空 · 听释义选词 · 20题",color:"#00B4D8"},
