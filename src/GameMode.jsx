@@ -10,15 +10,15 @@ import { addPetFood } from "./PetSystem.jsx";
 
 // ── 颜色主题（和主应用保持一致） ──
 const C = {
-  bg: "#F7F9FF",
+  bg: "#EEF2FF",
   nav: "#1A1A2E",
   card: "#FFFFFF",
   text: "#1A1A2E",
   sub: "#5A7A9A",
-  blue: "#4DB6FF",
-  purple: "#9B6FFF",
+  blue: "#2E57D8",
+  purple: "#F14D2C",
   green: "#4CAF7D",
-  amber: "#F8C740",
+  amber: "#FFB93C",
   coral: "#FF8C5A",
   red: "#FF5A5A",
   gold: "#FFD700",
@@ -26,9 +26,9 @@ const C = {
 
 // ── 区域配置 ──
 const ZONES = {
-  zone_inner:   { name: "内心世界", nameEn: "Inner World",     emoji: "💫", color: "#9B6FFF", light: "#F3F0FF" },
-  zone_society: { name: "人与社会", nameEn: "People & Society",emoji: "🌍", color: "#4DB6FF", light: "#EBF7FF" },
-  zone_learning:{ name: "学习成长", nameEn: "Learning & Growth",emoji: "📚", color: "#F8C740", light: "#FFFAEB" },
+  zone_inner:   { name: "内心世界", nameEn: "Inner World",     emoji: "💫", color: "#F14D2C", light: "#FFE8D8" },
+  zone_society: { name: "人与社会", nameEn: "People & Society",emoji: "🌍", color: "#2E57D8", light: "#D8E4FF" },
+  zone_learning:{ name: "学习成长", nameEn: "Learning & Growth",emoji: "📚", color: "#FFB93C", light: "#FFF5D8" },
   zone_nature:  { name: "自然环境", nameEn: "Nature & Earth",  emoji: "🌿", color: "#4CAF7D", light: "#EDFAF3" },
   zone_tech:    { name: "科技未来", nameEn: "Tech & Future",   emoji: "🚀", color: "#FF8C5A", light: "#FFF4EF" },
 };
@@ -37,9 +37,9 @@ const ZONES = {
 const COMBO_WORDS = [
   { min: 1,  max: 2,  word: "Good!",        color: "#4CAF7D", size: 22 },
   { min: 2,  max: 3,  word: "Nice!",        color: "#4CAF7D", size: 22 },
-  { min: 3,  max: 4,  word: "Great!",       color: "#4DB6FF", size: 26 },
-  { min: 4,  max: 5,  word: "Excellent!",   color: "#9B6FFF", size: 28 },
-  { min: 5,  max: 8,  word: "Amazing!",     color: "#F8C740", size: 30 },
+  { min: 3,  max: 4,  word: "Great!",       color: "#2E57D8", size: 26 },
+  { min: 4,  max: 5,  word: "Excellent!",   color: "#F14D2C", size: 28 },
+  { min: 5,  max: 8,  word: "Amazing!",     color: "#FFB93C", size: 30 },
   { min: 8,  max: 12, word: "Incredible!",  color: "#FF8C5A", size: 32 },
   { min: 12, max: 999,word: "Unbelievable!",color: "#FF5A5A", size: 34 },
 ];
@@ -353,7 +353,7 @@ export default function GameMode({ supabase, authUser, onClose, onProgress }) {
     const zoneKeys = Object.keys(zones);
 
     return (
-      <div style={{ position:"fixed",top:0,left:0,right:0,bottom:64,zIndex:99,background:C.bg,overflowY:"auto",fontFamily:"system-ui,sans-serif" }}>
+      <div style={{ position:"fixed",top:0,left:0,right:0,bottom:64,zIndex:99,background:C.bg,overflowY:"auto",fontFamily:"'Nunito','Noto Sans SC',system-ui,sans-serif" }}>
         <style>{`
           @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
           @keyframes slideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
@@ -498,7 +498,7 @@ export default function GameMode({ supabase, authUser, onClose, onProgress }) {
     const progress = (qIdx + 1) / questions.length;
 
     return (
-      <div style={{ position:"fixed",top:0,left:0,right:0,bottom:64,zIndex:99,background:C.bg,overflowY:"auto",fontFamily:"system-ui,sans-serif",userSelect:"none" }}>
+      <div style={{ position:"fixed",top:0,left:0,right:0,bottom:64,zIndex:99,background:C.bg,overflowY:"auto",fontFamily:"'Nunito','Noto Sans SC',system-ui,sans-serif",userSelect:"none" }}>
         <style>{`
           @keyframes comboIn { from{opacity:0;transform:translateY(-20px) scale(0.8)} to{opacity:1;transform:translateY(0) scale(1)} }
           @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
@@ -636,7 +636,7 @@ export default function GameMode({ supabase, authUser, onClose, onProgress }) {
     const cfg = selectedZone ? (ZONES[selectedZone.key] || { color: C.blue, emoji: "📖" }) : { color: C.blue, emoji: "📖" };
 
     return (
-      <div style={{ position:"fixed",top:0,left:0,right:0,bottom:64,zIndex:99,background:C.bg,overflowY:"auto",fontFamily:"system-ui,sans-serif" }}>
+      <div style={{ position:"fixed",top:0,left:0,right:0,bottom:64,zIndex:99,background:C.bg,overflowY:"auto",fontFamily:"'Nunito','Noto Sans SC',system-ui,sans-serif" }}>
         <style>{`
           @keyframes starPop { 0%{transform:scale(0) rotate(-180deg)} 60%{transform:scale(1.3) rotate(10deg)} 100%{transform:scale(1) rotate(0)} }
           @keyframes slideUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }

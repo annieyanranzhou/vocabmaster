@@ -29,13 +29,13 @@ export function addPetFood(n = 1) {
 
 // ── 颜色主题（浅色）──
 const C = {
-  bg:    "#f4f6ff",
+  bg:    "#EEF2FF",
   nav:   "#ffffff",
   card:  "#ffffff",
-  border:"#e0e6ff",
+  border:"#d0d8f0",
   text:  "#1a1a2e",
   sub:   "#7a8ab0",
-  cyan:  "#4DB6FF",
+  cyan:  "#2E57D8",
   gold:  "#f0b400",
   dim:   "#c5cce8",
 };
@@ -913,7 +913,7 @@ export default function PetSystem() {
     const owned = pets.map(p => p.type);
     const allOwned = owned.length >= 6;
     return (
-      <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",padding:"24px 16px"}}>
+      <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Nunito','Noto Sans SC',system-ui,sans-serif",padding:"24px 16px"}}>
         <style>{css}</style>
         <div style={{textAlign:"center",marginBottom:20}}>
           <div style={{fontSize:19,fontWeight:900,color:C.text,letterSpacing:2}}>✦ UGLY PETS ✦</div>
@@ -957,7 +957,7 @@ export default function PetSystem() {
     if (!p) { setView("choose"); return null; }
     const color = TYPE_COLOR[p.type];
     return (
-      <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",padding:"16px"}}>
+      <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Nunito','Noto Sans SC',system-ui,sans-serif",padding:"16px"}}>
         <style>{css}</style>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
           <button onClick={() => setView("home")} style={{background:"none",border:`1px solid ${color}44`,color,padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:12}}>← 返回</button>
@@ -967,7 +967,7 @@ export default function PetSystem() {
           const unlocked = p.totalFed >= EVO_REQ[lv];
           const current = p.level === lv;
           return (
-            <div key={lv} style={{background:current?`${color}11`:"#f4f6ff",border:`1.5px solid ${current?color:unlocked?color+"44":"#e0e6ff"}`,borderRadius:12,padding:"14px",marginBottom:10,display:"flex",alignItems:"center",gap:14,opacity:unlocked?1:0.5}}>
+            <div key={lv} style={{background:current?`${color}11`:"#EEF2FF",border:`1.5px solid ${current?color:unlocked?color+"44":"#d0d8f0"}`,borderRadius:12,padding:"14px",marginBottom:10,display:"flex",alignItems:"center",gap:14,opacity:unlocked?1:0.5}}>
               <div style={{position:"relative"}}>
                 {unlocked ? <PetPixel type={p.type} level={lv} mood="normal" size={52}/>
                   : <div style={{width:52,height:52,background:"#e8eeff",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:"#ccc"}}>?</div>}
@@ -988,7 +988,7 @@ export default function PetSystem() {
 
   // ── Home: 4-pet grid ──
   return (
-    <div style={{background:C.bg,fontFamily:"system-ui,sans-serif",position:"relative",overflow:"hidden"}}>
+    <div style={{background:C.bg,fontFamily:"'Nunito','Noto Sans SC',system-ui,sans-serif",position:"relative",overflow:"hidden"}}>
       <style>{css}</style>
 
       {evoAnim && (
@@ -996,7 +996,7 @@ export default function PetSystem() {
       )}
 
       {/* Header */}
-      <div style={{background:C.nav,borderBottom:`1px solid #e0e6ff`,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{background:C.nav,borderBottom:`1px solid #d0d8f0`,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{fontSize:14,fontWeight:900,color:C.text,letterSpacing:2}}>✦ UGLY PETS ✦</div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={() => setView("dex")} style={{background:"none",border:"1px solid #ccc",color:C.sub,padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:10}}>图鉴</button>
@@ -1007,7 +1007,7 @@ export default function PetSystem() {
       </div>
 
       {/* Food counter */}
-      <div style={{background:C.nav,padding:"10px 16px",borderBottom:"1px solid #e0e6ff",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{background:C.nav,padding:"10px 16px",borderBottom:"1px solid #d0d8f0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
           <span style={{fontSize:11,color:C.sub}}>库存粮食  </span>
           <span style={{fontSize:20,fontWeight:900,color:C.text}}>{state.food}</span>
@@ -1052,7 +1052,7 @@ export default function PetSystem() {
                   <span style={{fontSize:9,color:C.sub}}>HP</span>
                   <span style={{fontSize:9,color:mood.color,fontWeight:700}}>{p.happiness}/100</span>
                 </div>
-                <div style={{height:4,background:"#e0e6ff",borderRadius:3,overflow:"hidden"}}>
+                <div style={{height:4,background:"#d0d8f0",borderRadius:3,overflow:"hidden"}}>
                   <div style={{width:`${p.happiness}%`,height:"100%",background:mood.color,borderRadius:3,transition:"width 0.4s"}}/>
                 </div>
               </div>
@@ -1063,7 +1063,7 @@ export default function PetSystem() {
                     <span style={{fontSize:9,color:C.sub}}>→ Lv{p.level+1}</span>
                     <span style={{fontSize:9,color}}>{evoProgress}%</span>
                   </div>
-                  <div style={{height:4,background:"#e0e6ff",borderRadius:3,overflow:"hidden"}}>
+                  <div style={{height:4,background:"#d0d8f0",borderRadius:3,overflow:"hidden"}}>
                     <div style={{width:`${evoProgress}%`,height:"100%",background:`linear-gradient(90deg,${color},#ffd700)`,borderRadius:3,transition:"width 0.4s"}}/>
                   </div>
                   <div style={{fontSize:9,color:C.sub,marginTop:2,textAlign:"center"}}>还需喂食 {Math.max(0,nextLvReq-p.totalFed)} 次</div>

@@ -301,7 +301,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
       ctx.fillStyle=b.hit?(isAns?C.correct:C.wrong):C.blockFace;ctx.fillRect(b.x,b.y,BLOCK_W,BLOCK_H);
       ctx.fillStyle=b.hit?(isAns?C.correct:C.wrong):C.blockLight;ctx.fillRect(b.x+2,b.y+2,BLOCK_W-4,4);
       if(!b.hit){ctx.strokeStyle=C.blockShadow;ctx.lineWidth=1;ctx.strokeRect(b.x,b.y,BLOCK_W,BLOCK_H);ctx.beginPath();ctx.moveTo(b.x+BLOCK_W/2,b.y);ctx.lineTo(b.x+BLOCK_W/2,b.y+BLOCK_H);ctx.stroke();}
-      ctx.fillStyle=b.hit?"#fff":C.blockQuestion;ctx.font="bold 14px 'Nunito','Comic Sans MS',sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillStyle=b.hit?"#fff":C.blockQuestion;ctx.font="bold 14px 'Nunito','Noto Sans SC',system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
       ctx.fillText(b.word,b.x+BLOCK_W/2,b.y+BLOCK_H/2);
     };
     const drawChar=(ch)=>{
@@ -390,7 +390,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
   // ===== MENU =====
   if (screen === "menu") {
     return (
-      <div style={{position:"fixed",inset:0,zIndex:9999,background:"linear-gradient(180deg,#6cb5ff 0%,#9ad4ff 60%,#48a838 60%,#48a838 75%,#c84c0c 75%)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Nunito','Comic Sans MS',sans-serif"}}>
+      <div style={{position:"fixed",inset:0,zIndex:9999,background:"linear-gradient(180deg,#6cb5ff 0%,#9ad4ff 60%,#48a838 60%,#48a838 75%,#c84c0c 75%)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Nunito','Noto Sans SC',system-ui,sans-serif"}}>
         <div style={{position:"absolute",top:40,left:"10%",width:80,height:35,background:C.cloud,borderRadius:20}}/>
         <div style={{position:"absolute",top:70,right:"15%",width:60,height:28,background:C.cloud,borderRadius:15}}/>
         <div style={{fontSize:38,fontWeight:900,color:"#fff",textShadow:"3px 3px 0 #c84c0c,5px 5px 0 rgba(0,0,0,0.2)",marginBottom:6}}>🍄 单词跳跳</div>
@@ -426,7 +426,7 @@ export default function WordJump({ vocab = [], onClose, onScore }) {
     const stars=finalScore>=120?3:finalScore>=70?2:finalScore>=30?1:0;
     const cfg=DIFF[difficulty];
     return (
-      <div style={{position:"fixed",inset:0,zIndex:9999,background:"linear-gradient(180deg,#1a1a3e 0%,#2a2a5e 100%)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Nunito','Comic Sans MS',sans-serif",color:"#fff"}}>
+      <div style={{position:"fixed",inset:0,zIndex:9999,background:"linear-gradient(180deg,#1a1a3e 0%,#2a2a5e 100%)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Nunito','Noto Sans SC',system-ui,sans-serif",color:"#fff"}}>
         <div style={{fontSize:36,marginBottom:8}}>{"⭐".repeat(stars)}{"☆".repeat(3-stars)}</div>
         <div style={{fontSize:28,fontWeight:900,marginBottom:6}}>游戏结束！</div>
         <div style={{fontSize:14,color:cfg.color,fontWeight:700,marginBottom:16}}>{cfg.label}</div>
