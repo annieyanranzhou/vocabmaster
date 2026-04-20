@@ -57,6 +57,18 @@ const supabase = (() => {
         }
         return true;
       },
+      async updatePassword(accessToken, newPassword) {
+        const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+          method:"PUT",
+          headers: { ...headers, "Authorization": `Bearer ${accessToken}` },
+          body: JSON.stringify({ password: newPassword })
+        });
+        if (!r.ok) {
+          const d = await r.json().catch(()=>({}));
+          throw new Error(d.msg || d.error_description || "密码更新失败");
+        }
+        return true;
+      },
       async refreshToken() {
         const refresh = localStorage.getItem("sb_refresh");
         if (!refresh) return false;
@@ -8004,17 +8016,52 @@ function StudentPanel({ onClose, onStartCustomQuiz }) {
 
 /* ═══ AUTH SCREEN ═══ */
 function AuthScreen({ onLogin }) {
-  const [mode, setMode] = useState("login"); // login | signup | reset
+  const [mode, setMode] = useState("login"); // login | signup | reset | newpw
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
   const [username, setUsername] = useState("");
   const [className, setClassName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [recoveryToken, setRecoveryToken] = useState("");
+
+  // 检测 URL 中的 recovery token（学员点邮件链接后跳转回来）
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.includes("type=recovery")) {
+      const params = new URLSearchParams(hash.replace("#","?"));
+      const token = params.get("access_token");
+      if (token) {
+        setRecoveryToken(token);
+        setMode("newpw");
+        // 清理 URL hash
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    }
+  }, []);
 
   const handle = async () => {
     setError(""); setSuccess("");
+
+    // 设置新密码模式
+    if (mode === "newpw") {
+      if (!password || password.length < 6) { setError("新密码至少6位"); return; }
+      if (password !== password2) { setError("两次密码不一致"); return; }
+      setLoading(true);
+      try {
+        await supabase.auth.updatePassword(recoveryToken, password);
+        setSuccess("密码修改成功！请用新密码登录。");
+        setMode("login");
+        setPassword(""); setPassword2(""); setRecoveryToken("");
+      } catch(e) {
+        setError(e.message);
+      } finally { setLoading(false); }
+      return;
+    }
+
+    // 发送重置邮件模式
     if (mode === "reset") {
       if (!email) { setError("请填写邮箱"); return; }
       setLoading(true);
@@ -8026,6 +8073,8 @@ function AuthScreen({ onLogin }) {
       } finally { setLoading(false); }
       return;
     }
+
+    // 登录/注册模式
     if (!email || !password) { setError("请填写邮箱和密码"); return; }
     if (mode === "signup" && !username) { setError("请填写昵称"); return; }
     setLoading(true);
@@ -8066,26 +8115,31 @@ function AuthScreen({ onLogin }) {
           <div style={{fontSize:13,color:"#8A8494"}}>VocabMaster · 高考英语词汇</div>
         </div>
 
-        {/* Mode toggle */}
-        {mode !== "reset" ? (
-        <div style={{display:"flex",background:"#EAE4FF",borderRadius:14,padding:4,marginBottom:24}}>
-          {[["login","登录"],["signup","注册"]].map(([m,l])=>(
-            <button key={m} onClick={()=>{setMode(m);setError("");setSuccess("");}}
-              style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
-                background:mode===m?"#fff":"transparent",
-                color:mode===m?"#4DB6FF":"#8A9BBF",
-                fontWeight:mode===m?800:600,fontSize:14,
-                boxShadow:mode===m?"0 2px 8px rgba(0,0,0,0.08)":"none",
-                transition:"all 0.2s"}}>
-              {l}
-            </button>
-          ))}
-        </div>
+        {/* Mode toggle / header */}
+        {mode === "newpw" ? (
+          <div style={{textAlign:"center",marginBottom:24}}>
+            <div style={{fontSize:18,fontWeight:800,color:"#1A1A2E",marginBottom:6}}>🔐 设置新密码</div>
+            <div style={{fontSize:13,color:"#8A9BBF"}}>请输入你的新密码（至少6位）</div>
+          </div>
+        ) : mode === "reset" ? (
+          <div style={{textAlign:"center",marginBottom:24}}>
+            <div style={{fontSize:18,fontWeight:800,color:"#1A1A2E",marginBottom:6}}>🔑 找回密码</div>
+            <div style={{fontSize:13,color:"#8A9BBF"}}>输入注册邮箱，我们会发送重置链接</div>
+          </div>
         ) : (
-        <div style={{textAlign:"center",marginBottom:24}}>
-          <div style={{fontSize:18,fontWeight:800,color:"#1A1A2E",marginBottom:6}}>🔑 找回密码</div>
-          <div style={{fontSize:13,color:"#8A9BBF"}}>输入注册邮箱，我们会发送重置链接</div>
-        </div>
+          <div style={{display:"flex",background:"#EAE4FF",borderRadius:14,padding:4,marginBottom:24}}>
+            {[["login","登录"],["signup","注册"]].map(([m,l])=>(
+              <button key={m} onClick={()=>{setMode(m);setError("");setSuccess("");}}
+                style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
+                  background:mode===m?"#fff":"transparent",
+                  color:mode===m?"#4DB6FF":"#8A9BBF",
+                  fontWeight:mode===m?800:600,fontSize:14,
+                  boxShadow:mode===m?"0 2px 8px rgba(0,0,0,0.08)":"none",
+                  transition:"all 0.2s"}}>
+                {l}
+              </button>
+            ))}
+          </div>
         )}
 
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -8097,30 +8151,47 @@ function AuthScreen({ onLogin }) {
                 onChange={e=>setClassName(e.target.value)}/>
             </>
           )}
-          <input style={inp} type="email" placeholder="邮箱" value={email}
-            onChange={e=>setEmail(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&handle()}/>
-          {mode!=="reset" && (
-            <input style={inp} type="password" placeholder="密码（至少6位）" value={password}
-              onChange={e=>setPassword(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&handle()}/>
-          )}
 
-          {mode==="login" && (
-            <div style={{textAlign:"right",marginTop:-4}}>
-              <span onClick={()=>{setMode("reset");setError("");setSuccess("");}}
-                style={{fontSize:13,color:"#4DB6FF",cursor:"pointer",fontWeight:600}}>
-                忘记密码？
-              </span>
-            </div>
-          )}
-          {mode==="reset" && (
-            <div style={{textAlign:"center",marginTop:-4}}>
-              <span onClick={()=>{setMode("login");setError("");setSuccess("");}}
-                style={{fontSize:13,color:"#4DB6FF",cursor:"pointer",fontWeight:600}}>
-                ← 返回登录
-              </span>
-            </div>
+          {/* 设置新密码模式：两个密码框 */}
+          {mode==="newpw" ? (
+            <>
+              <input style={inp} type="password" placeholder="新密码（至少6位）" value={password}
+                onChange={e=>setPassword(e.target.value)}/>
+              <input style={inp} type="password" placeholder="确认新密码" value={password2}
+                onChange={e=>setPassword2(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handle()}/>
+            </>
+          ) : mode==="reset" ? (
+            /* 找回密码模式：只有邮箱 */
+            <>
+              <input style={inp} type="email" placeholder="注册邮箱" value={email}
+                onChange={e=>setEmail(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handle()}/>
+              <div style={{textAlign:"center",marginTop:-4}}>
+                <span onClick={()=>{setMode("login");setError("");setSuccess("");}}
+                  style={{fontSize:13,color:"#4DB6FF",cursor:"pointer",fontWeight:600}}>
+                  ← 返回登录
+                </span>
+              </div>
+            </>
+          ) : (
+            /* 登录/注册模式：邮箱+密码 */
+            <>
+              <input style={inp} type="email" placeholder="邮箱" value={email}
+                onChange={e=>setEmail(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handle()}/>
+              <input style={inp} type="password" placeholder="密码（至少6位）" value={password}
+                onChange={e=>setPassword(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handle()}/>
+              {mode==="login" && (
+                <div style={{textAlign:"right",marginTop:-4}}>
+                  <span onClick={()=>{setMode("reset");setError("");setSuccess("");}}
+                    style={{fontSize:13,color:"#4DB6FF",cursor:"pointer",fontWeight:600}}>
+                    忘记密码？
+                  </span>
+                </div>
+              )}
+            </>
           )}
 
           {error && <div style={{fontSize:13,color:"#CC2222",background:"#FFE8E8",borderRadius:10,padding:"10px 14px",fontWeight:600}}>{error}</div>}
@@ -8130,7 +8201,12 @@ function AuthScreen({ onLogin }) {
             style={{background:C.grad1,border:"none",color:"#fff",
               padding:"18px",borderRadius:14,cursor:loading?"wait":"pointer",fontSize:16,fontWeight:800,
               boxShadow:"0 6px 20px rgba(255,107,53,0.3)",marginTop:4,opacity:loading?0.7:1}}>
-            {loading?"请稍候...":(mode==="login"?"登录 →":mode==="signup"?"注册 →":"发送重置链接 →")}
+            {loading?"请稍候...":(
+              mode==="login"?"登录 →":
+              mode==="signup"?"注册 →":
+              mode==="reset"?"发送重置链接 →":
+              "确认修改密码 →"
+            )}
           </button>
         </div>
 
