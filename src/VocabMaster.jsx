@@ -46,6 +46,17 @@ const supabase = (() => {
         localStorage.removeItem("sb_refresh");
         localStorage.removeItem("sb_user");
       },
+      async resetPassword(email) {
+        const r = await fetch(`${SUPABASE_URL}/auth/v1/recover`, {
+          method:"POST", headers,
+          body: JSON.stringify({ email })
+        });
+        if (!r.ok) {
+          const d = await r.json().catch(()=>({}));
+          throw new Error(d.msg || d.error_description || "发送失败，请稍后再试");
+        }
+        return true;
+      },
       async refreshToken() {
         const refresh = localStorage.getItem("sb_refresh");
         if (!refresh) return false;
@@ -7993,7 +8004,7 @@ function StudentPanel({ onClose, onStartCustomQuiz }) {
 
 /* ═══ AUTH SCREEN ═══ */
 function AuthScreen({ onLogin }) {
-  const [mode, setMode] = useState("login"); // login | signup
+  const [mode, setMode] = useState("login"); // login | signup | reset
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
@@ -8004,6 +8015,17 @@ function AuthScreen({ onLogin }) {
 
   const handle = async () => {
     setError(""); setSuccess("");
+    if (mode === "reset") {
+      if (!email) { setError("请填写邮箱"); return; }
+      setLoading(true);
+      try {
+        await supabase.auth.resetPassword(email);
+        setSuccess("重置链接已发送到你的邮箱，请查看收件箱（含垃圾邮件）。");
+      } catch(e) {
+        setError(e.message);
+      } finally { setLoading(false); }
+      return;
+    }
     if (!email || !password) { setError("请填写邮箱和密码"); return; }
     if (mode === "signup" && !username) { setError("请填写昵称"); return; }
     setLoading(true);
@@ -8045,6 +8067,7 @@ function AuthScreen({ onLogin }) {
         </div>
 
         {/* Mode toggle */}
+        {mode !== "reset" ? (
         <div style={{display:"flex",background:"#EAE4FF",borderRadius:14,padding:4,marginBottom:24}}>
           {[["login","登录"],["signup","注册"]].map(([m,l])=>(
             <button key={m} onClick={()=>{setMode(m);setError("");setSuccess("");}}
@@ -8058,6 +8081,12 @@ function AuthScreen({ onLogin }) {
             </button>
           ))}
         </div>
+        ) : (
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:18,fontWeight:800,color:"#1A1A2E",marginBottom:6}}>🔑 找回密码</div>
+          <div style={{fontSize:13,color:"#8A9BBF"}}>输入注册邮箱，我们会发送重置链接</div>
+        </div>
+        )}
 
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {mode==="signup" && (
@@ -8071,9 +8100,28 @@ function AuthScreen({ onLogin }) {
           <input style={inp} type="email" placeholder="邮箱" value={email}
             onChange={e=>setEmail(e.target.value)}
             onKeyDown={e=>e.key==="Enter"&&handle()}/>
-          <input style={inp} type="password" placeholder="密码（至少6位）" value={password}
-            onChange={e=>setPassword(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&handle()}/>
+          {mode!=="reset" && (
+            <input style={inp} type="password" placeholder="密码（至少6位）" value={password}
+              onChange={e=>setPassword(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&handle()}/>
+          )}
+
+          {mode==="login" && (
+            <div style={{textAlign:"right",marginTop:-4}}>
+              <span onClick={()=>{setMode("reset");setError("");setSuccess("");}}
+                style={{fontSize:13,color:"#4DB6FF",cursor:"pointer",fontWeight:600}}>
+                忘记密码？
+              </span>
+            </div>
+          )}
+          {mode==="reset" && (
+            <div style={{textAlign:"center",marginTop:-4}}>
+              <span onClick={()=>{setMode("login");setError("");setSuccess("");}}
+                style={{fontSize:13,color:"#4DB6FF",cursor:"pointer",fontWeight:600}}>
+                ← 返回登录
+              </span>
+            </div>
+          )}
 
           {error && <div style={{fontSize:13,color:"#CC2222",background:"#FFE8E8",borderRadius:10,padding:"10px 14px",fontWeight:600}}>{error}</div>}
           {success && <div style={{fontSize:13,color:"#1A7A4A",background:"#E8FFF4",borderRadius:10,padding:"10px 14px",fontWeight:600}}>{success}</div>}
@@ -8082,7 +8130,7 @@ function AuthScreen({ onLogin }) {
             style={{background:C.grad1,border:"none",color:"#fff",
               padding:"18px",borderRadius:14,cursor:loading?"wait":"pointer",fontSize:16,fontWeight:800,
               boxShadow:"0 6px 20px rgba(255,107,53,0.3)",marginTop:4,opacity:loading?0.7:1}}>
-            {loading?"请稍候...":(mode==="login"?"登录 →":"注册 →")}
+            {loading?"请稍候...":(mode==="login"?"登录 →":mode==="signup"?"注册 →":"发送重置链接 →")}
           </button>
         </div>
 
