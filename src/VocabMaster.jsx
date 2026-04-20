@@ -8014,52 +8014,75 @@ function StudentPanel({ onClose, onStartCustomQuiz }) {
   );
 }
 
+/* ═══ RESET PASSWORD FORM (standalone, shown from main component) ═══ */
+function ResetPasswordForm({ token, onDone }) {
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const handle = async () => {
+    setError("");
+    if (!pw || pw.length < 6) { setError("新密码至少6位"); return; }
+    if (pw !== pw2) { setError("两次密码不一致"); return; }
+    setLoading(true);
+    try {
+      await supabase.auth.updatePassword(token, pw);
+      setSuccess("密码修改成功！请用新密码重新登录。");
+      setTimeout(()=> onDone(), 2000);
+    } catch(e) {
+      setError(e.message);
+    } finally { setLoading(false); }
+  };
+
+  const inp = {
+    background:"#F0F7FF", border:"2px solid #D8EEFF", borderRadius:14,
+    padding:"14px 16px", fontSize:15, outline:"none", width:"100%",
+    boxSizing:"border-box", fontWeight:600, color:"#1A1A2E"
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#EAF4FF,#EEE8FF)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#fff",borderRadius:28,padding:"36px 32px",maxWidth:400,width:"100%",boxShadow:"0 20px 60px rgba(77,182,255,0.15)"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{fontSize:48,marginBottom:8}}>🔐</div>
+          <h1 style={{fontSize:22,fontWeight:900,margin:"0 0 6px",color:"#1A1A2E"}}>设置新密码</h1>
+          <div style={{fontSize:13,color:"#8A9BBF"}}>请输入你的新密码（至少6位）</div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <input style={inp} type="password" placeholder="新密码（至少6位）" value={pw}
+            onChange={e=>setPw(e.target.value)}/>
+          <input style={inp} type="password" placeholder="确认新密码" value={pw2}
+            onChange={e=>setPw2(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&handle()}/>
+          {error && <div style={{fontSize:13,color:"#CC2222",background:"#FFE8E8",borderRadius:10,padding:"10px 14px",fontWeight:600}}>{error}</div>}
+          {success && <div style={{fontSize:13,color:"#1A7A4A",background:"#E8FFF4",borderRadius:10,padding:"10px 14px",fontWeight:600}}>{success}</div>}
+          <button onClick={handle} disabled={loading||!!success}
+            style={{background:C.grad1,border:"none",color:"#fff",
+              padding:"18px",borderRadius:14,cursor:loading?"wait":"pointer",fontSize:16,fontWeight:800,
+              boxShadow:"0 6px 20px rgba(255,107,53,0.3)",marginTop:4,opacity:(loading||success)?0.7:1}}>
+            {loading?"请稍候...":"确认修改密码 →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ═══ AUTH SCREEN ═══ */
 function AuthScreen({ onLogin }) {
-  const [mode, setMode] = useState("login"); // login | signup | reset | newpw
+  const [mode, setMode] = useState("login"); // login | signup | reset
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [password2, setPassword2] = useState("");
   const [username, setUsername] = useState("");
   const [className, setClassName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [recoveryToken, setRecoveryToken] = useState("");
-
-  // 检测 URL 中的 recovery token（学员点邮件链接后跳转回来）
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (hash && hash.includes("type=recovery")) {
-      const params = new URLSearchParams(hash.replace("#","?"));
-      const token = params.get("access_token");
-      if (token) {
-        setRecoveryToken(token);
-        setMode("newpw");
-        // 清理 URL hash
-        window.history.replaceState(null, "", window.location.pathname);
-      }
-    }
-  }, []);
 
   const handle = async () => {
     setError(""); setSuccess("");
-
-    // 设置新密码模式
-    if (mode === "newpw") {
-      if (!password || password.length < 6) { setError("新密码至少6位"); return; }
-      if (password !== password2) { setError("两次密码不一致"); return; }
-      setLoading(true);
-      try {
-        await supabase.auth.updatePassword(recoveryToken, password);
-        setSuccess("密码修改成功！请用新密码登录。");
-        setMode("login");
-        setPassword(""); setPassword2(""); setRecoveryToken("");
-      } catch(e) {
-        setError(e.message);
-      } finally { setLoading(false); }
-      return;
-    }
 
     // 发送重置邮件模式
     if (mode === "reset") {
@@ -8116,12 +8139,7 @@ function AuthScreen({ onLogin }) {
         </div>
 
         {/* Mode toggle / header */}
-        {mode === "newpw" ? (
-          <div style={{textAlign:"center",marginBottom:24}}>
-            <div style={{fontSize:18,fontWeight:800,color:"#1A1A2E",marginBottom:6}}>🔐 设置新密码</div>
-            <div style={{fontSize:13,color:"#8A9BBF"}}>请输入你的新密码（至少6位）</div>
-          </div>
-        ) : mode === "reset" ? (
+        {mode === "reset" ? (
           <div style={{textAlign:"center",marginBottom:24}}>
             <div style={{fontSize:18,fontWeight:800,color:"#1A1A2E",marginBottom:6}}>🔑 找回密码</div>
             <div style={{fontSize:13,color:"#8A9BBF"}}>输入注册邮箱，我们会发送重置链接</div>
@@ -8152,17 +8170,7 @@ function AuthScreen({ onLogin }) {
             </>
           )}
 
-          {/* 设置新密码模式：两个密码框 */}
-          {mode==="newpw" ? (
-            <>
-              <input style={inp} type="password" placeholder="新密码（至少6位）" value={password}
-                onChange={e=>setPassword(e.target.value)}/>
-              <input style={inp} type="password" placeholder="确认新密码" value={password2}
-                onChange={e=>setPassword2(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&handle()}/>
-            </>
-          ) : mode==="reset" ? (
-            /* 找回密码模式：只有邮箱 */
+          {mode==="reset" ? (
             <>
               <input style={inp} type="email" placeholder="注册邮箱" value={email}
                 onChange={e=>setEmail(e.target.value)}
@@ -8175,7 +8183,6 @@ function AuthScreen({ onLogin }) {
               </div>
             </>
           ) : (
-            /* 登录/注册模式：邮箱+密码 */
             <>
               <input style={inp} type="email" placeholder="邮箱" value={email}
                 onChange={e=>setEmail(e.target.value)}
@@ -8204,8 +8211,7 @@ function AuthScreen({ onLogin }) {
             {loading?"请稍候...":(
               mode==="login"?"登录 →":
               mode==="signup"?"注册 →":
-              mode==="reset"?"发送重置链接 →":
-              "确认修改密码 →"
+              "发送重置链接 →"
             )}
           </button>
         </div>
@@ -8256,6 +8262,22 @@ export default function VocabMaster() {
   const [profile, setProfile] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [isTeacher, setIsTeacher] = useState(false);
+  const [showResetPwForm, setShowResetPwForm] = useState(false);
+  const [resetToken, setResetToken] = useState("");
+
+  // 检测 URL 中的 recovery token（学员点邮件重置链接后跳转回来）
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.includes("type=recovery")) {
+      const params = new URLSearchParams(hash.replace("#","?"));
+      const token = params.get("access_token");
+      if (token) {
+        setResetToken(token);
+        setShowResetPwForm(true);
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    }
+  }, []);
   const [teacherScreen, setTeacherScreen] = useState(null); // null | "dashboard" | "quiz-builder"
   const [myClasses, setMyClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
@@ -8854,6 +8876,12 @@ export default function VocabMaster() {
     }
     return null;
   };
+  // ── Recovery: 重置密码表单（优先级最高，拦截一切） ──
+  if (showResetPwForm) return <ResetPasswordForm token={resetToken} onDone={()=>{
+    setShowResetPwForm(false); setResetToken("");
+    // 重置完成后退出登录，让用户用新密码重新登录
+    supabase.auth.signOut(); setAuthUser(null);
+  }}/>;
   // ── Auth gate ──
   if (!authReady) return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(160deg,#fff5f0,#f5f0ff)"}}>
