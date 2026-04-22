@@ -4794,7 +4794,7 @@ function DragFillQ({exercise,onDone}) {
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#2BD0C4",fontWeight:700,marginBottom:6}}>🧩 Drag to fill</div>
       </div>
       <div style={{background:C.card,borderRadius:20,padding:"22px 18px",boxShadow:"0 4px 20px rgba(0,0,0,0.06)",border:`2px solid ${C.accent}22`}}>
-        <div style={{fontSize:19,lineHeight:2.2,color:"#fff",fontFamily:"'Nunito',sans-serif",fontWeight:500,textAlign:"center"}}>
+        <div style={{fontSize:19,lineHeight:2.2,color:C.text,fontFamily:"'Nunito',sans-serif",fontWeight:500,textAlign:"center"}}>
           {exercise.template.map((t,i)=>{
             if(!t.blank)return <span key={i}>{t.text} </span>;
             const f=placed[t.id];const ok=done&&f===t.answer;const bad=done&&f&&f!==t.answer;
@@ -4808,14 +4808,14 @@ function DragFillQ({exercise,onDone}) {
       </div>
       {!done&&<div style={{display:"flex",flexWrap:"wrap",gap:10,justifyContent:"center"}}>
         {avail.map((o,i)=><div key={o+i} onClick={()=>setTouch(touch===o?null:o)} style={{padding:"10px 22px",borderRadius:14,cursor:"pointer",fontSize:17,fontWeight:700,userSelect:"none",transition:"all 0.2s",
-          background:touch===o?`${C.gold}25`:`${bc[i%4]}12`,border:touch===o?`2px solid ${C.gold}`:`2px solid ${bc[i%4]}33`,color:touch===o?C.gold:C.text,
-          transform:touch===o?"scale(1.08)":"scale(1)",boxShadow:touch===o?`0 4px 16px ${C.gold}33`:"0 2px 8px rgba(0,0,0,0.04)",
+          background:touch===o?C.gold:"#fff",border:touch===o?`2px solid ${C.gold}`:"2px solid #eef0f8",color:touch===o?"#fff":C.text,
+          transform:touch===o?"scale(1.08)":"scale(1)",boxShadow:touch===o?`0 4px 16px ${C.gold}33`:"0 2px 8px rgba(0,0,0,0.06)",
         }}>{o}</div>)}
       </div>}
       {touch&&!done&&<div style={{textAlign:"center",fontSize:13,color:C.gold,fontWeight:600,animation:"pulse 1.5s ease infinite"}}>👆 Tap a blank to place "{touch}"</div>}
-      {done&&<div style={{textAlign:"center",padding:"12px 16px",background:"#FFF8E8",borderRadius:14,border:"1.5px solid #F4A23644"}}>
-        <div style={{fontSize:14,color:C.gold,fontWeight:600,marginBottom:4}}>🇨🇳 {w.cn}</div>
-        <div style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>🔊 reading sentence...</div>
+      {done&&<div style={{textAlign:"center",padding:"12px 16px",background:C.gold,borderRadius:14}}>
+        <div style={{fontSize:14,color:C.text,fontWeight:700,marginBottom:4}}>🇨🇳 {w.cn}</div>
+        <div style={{fontSize:13,color:"rgba(0,0,0,0.5)"}}>🔊 reading sentence...</div>
       </div>}
     </div>
   );
@@ -4841,8 +4841,8 @@ function ChoiceQ({exercise,onDone}) {
       {/* Yellow word card */}
       <div style={{background:C.gold,borderRadius:24,padding:"28px 24px",textAlign:"center",position:"relative",overflow:"hidden"}}>
         <svg style={{position:"absolute",left:16,bottom:12,opacity:0.2}} width="30" height="10" viewBox="0 0 30 10"><path d="M0 5 Q5 0 10 5 Q15 10 20 5 Q25 0 30 5" stroke={C.primary} strokeWidth="2.5" fill="none"/></svg>
-        {isRev?<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.error,fontWeight:700,marginBottom:10}}>Which word?</div><div style={{fontSize:16,color:"#fff",lineHeight:1.7}}>{w.en}</div><div style={{fontSize:15,color:C.error,marginTop:6,fontWeight:600}}>🇨🇳 {w.cn}</div></>
-        :<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.error,fontWeight:700,marginBottom:10}}>选择正确含义</div><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}><div style={{fontSize:34,fontWeight:800,fontFamily:"'Nunito',sans-serif",color:"#fff"}}>{w.word}</div></div><div style={{fontSize:16,color:"#666",fontFamily:"'JetBrains Mono',monospace",marginTop:4}}>{w.ph}</div><div style={{marginTop:12}}><Speak text={w.word} size={42} color={C.primary}/></div></>}
+        {isRev?<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.error,fontWeight:700,marginBottom:10}}>Which word?</div><div style={{fontSize:18,color:C.text,lineHeight:1.7,fontWeight:700}}>{w.en}</div><div style={{fontSize:16,color:C.error,marginTop:6,fontWeight:700}}>🇨🇳 {w.cn}</div></>
+        :<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.error,fontWeight:700,marginBottom:10}}>选择正确含义</div><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}><div style={{fontSize:34,fontWeight:900,fontFamily:"'Nunito',sans-serif",color:C.text}}>{w.word}</div></div><div style={{fontSize:16,color:"#666",fontFamily:"'JetBrains Mono',monospace",marginTop:4}}>{w.ph}</div><div style={{marginTop:12}}><Speak text={w.word} size={42} color={C.primary}/></div></>}
       </div>
       {done&&<div style={{textAlign:"center",padding:"10px 16px",background:C.error,borderRadius:14,animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:"#fff",fontWeight:700}}>🇨🇳 {w.cn}</span></div>}
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -5070,8 +5070,8 @@ function MatchQ({exercise,onDone}) {
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {exercise.pairs.map((w,i)=>(
             <button key={w} onClick={()=>clickW(w)}
-              style={{background:matches[w]?`${C.success}12`:selW===w?`${wc[i]}18`:`${wc[i]}08`,
-                border:matches[w]?`2px solid ${C.success}`:selW===w?`2px solid ${wc[i]}`:`2px solid ${wc[i]}22`,
+              style={{background:matches[w]?`${C.success}12`:selW===w?C.gold:"#fff",
+                border:matches[w]?`2px solid ${C.success}`:selW===w?`2px solid ${C.gold}`:"2px solid #eef0f8",
                 color:matches[w]?C.success:C.text,padding:"12px 14px",borderRadius:14,
                 cursor:(matches[w]||finishing)?"default":"pointer",fontSize:15,fontWeight:700,
                 opacity:matches[w]?0.6:1,transition:"all 0.2s"}}>
@@ -5084,9 +5084,9 @@ function MatchQ({exercise,onDone}) {
             const matched=Object.values(matches).includes(m);
             return (
               <button key={i} onClick={()=>clickM(m)}
-                style={{background:matched?`${C.success}12`:wrong===m?`${C.error}12`:"#f8f6ff",
-                  border:matched?`2px solid ${C.success}`:wrong===m?`2px solid ${C.error}`:"2px solid #e8e4f0",
-                  color:matched?C.success:wrong===m?C.error:C.tm,
+                style={{background:matched?`${C.success}12`:wrong===m?`${C.error}12`:"#fff",
+                  border:matched?`2px solid ${C.success}`:wrong===m?`2px solid ${C.error}`:"2px solid #eef0f8",
+                  color:matched?C.success:wrong===m?C.error:C.text,
                   padding:"12px 14px",borderRadius:14,
                   cursor:(matched||finishing)?"default":"pointer",
                   fontSize:12,textAlign:"left",lineHeight:1.5,
@@ -5142,7 +5142,7 @@ function DialogueQ({exercise, onDone}) {
           boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
           {done
             ? <div style={{fontSize:13,color:sel===exercise.correct?C_.success:C_.error,fontWeight:600,lineHeight:1.5}}>{exercise.correct}</div>
-            : <div style={{fontSize:13,color:C_.tl,letterSpacing:2}}>· · · · · ·</div>
+            : <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",letterSpacing:2}}>· · · · · ·</div>
           }
         </div>
       </div>
@@ -5161,7 +5161,7 @@ function DialogueQ({exercise, onDone}) {
           );
         })}
       </div>
-      {done&&<div style={{textAlign:"center",fontSize:13,color:C_.tl,padding:"10px 14px",borderRadius:12,background:`${C_.accent}08`,border:`1px solid ${C_.accent}22`}}>🇨🇳 <span style={{color:C_.accent,fontWeight:700}}>{exercise.answerCn}</span></div>}
+      {done&&<div style={{textAlign:"center",fontSize:13,color:"rgba(255,255,255,0.7)",padding:"10px 14px",borderRadius:12,background:`${C_.accent}08`,border:`1px solid ${C_.accent}22`}}>🇨🇳 <span style={{color:C_.accent,fontWeight:700}}>{exercise.answerCn}</span></div>}
     </div>
   );
 }
@@ -5220,23 +5220,23 @@ function SentBuildQ({exercise, onDone}) {
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C_.secondary,fontWeight:700,marginBottom:8}}>🔤 造句 · Build the Sentence</div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"14px 16px",borderRadius:16,background:`${C.error}12`,border:`1.5px solid ${C_.secondary}22`}}>
           <div style={{fontSize:20}}>🧑‍💼</div>
-          <div style={{fontSize:14,color:C_.tm,fontWeight:600}}>{exercise.cn}</div>
+          <div style={{fontSize:14,color:"#fff",fontWeight:600}}>{exercise.cn}</div>
         </div>
       </div>
 
       {/* LISTEN phase */}
       {phase==="listen"&&(
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,padding:"28px 20px",borderRadius:20,background:`${C.error}10`,border:`2px solid ${C_.secondary}22`,animation:"slideUp 0.3s ease"}}>
-          <div style={{fontSize:13,color:C_.tm,fontWeight:600}}>👂 先听句子，再来造句</div>
+          <div style={{fontSize:13,color:"#fff",fontWeight:600}}>👂 先听句子，再来造句</div>
           <div style={{width:72,height:72,borderRadius:"50%",background:playing?C.primary:`${C.primary}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,cursor:"pointer",transition:"all 0.3s",boxShadow:playing?`0 8px 24px ${C_.secondary}44`:"none",animation:playing?"pulse 1s ease-in-out infinite":"none"}}
             onClick={()=>{if(!playing){setPlaying(true);speak(exercise.sentence,0.82).then(()=>setPlaying(false));}}}>
             {playing?"🔊":"🔈"}
           </div>
           {playing
-            ? <div style={{fontSize:13,color:C_.secondary,fontWeight:600,animation:"pulse 1s infinite"}}>正在朗读...</div>
+            ? <div style={{fontSize:13,color:C.gold,fontWeight:600,animation:"pulse 1s infinite"}}>正在朗读...</div>
             : <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
                 <button onClick={()=>{setPlaying(true);speak(exercise.sentence,0.82).then(()=>setPlaying(false));}}
-                  style={{fontSize:13,color:C_.tl,background:"transparent",border:`1.5px solid ${C_.tl}44`,padding:"6px 16px",borderRadius:20,cursor:"pointer",fontWeight:600}}>
+                  style={{fontSize:13,color:"rgba(255,255,255,0.6)",background:"transparent",border:"1.5px solid rgba(255,255,255,0.2)",padding:"6px 16px",borderRadius:20,cursor:"pointer",fontWeight:600}}>
                   🔁 再听一遍
                 </button>
                 <button onClick={replayAndBuild}
@@ -5254,14 +5254,14 @@ function SentBuildQ({exercise, onDone}) {
           {/* Replay button */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
             <button onClick={()=>{if(!playing){setPlaying(true);speak(exercise.sentence,0.82).then(()=>setPlaying(false));}}}
-              style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:C_.secondary,background:`${C_.secondary}10`,border:`1.5px solid ${C_.secondary}33`,padding:"5px 14px",borderRadius:20,cursor:playing?"default":"pointer",fontWeight:700}}>
+              style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#fff",background:"rgba(255,255,255,0.15)",border:"1.5px solid rgba(255,255,255,0.2)",padding:"5px 14px",borderRadius:20,cursor:playing?"default":"pointer",fontWeight:700}}>
               {playing?"🔊 朗读中...":"🔁 再听一遍"}
             </button>
           </div>
           {/* Answer area */}
           <div style={{minHeight:56,padding:"10px 12px",borderRadius:14,border:`2px dashed ${done?(wrong?C_.error:C_.success):C_.primary}55`,background:done?(wrong?`${C_.error}08`:`${C_.success}08`):`${C_.primary}05`,display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
             {placed.length===0
-              ? <div style={{color:C_.tl,fontSize:13,width:"100%",textAlign:"center"}}>点击下方单词，按顺序组成句子</div>
+              ? <div style={{color:"rgba(255,255,255,0.5)",fontSize:13,width:"100%",textAlign:"center"}}>点击下方单词，按顺序组成句子</div>
               : placed.map((w,i)=>(
                   <button key={i+"-"+w} onClick={()=>removeWord(w,i)} style={{padding:"6px 12px",borderRadius:20,background:done?(wrong?`${C_.error}18`:`${C_.success}18`):tileColors[i%5]+"18",border:`1.5px solid ${done?(wrong?C_.error:C_.success):tileColors[i%5]}55`,color:done?(wrong?C_.error:C_.success):tileColors[i%5],fontSize:14,fontWeight:700,cursor:done?"default":"pointer",transition:"all 0.2s"}}>
                     {w}
@@ -5346,8 +5346,8 @@ function ListenDefQ({exercise, onDone}) {
         </button>
       </div>
       <div style={{background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
-        <div style={{fontSize:16,lineHeight:1.7,color:"#fff",fontWeight:600}}>{exercise.enDef}</div>
-        <div style={{fontSize:13,color:"rgba(255,255,255,0.6)",marginTop:6,paddingTop:6,borderTop:`1px solid ${C.primary}15`,fontStyle:"italic"}}>
+        <div style={{fontSize:16,lineHeight:1.7,color:C.text,fontWeight:600}}>{exercise.enDef}</div>
+        <div style={{fontSize:13,color:C.tl,marginTop:6,paddingTop:6,borderTop:"1px solid #eef0f8",fontStyle:"italic"}}>
           🇨🇳 {exercise.cnDef}
         </div>
       </div>
@@ -5405,7 +5405,7 @@ function ListenPickQ({exercise, onDone}) {
           🔊
         </button>
         {/* 答案始终占位，答前透明答后显示，防止位置跳动 */}
-        <div style={{marginTop:10,fontSize:22,fontWeight:800,color:done?C.text:"transparent",minHeight:30}}>{w.word}</div>
+        <div style={{marginTop:10,fontSize:22,fontWeight:800,color:done?"#fff":"transparent",minHeight:30}}>{w.word}</div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         {exercise.options.map((opt,i) => {
@@ -5471,7 +5471,7 @@ function ListenFillQ({exercise, onDone}) {
         </button>
       </div>
       <div style={{background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
-        <div style={{fontSize:17,lineHeight:1.8,color:"#fff",fontWeight:500}}>
+        <div style={{fontSize:17,lineHeight:1.8,color:C.text,fontWeight:500}}>
           {exercise.masked.split("___").map((part,i,arr) => (
             <span key={i}>{part}{i<arr.length-1 && (
               done
@@ -5481,7 +5481,7 @@ function ListenFillQ({exercise, onDone}) {
           ))}
         </div>
         {exercise.sentCn && (
-          <div style={{fontSize:13,color:"rgba(255,255,255,0.6)",marginTop:8,paddingTop:8,borderTop:`1px solid ${C.primary}15`,fontStyle:"italic"}}>
+          <div style={{fontSize:13,color:C.tl,marginTop:8,paddingTop:8,borderTop:`1px solid #eef0f8`,fontStyle:"italic"}}>
             🇨🇳 {exercise.sentCn}
           </div>
         )}
@@ -5668,7 +5668,7 @@ function FollowReadQ({exercise, onDone}) {
 
       {/* Target sentence card */}
       <div style={{background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
-        <div style={{fontSize:16,lineHeight:1.8,color:"#fff",fontWeight:700,marginBottom:8}}>
+        <div style={{fontSize:16,lineHeight:1.8,color:C.text,fontWeight:700,marginBottom:8}}>
           {matchResult ? matchResult.map((r, i) => (
             <span key={i} style={{
               color: r.matched ? C.success : C.error,
@@ -5678,7 +5678,7 @@ function FollowReadQ({exercise, onDone}) {
             }}>{r.word} </span>
           )) : sentence}
         </div>
-        <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",borderTop:`1px solid ${C.primary}15`,paddingTop:8,fontStyle:"italic"}}>
+        <div style={{fontSize:12,color:C.tl,borderTop:"1px solid #eef0f8",paddingTop:8,fontStyle:"italic"}}>
           🇨🇳 {sentCn}
         </div>
       </div>
@@ -6075,9 +6075,9 @@ function VerbFormsQ({exercise, onDone}) {
       <div style={{textAlign:"center"}}>
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C_.secondary,fontWeight:700,marginBottom:10}}>🔀 动词变形 · Verb Forms</div>
         <div style={{padding:"18px",borderRadius:18,background:`${C.error}10`,border:`1.5px solid ${C_.secondary}22`,marginBottom:4}}>
-          <div style={{fontSize:13,color:C_.tm,marginBottom:8,fontWeight:600}}>{exercise.question}</div>
-          <div style={{fontSize:36,fontWeight:900,color:C_.text}}>{exercise.word.word}</div>
-          <div style={{fontSize:13,color:C_.tl,marginTop:4}}>{exercise.label}</div>
+          <div style={{fontSize:13,color:"#fff",marginBottom:8,fontWeight:600}}>{exercise.question}</div>
+          <div style={{fontSize:36,fontWeight:900,color:"#fff"}}>{exercise.word.word}</div>
+          <div style={{fontSize:13,color:"rgba(255,255,255,0.6)",marginTop:4}}>{exercise.label}</div>
         </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
