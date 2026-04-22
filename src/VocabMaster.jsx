@@ -46,29 +46,6 @@ const supabase = (() => {
         localStorage.removeItem("sb_refresh");
         localStorage.removeItem("sb_user");
       },
-      async resetPassword(email) {
-        const r = await fetch(`${SUPABASE_URL}/auth/v1/recover`, {
-          method:"POST", headers,
-          body: JSON.stringify({ email })
-        });
-        if (!r.ok) {
-          const d = await r.json().catch(()=>({}));
-          throw new Error(d.msg || d.error_description || "发送失败，请稍后再试");
-        }
-        return true;
-      },
-      async updatePassword(accessToken, newPassword) {
-        const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-          method:"PUT",
-          headers: { ...headers, "Authorization": `Bearer ${accessToken}` },
-          body: JSON.stringify({ password: newPassword })
-        });
-        if (!r.ok) {
-          const d = await r.json().catch(()=>({}));
-          throw new Error(d.msg || d.error_description || "密码更新失败");
-        }
-        return true;
-      },
       async refreshToken() {
         const refresh = localStorage.getItem("sb_refresh");
         if (!refresh) return false;
@@ -8016,65 +7993,17 @@ function StudentPanel({ onClose, onStartCustomQuiz }) {
 
 /* ═══ AUTH SCREEN ═══ */
 function AuthScreen({ onLogin }) {
-  const [mode, setMode] = useState("login"); // login | signup | reset | newpw
+  const [mode, setMode] = useState("login"); // login | signup
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [password2, setPassword2] = useState("");
   const [username, setUsername] = useState("");
   const [className, setClassName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [recoveryToken, setRecoveryToken] = useState("");
-
-  // 检测 URL 中的 recovery token（学员点邮件链接后跳转回来）
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (hash && hash.includes("type=recovery")) {
-      const params = new URLSearchParams(hash.replace("#","?"));
-      const token = params.get("access_token");
-      if (token) {
-        setRecoveryToken(token);
-        setMode("newpw");
-        // 清理 URL hash
-        window.history.replaceState(null, "", window.location.pathname);
-      }
-    }
-  }, []);
 
   const handle = async () => {
     setError(""); setSuccess("");
-
-    // 设置新密码模式
-    if (mode === "newpw") {
-      if (!password || password.length < 6) { setError("新密码至少6位"); return; }
-      if (password !== password2) { setError("两次密码不一致"); return; }
-      setLoading(true);
-      try {
-        await supabase.auth.updatePassword(recoveryToken, password);
-        setSuccess("密码修改成功！请用新密码登录。");
-        setMode("login");
-        setPassword(""); setPassword2(""); setRecoveryToken("");
-      } catch(e) {
-        setError(e.message);
-      } finally { setLoading(false); }
-      return;
-    }
-
-    // 发送重置邮件模式
-    if (mode === "reset") {
-      if (!email) { setError("请填写邮箱"); return; }
-      setLoading(true);
-      try {
-        await supabase.auth.resetPassword(email);
-        setSuccess("重置链接已发送到你的邮箱，请查看收件箱（含垃圾邮件）。");
-      } catch(e) {
-        setError(e.message);
-      } finally { setLoading(false); }
-      return;
-    }
-
-    // 登录/注册模式
     if (!email || !password) { setError("请填写邮箱和密码"); return; }
     if (mode === "signup" && !username) { setError("请填写昵称"); return; }
     setLoading(true);
@@ -8115,32 +8044,20 @@ function AuthScreen({ onLogin }) {
           <div style={{fontSize:13,color:"#8A8494"}}>VocabMaster · 高考英语词汇</div>
         </div>
 
-        {/* Mode toggle / header */}
-        {mode === "newpw" ? (
-          <div style={{textAlign:"center",marginBottom:24}}>
-            <div style={{fontSize:18,fontWeight:800,color:"#1A1A2E",marginBottom:6}}>🔐 设置新密码</div>
-            <div style={{fontSize:13,color:"#8A9BBF"}}>请输入你的新密码（至少6位）</div>
-          </div>
-        ) : mode === "reset" ? (
-          <div style={{textAlign:"center",marginBottom:24}}>
-            <div style={{fontSize:18,fontWeight:800,color:"#1A1A2E",marginBottom:6}}>🔑 找回密码</div>
-            <div style={{fontSize:13,color:"#8A9BBF"}}>输入注册邮箱，我们会发送重置链接</div>
-          </div>
-        ) : (
-          <div style={{display:"flex",background:"#EAE4FF",borderRadius:14,padding:4,marginBottom:24}}>
-            {[["login","登录"],["signup","注册"]].map(([m,l])=>(
-              <button key={m} onClick={()=>{setMode(m);setError("");setSuccess("");}}
-                style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
-                  background:mode===m?"#fff":"transparent",
-                  color:mode===m?"#4DB6FF":"#8A9BBF",
-                  fontWeight:mode===m?800:600,fontSize:14,
-                  boxShadow:mode===m?"0 2px 8px rgba(0,0,0,0.08)":"none",
-                  transition:"all 0.2s"}}>
-                {l}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Mode toggle */}
+        <div style={{display:"flex",background:"#EAE4FF",borderRadius:14,padding:4,marginBottom:24}}>
+          {[["login","登录"],["signup","注册"]].map(([m,l])=>(
+            <button key={m} onClick={()=>{setMode(m);setError("");setSuccess("");}}
+              style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
+                background:mode===m?"#fff":"transparent",
+                color:mode===m?"#4DB6FF":"#8A9BBF",
+                fontWeight:mode===m?800:600,fontSize:14,
+                boxShadow:mode===m?"0 2px 8px rgba(0,0,0,0.08)":"none",
+                transition:"all 0.2s"}}>
+              {l}
+            </button>
+          ))}
+        </div>
 
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {mode==="signup" && (
@@ -8151,48 +8068,12 @@ function AuthScreen({ onLogin }) {
                 onChange={e=>setClassName(e.target.value)}/>
             </>
           )}
-
-          {/* 设置新密码模式：两个密码框 */}
-          {mode==="newpw" ? (
-            <>
-              <input style={inp} type="password" placeholder="新密码（至少6位）" value={password}
-                onChange={e=>setPassword(e.target.value)}/>
-              <input style={inp} type="password" placeholder="确认新密码" value={password2}
-                onChange={e=>setPassword2(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&handle()}/>
-            </>
-          ) : mode==="reset" ? (
-            /* 找回密码模式：只有邮箱 */
-            <>
-              <input style={inp} type="email" placeholder="注册邮箱" value={email}
-                onChange={e=>setEmail(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&handle()}/>
-              <div style={{textAlign:"center",marginTop:-4}}>
-                <span onClick={()=>{setMode("login");setError("");setSuccess("");}}
-                  style={{fontSize:13,color:"#4DB6FF",cursor:"pointer",fontWeight:600}}>
-                  ← 返回登录
-                </span>
-              </div>
-            </>
-          ) : (
-            /* 登录/注册模式：邮箱+密码 */
-            <>
-              <input style={inp} type="email" placeholder="邮箱" value={email}
-                onChange={e=>setEmail(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&handle()}/>
-              <input style={inp} type="password" placeholder="密码（至少6位）" value={password}
-                onChange={e=>setPassword(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&handle()}/>
-              {mode==="login" && (
-                <div style={{textAlign:"right",marginTop:-4}}>
-                  <span onClick={()=>{setMode("reset");setError("");setSuccess("");}}
-                    style={{fontSize:13,color:"#4DB6FF",cursor:"pointer",fontWeight:600}}>
-                    忘记密码？
-                  </span>
-                </div>
-              )}
-            </>
-          )}
+          <input style={inp} type="email" placeholder="邮箱" value={email}
+            onChange={e=>setEmail(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&handle()}/>
+          <input style={inp} type="password" placeholder="密码（至少6位）" value={password}
+            onChange={e=>setPassword(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&handle()}/>
 
           {error && <div style={{fontSize:13,color:"#CC2222",background:"#FFE8E8",borderRadius:10,padding:"10px 14px",fontWeight:600}}>{error}</div>}
           {success && <div style={{fontSize:13,color:"#1A7A4A",background:"#E8FFF4",borderRadius:10,padding:"10px 14px",fontWeight:600}}>{success}</div>}
@@ -8201,12 +8082,7 @@ function AuthScreen({ onLogin }) {
             style={{background:C.grad1,border:"none",color:"#fff",
               padding:"18px",borderRadius:14,cursor:loading?"wait":"pointer",fontSize:16,fontWeight:800,
               boxShadow:"0 6px 20px rgba(255,107,53,0.3)",marginTop:4,opacity:loading?0.7:1}}>
-            {loading?"请稍候...":(
-              mode==="login"?"登录 →":
-              mode==="signup"?"注册 →":
-              mode==="reset"?"发送重置链接 →":
-              "确认修改密码 →"
-            )}
+            {loading?"请稍候...":(mode==="login"?"登录 →":"注册 →")}
           </button>
         </div>
 
@@ -8869,7 +8745,7 @@ export default function VocabMaster() {
   const filtered=VOCAB.filter(w=>{const ms=w.word.toLowerCase().includes(search.toLowerCase())||w.en.toLowerCase().includes(search.toLowerCase())||w.cn.includes(search);return ms&&(lvFilter==="all"||w.lv===lvFilter)&&(posFilter==="all"||w.pos===posFilter);});
 
   return (
-    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Nunito','Segoe UI',sans-serif",color:C.text,position:"relative"}}>
+    <div style={{minHeight:"100vh",background:C.nav,fontFamily:"'Nunito','Noto Sans SC',system-ui,sans-serif",color:C.text,position:"relative"}}>
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
       <style>{`@keyframes cfall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:0}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}*{box-sizing:border-box}button:active{transform:scale(0.96)!important}::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:rgba(255,107,53,0.2);border-radius:8px}#cal-strip::-webkit-scrollbar{display:none}#cal-strip{-ms-overflow-style:none;scrollbar-width:none}`}</style>
       <Confetti active={showConfetti}/>
@@ -8933,7 +8809,7 @@ export default function VocabMaster() {
           }}/>
       )}
       {(showGame||screen!=="play"&&screen!=="results")&&(
-        <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.nav,borderTop:"none",display:"flex",zIndex:100,boxShadow:"0 -4px 20px rgba(0,0,0,0.06)"}}>
+        <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#2249B8",borderTop:"1px solid rgba(255,255,255,0.08)",display:"flex",zIndex:100}}>
           {[
             {id:"today",icon:"🏠",label:"今日"},
             {id:"words",icon:"📖",label:"词库"},
@@ -8944,230 +8820,220 @@ export default function VocabMaster() {
           ].map(t=>(
             <button key={t.id} onClick={()=>{if(t.id==="game"){setShowGame(true);return;}setShowGame(false);setTab(t.id);if(screen!=="home")setScreen("home");}} style={{flex:1,padding:"10px 0 8px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
               <span style={{fontSize:20}}>{t.icon}</span>
-              <span style={{fontSize:11,fontWeight:700,color:(t.id==="game"?showGame:(!showGame&&tab===t.id))?"#4DB6FF":"#5A7A9A"}}>{t.label}</span>
-              {(t.id==="game"?showGame:(!showGame&&tab===t.id))&&<div style={{width:20,height:3,borderRadius:2,background:"#4DB6FF",marginTop:1}}/>}
+              <span style={{fontSize:11,fontWeight:700,color:(t.id==="game"?showGame:(!showGame&&tab===t.id))?C.gold:"rgba(255,255,255,0.4)"}}>{t.label}</span>
+              {(t.id==="game"?showGame:(!showGame&&tab===t.id))&&<div style={{width:20,height:3,borderRadius:2,background:C.gold,marginTop:1}}/>}
+            </button>
+          ))}
             </button>
           ))}
         </div>
       )}
 
       {screen==="home"&&tab==="today"&&(
-        <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
-          <div style={{textAlign:"center",marginBottom:36,animation:"slideUp 0.6s ease"}}>
-            <div style={{fontSize:48,marginBottom:8,animation:"float 3s ease-in-out infinite"}}>📚</div>
-            <div style={{fontSize:11,letterSpacing:5,textTransform:"uppercase",color:"#4DB6FF",fontWeight:800,marginBottom:8}}>高考 English</div>
-            <h1 style={{fontSize:40,fontWeight:900,lineHeight:1.1,margin:0}}>Vocab<span style={{background:C.grad1,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Master</span></h1>
-            {authUser&&(
-              <div style={{marginTop:12,display:"flex",alignItems:"center",justifyContent:"center",gap:8,flexWrap:"wrap"}}>
-                <span style={{fontSize:12,color:C.tm,fontWeight:700}}>
-                  {isTeacher?"👩‍🏫":"👤"} {profile?.username||authUser.email?.split("@")[0]}
-                </span>
-                {isTeacher&&(
-                  <button onClick={()=>setTeacherScreen("dashboard")}
-                    style={{fontSize:11,color:"#fff",background:C.secondary,border:"none",borderRadius:8,padding:"4px 12px",cursor:"pointer",fontWeight:800}}>
-                    🏫 教师端
-                  </button>
-                )}
-                <button onClick={()=>{supabase.auth.signOut();setAuthUser(null);setProfile(null);setIsTeacher(false);setMastered(new Set());setTotal(0);setBest(0);setStreak(0);}}
-                  style={{fontSize:11,color:C.tl,background:"transparent",border:"1px solid #E8EEFF",borderRadius:8,padding:"3px 8px",cursor:"pointer"}}>
-                  退出
-                </button>
+        <div style={{padding:"0 0 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
+          {/* ═══ Top bar ═══ */}
+          <div style={{padding:"14px 20px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:36,height:36,borderRadius:12,background:C.error,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:900,color:"#fff"}}>V</div>
+              <span style={{color:"#fff",fontWeight:800,fontSize:17,letterSpacing:-0.5}}>vocabmaster</span>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {(()=>{
+                const days=parseInt(localStorage.getItem("vm_streak_days")||"1");
+                return days>1?<div style={{background:C.error,borderRadius:20,padding:"5px 12px",fontSize:11,color:"#fff",fontWeight:800,display:"flex",alignItems:"center",gap:3}}>🔥 {days}天连胜</div>:null;
+              })()}
+              {isTeacher&&<button onClick={()=>setTeacherScreen("dashboard")} style={{fontSize:10,color:"#fff",background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,padding:"5px 10px",cursor:"pointer",fontWeight:800}}>🏫 教师端</button>}
+              <div style={{width:34,height:34,borderRadius:"50%",background:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:900,color:C.text}}>
+                {(profile?.username||authUser?.email?.split("@")[0]||"U")[0]}
               </div>
-            )}
+            </div>
           </div>
-          {/* ── Stats Row ── */}
+
+          {/* ═══ Hero yellow card ═══ */}
+          <div style={{padding:"18px 20px 0"}}>
+            <div style={{background:C.gold,borderRadius:28,padding:"28px 24px 20px",position:"relative",overflow:"hidden",minHeight:200}}>
+              {/* Decorations */}
+              <svg style={{position:"absolute",bottom:0,left:0,right:0,width:"100%"}} viewBox="0 0 400 50" fill="none" preserveAspectRatio="none">
+                <path d="M0 35 Q80 10 160 30 Q240 50 320 25 Q360 15 400 30 L400 50 L0 50Z" fill="rgba(255,255,255,0.2)"/>
+                <path d="M0 42 Q100 25 200 40 Q300 55 400 35 L400 50 L0 50Z" fill="rgba(255,255,255,0.15)"/>
+              </svg>
+              <svg style={{position:"absolute",left:"45%",top:18,opacity:0.25}} width="30" height="10" viewBox="0 0 30 10">
+                <path d="M0 5 Q5 0 10 5 Q15 10 20 5 Q25 0 30 5" stroke={C.primary} strokeWidth="2.5" fill="none"/>
+              </svg>
+              {/* Sun decoration */}
+              <div style={{position:"absolute",right:24,top:20}}>
+                <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="7" fill={C.error} opacity="0.6"/></svg>
+              </div>
+              {/* Small geometric blocks */}
+              <div style={{position:"absolute",left:14,bottom:28,opacity:0.25}}>
+                <svg width="20" height="20" viewBox="0 0 20 20"><rect x="0" y="10" width="8" height="8" rx="2" fill="#F9C5D1"/><rect x="10" y="4" width="8" height="8" rx="2" fill={C.primary}/></svg>
+              </div>
+              {/* Croc mascot (simple SVG) */}
+              <div style={{position:"absolute",right:8,bottom:12}}>
+                <svg width="90" height="90" viewBox="0 0 100 100" fill="none">
+                  <ellipse cx="50" cy="58" rx="32" ry="28" fill={C.primary}/>
+                  <ellipse cx="50" cy="64" rx="20" ry="16" fill="#4A7AE8"/>
+                  <circle cx="38" cy="48" r="6" fill="#fff"/><circle cx="62" cy="48" r="6" fill="#fff"/>
+                  <circle cx="40" cy="48" r="3.5" fill={C.text}/><circle cx="64" cy="48" r="3.5" fill={C.text}/>
+                  <circle cx="41.5" cy="46.5" r="1.5" fill="#fff"/><circle cx="65.5" cy="46.5" r="1.5" fill="#fff"/>
+                  <ellipse cx="50" cy="60" rx="12" ry="6" fill="#3A6AD4"/>
+                  <path d="M42 62 Q50 68 58 62" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round"/>
+                  <circle cx="32" cy="58" r="4" fill="#F9C5D1" opacity="0.5"/>
+                  <circle cx="68" cy="58" r="4" fill="#F9C5D1" opacity="0.5"/>
+                  <polygon points="36,32 40,38 32,38" fill={C.primary}/>
+                  <polygon points="50,28 54,36 46,36" fill={C.primary}/>
+                  <polygon points="64,32 68,38 60,38" fill={C.primary}/>
+                </svg>
+              </div>
+              {/* Greeting */}
+              <div style={{position:"relative",zIndex:2,marginTop:28}}>
+                <div style={{fontSize:13,color:C.error,fontWeight:700,marginBottom:6}}>
+                  {new Date().getMonth()+1}月{new Date().getDate()}日 · {new Date().getHours()<12?"早上好":new Date().getHours()<18?"下午好":"晚上好"}
+                </div>
+                <div style={{fontSize:28,fontWeight:900,color:C.text,lineHeight:1.3}}>
+                  {profile?.username||authUser?.email?.split("@")[0]||"同学"}，<br/>今天学<span style={{color:C.error}}>一点点</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ═══ Stats row ═══ */}
           {(()=>{
-            const basic = VOCAB.filter(w=>w.lv==="basic"||w.lv==="基础");
-            const mid = VOCAB.filter(w=>w.lv==="intermediate"||w.lv==="中级");
-            const adv = VOCAB.filter(w=>w.lv==="advanced"||w.lv==="高级");
-            const mastBasic = basic.filter(w=>mastered.has(w.word)).length;
-            const mastMid = mid.filter(w=>mastered.has(w.word)).length;
-            const mastAdv = adv.filter(w=>mastered.has(w.word)).length;
-            const todayStr = new Date().toDateString();
-            const lastDate = localStorage.getItem("vm_last_date");
-            const streakDays = parseInt(localStorage.getItem("vm_streak_days")||"0");
-            if(lastDate !== todayStr && mastered.size > 0){
-              const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
-              const newDays = lastDate===yesterday.toDateString() ? streakDays+1 : 1;
-              localStorage.setItem("vm_streak_days", newDays);
-              localStorage.setItem("vm_last_date", todayStr);
+            const todayStr=new Date().toDateString();
+            const lastDate=localStorage.getItem("vm_last_date");
+            const streakDays=parseInt(localStorage.getItem("vm_streak_days")||"0");
+            if(lastDate!==todayStr&&mastered.size>0){
+              const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
+              const newDays=lastDate===yesterday.toDateString()?streakDays+1:1;
+              localStorage.setItem("vm_streak_days",newDays);
+              localStorage.setItem("vm_last_date",todayStr);
             }
-            const days = parseInt(localStorage.getItem("vm_streak_days")||"1");
-            const todayAnswered = (()=>{try{return parseInt(localStorage.getItem("vm_daily_answered_"+new Date().toDateString())||"0")}catch(e){return 0}})();
+            const days=parseInt(localStorage.getItem("vm_streak_days")||"1");
+            const todayAnswered=(()=>{try{return parseInt(localStorage.getItem("vm_daily_answered_"+new Date().toDateString())||"0")}catch(e){return 0}})();
             return (
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:16,animation:"slideUp 0.7s ease"}}>
+              <div style={{display:"flex",gap:10,padding:"14px 20px 0"}}>
                 {[
-                  {icon:"🗓️",val:days,label:"连续学习",sub:"天",c:C.secondary},
-                  {icon:"⚡",val:todayAnswered,label:"今日答题",sub:"题",c:C.accent},
-                  {icon:"⭐",val:mastered.size,label:"已掌握",sub:"词",c:C.gold},
+                  {icon:"✅",val:todayAnswered,sub:"/30",label:"今日答题"},
+                  {icon:"📅",val:days,sub:" 天",label:"连续打卡"},
+                  {icon:"⭐",val:mastered.size,sub:" 词",label:"已掌握"},
                 ].map((s,i)=>(
-                  <div key={i} style={{background:C.card,borderRadius:18,padding:"16px 10px",textAlign:"center",boxShadow:"0 4px 16px rgba(0,0,0,0.04)",border:`2px solid ${s.c}18`}}>
-                    <div style={{fontSize:20}}>{s.icon}</div>
-                    <div style={{fontSize:26,fontWeight:900,color:s.c}}>{s.val}<span style={{fontSize:12,fontWeight:700,color:C.tl,marginLeft:2}}>{s.sub}</span></div>
-                    <div style={{fontSize:11,color:C.tl,fontWeight:600}}>{s.label}</div>
+                  <div key={i} style={{flex:1,background:"#fff",borderRadius:20,padding:"14px 10px",textAlign:"center"}}>
+                    <div style={{fontSize:16,marginBottom:2}}>{s.icon}</div>
+                    <div style={{fontSize:24,fontWeight:900,color:C.text}}>{s.val}<span style={{fontSize:13,fontWeight:600,color:C.tl}}>{s.sub}</span></div>
+                    <div style={{fontSize:11,color:C.tl,fontWeight:600,marginTop:1}}>{s.label}</div>
                   </div>
                 ))}
               </div>
             );
           })()}
-          {/* Calendar date picker */}
-          {(()=>{
-            const today=new Date(); today.setHours(0,0,0,0);
-            const sel=new Date(calendarDate); sel.setHours(0,0,0,0);
-            const isToday=sel.getTime()===today.getTime();
-            // Build last 14 days
-            const days=Array.from({length:14},(_,i)=>{const d=new Date(today);d.setDate(today.getDate()-13+i);return d;});
-            return (
-              <div style={{marginBottom:20}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                  <div style={{fontSize:13,fontWeight:800,color:C.tm}}>📅 {isToday?"今日词单":sel.toLocaleDateString("zh-CN",{month:"long",day:"numeric"})+" 词单"}</div>
-                  {!isToday&&<button onClick={()=>setCalendarDate(new Date())} style={{fontSize:12,fontWeight:700,color:C.primary,background:`${C.primary}10`,border:`1.5px solid ${C.primary}33`,padding:"4px 12px",borderRadius:20,cursor:"pointer"}}>回到今天</button>}
-                </div>
-                {/* Day strip - auto scroll to today, supports mouse drag + touch swipe */}
-                <div id="cal-strip" style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:6,paddingLeft:4,paddingRight:4,marginLeft:-4,marginRight:-4,marginBottom:14,scrollbarWidth:"none",WebkitOverflowScrolling:"touch",cursor:"grab",userSelect:"none"}}
-                  ref={el=>{
-                    if(!el) return;
-                    const today=el.querySelector("[data-today='1']"); if(today) today.scrollIntoView({block:"nearest",inline:"center"});
-                    // Mouse drag scroll for desktop
-                    if(!el._dragBound){
-                      el._dragBound=true;
-                      let isDown=false, startX, scrollL;
-                      el.addEventListener("mousedown",e=>{isDown=true;el.style.cursor="grabbing";startX=e.pageX-el.offsetLeft;scrollL=el.scrollLeft;e.preventDefault();});
-                      el.addEventListener("mouseleave",()=>{isDown=false;el.style.cursor="grab";});
-                      el.addEventListener("mouseup",()=>{isDown=false;el.style.cursor="grab";});
-                      el.addEventListener("mousemove",e=>{if(!isDown)return;const x=e.pageX-el.offsetLeft;el.scrollLeft=scrollL-(x-startX);});
-                    }
-                  }}>
-                  {days.map((d,i)=>{
-                    const isSel=d.toDateString()===calendarDate.toDateString();
-                    const isTd=d.toDateString()===today.toDateString();
-                    const isPast=d<today;
-                    const dayNames=["日","一","二","三","四","五","六"];
-                    return (
-                      <button key={i} data-today={isTd?"1":"0"} onClick={()=>setCalendarDate(new Date(d))} style={{flexShrink:0,width:48,minWidth:48,padding:"8px 0",borderRadius:12,border:`2px solid ${isSel?C.primary:isTd?C.primary+"44":"#E8EEFF"}`,background:isSel?C.grad1:isTd?`${C.primary}08`:"transparent",color:isSel?"#fff":isTd?C.primary:isPast?C.tm:C.tl,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                        <span style={{fontSize:10,fontWeight:600}}>{dayNames[d.getDay()]}</span>
-                        <span style={{fontSize:15,fontWeight:900}}>{d.getDate()}</span>
-                        {isTd&&!isSel&&<div style={{width:5,height:5,borderRadius:"50%",background:C.primary}}/>}
-                      </button>
-                    );
-                  })}
-                </div>
-                {/* ── 练习按钮 + 错题区 ── */}
-                {(()=>{
-                  const wrongWords = JSON.parse(localStorage.getItem("vm_wrong_words")||"[]");
-                  const wrongVocab = VOCAB.filter(w=>wrongWords.includes(w.word));
-                  const startWrongBook = () => { if(wrongVocab.length>0) startPractice(wrongVocab.slice(0,10)); };
-                  const wrongListen = JSON.parse(localStorage.getItem("vm_wrong_listen")||"[]");
-                  const wrongListenVocab = VOCAB.filter(w=>wrongListen.includes(w.word));
-                  const startListenWrong = () => { if(wrongListenVocab.length>0){ startDrill("listening"); } };
-                  const wrongDrills = JSON.parse(localStorage.getItem("vm_wrong_drills")||"[]");
-                  return (
-                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
-                      <button onClick={()=>startPractice(todayWords)} style={{background:C.grad1,border:"none",color:"#fff",padding:"15px",borderRadius:16,cursor:"pointer",fontSize:16,fontWeight:800,boxShadow:"0 4px 16px rgba(77,182,255,0.3)"}}>
-                        {calendarDate.toDateString()===new Date().toDateString()?"▶ 开始今日练习":"▶ 补学这天的词"}
-                      </button>
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                        <button onClick={startWrongBook}
-                          style={{background:wrongVocab.length>0?"linear-gradient(135deg,#FF6B6B,#FF8C5A)":C.card,
-                            border:wrongVocab.length>0?"none":`1px solid ${C.primary}22`,
-                            color:wrongVocab.length>0?"#fff":C.tl,
-                            padding:"12px 8px",borderRadius:14,cursor:wrongVocab.length>0?"pointer":"default",
-                            fontSize:13,fontWeight:800}}>
-                          📝 错题斩
-                          <div style={{fontSize:10,fontWeight:600,opacity:0.85,marginTop:2}}>
-                            {wrongVocab.length>0?`${wrongVocab.length}词待复习`:"暂无错题"}
-                          </div>
-                        </button>
-                        <button onClick={startChallenge}
-                          style={{background:C.grad2,border:"none",color:"#fff",
-                            padding:"12px 8px",borderRadius:14,cursor:"pointer",fontSize:13,fontWeight:800}}>
-                          ⚡ 挑战赛
-                          <div style={{fontSize:10,fontWeight:600,opacity:0.85,marginTop:2}}>20题 · 全词库</div>
-                        </button>
-                      </div>
 
-                      {/* P1b: 听说错题 + 语法错题入口 */}
-                      {(wrongListen.length>0 || wrongDrills.length>0) && (
-                        <div style={{display:"grid",gridTemplateColumns:wrongListen.length>0&&wrongDrills.length>0?"1fr 1fr":"1fr",gap:8}}>
-                          {wrongListen.length>0 && (
-                            <button onClick={startListenWrong}
-                              style={{background:"linear-gradient(135deg,#00B4D8,#7B61FF)",border:"none",color:"#fff",
-                                padding:"12px 8px",borderRadius:14,cursor:"pointer",fontSize:13,fontWeight:800}}>
-                              🎧 听说错题
-                              <div style={{fontSize:10,fontWeight:600,opacity:0.85,marginTop:2}}>
-                                {wrongListen.length}词待复习
-                              </div>
-                            </button>
-                          )}
-                          {wrongDrills.length>0 && (
-                            <button onClick={()=>{setTab("drills");setDrillType(null);setDrillMode(null);setDrillStage(null);}}
-                              style={{background:"linear-gradient(135deg,#9B6FFF,#FF6B6B)",border:"none",color:"#fff",
-                                padding:"12px 8px",borderRadius:14,cursor:"pointer",fontSize:13,fontWeight:800}}>
-                              ✏️ 语法错题
-                              <div style={{fontSize:10,fontWeight:600,opacity:0.85,marginTop:2}}>
-                                {wrongDrills.length}题待回顾
-                              </div>
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-                {/* Word cards for selected date */}
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {todayWords.map((w,i)=>{
-                    const done=mastered.has(w.word);
-                    return (
-                      <div key={w.word} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderRadius:16,background:done?`${C.success}10`:C.card,border:`1.5px solid ${done?C.success+"44":"#E8EEFF"}`,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-                        <div style={{width:32,height:32,borderRadius:10,background:done?`${C.success}20`:["#D8EEFF","#EAE4FF","#C8F5E0","#FFF4D4","#C8F5E0","#FFE8E8","#D8EEFF","#EAE4FF"][i],display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:done?C.success:["#4DB6FF","#9B6FFF","#3CC87A","#F8C740","#3CC87A","#FF6B6B","#4DB6FF","#9B6FFF"][i],flexShrink:0}}>{done?"✓":(i+1)}</div>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:15,fontWeight:800,color:C.text}}>{w.word}</div>
-                          <div style={{fontSize:12,color:C.tl,fontWeight:600}}>{w.cn}</div>
-                        </div>
-                        <Speak text={w.word} size={28} color={done?C.success:C.primary}/>
-                      </div>
-                    );
-                  })}
+          {/* ═══ CTA + actions ═══ */}
+          {(()=>{
+            const today=new Date();today.setHours(0,0,0,0);
+            const sel=new Date(calendarDate);sel.setHours(0,0,0,0);
+            const isToday=sel.getTime()===today.getTime();
+            const wrongWords=JSON.parse(localStorage.getItem("vm_wrong_words")||"[]");
+            const wrongVocab=VOCAB.filter(w=>wrongWords.includes(w.word));
+            const startWrongBook=()=>{if(wrongVocab.length>0)startPractice(wrongVocab.slice(0,10));};
+            return (
+              <div style={{padding:"14px 20px 0"}}>
+                {/* Main CTA */}
+                <button onClick={()=>startPractice(todayWords)} style={{width:"100%",padding:"18px 20px",borderRadius:20,background:C.error,border:"none",color:"#fff",fontSize:18,fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 8px 24px rgba(241,77,44,0.4)",marginBottom:12}}>
+                  <span style={{width:40,height:40,borderRadius:"50%",background:"rgba(255,255,255,0.2)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>▶</span>
+                  <div style={{textAlign:"left"}}>
+                    <div>{isToday?"开始今日练习":"补学这天的词"}</div>
+                    <div style={{fontSize:13,fontWeight:600,opacity:0.8,marginTop:2}}>还剩 {todayWords.length} 个词 · 预计 {Math.ceil(todayWords.length*0.7)} 分钟</div>
+                  </div>
+                  <span style={{marginLeft:"auto",fontSize:22,opacity:0.7}}>›</span>
+                </button>
+                {/* Quick actions */}
+                <div style={{display:"flex",gap:10}}>
+                  <div onClick={startWrongBook} style={{flex:1,background:"rgba(249,197,209,0.35)",borderRadius:20,padding:"18px 16px",cursor:wrongVocab.length>0?"pointer":"default"}}>
+                    <div style={{fontSize:28,marginBottom:8}}>🎯</div>
+                    <div style={{fontSize:16,fontWeight:900,color:"#fff"}}>错题斩</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",fontWeight:600}}>{wrongVocab.length>0?wrongVocab.length+"词待复习":"暂无错题"}</div>
+                  </div>
+                  <div onClick={startChallenge} style={{flex:1,background:"rgba(43,208,196,0.3)",borderRadius:20,padding:"18px 16px",cursor:"pointer"}}>
+                    <div style={{fontSize:28,marginBottom:8}}>🏆</div>
+                    <div style={{fontSize:16,fontWeight:900,color:"#fff"}}>挑战赛</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",fontWeight:600}}>20题 · 全词库</div>
+                  </div>
                 </div>
               </div>
             );
           })()}
 
-          {/* ══ 经典台词跟读入口 ══ */}
-          <div onClick={()=>setShowMovieRead(true)}
-            style={{marginBottom:20,cursor:"pointer",background:"linear-gradient(135deg,#1A1A2E,#2D1B69)",borderRadius:20,padding:"20px",display:"flex",alignItems:"center",gap:16,boxShadow:"0 4px 20px rgba(45,27,105,0.2)",transition:"transform 0.2s"}}
-            onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
-            onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
-            <div style={{fontSize:36}}>🎬</div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:15,fontWeight:800,color:"#fff",marginBottom:4}}>经典台词跟读</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>🦁 狮子王 · 🧊 冰雪奇缘 · 🧙 哈利波特</div>
+          {/* ═══ Word list ═══ */}
+          <div style={{padding:"20px 20px 0"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={{fontSize:18,fontWeight:900,color:"#fff"}}>今日词单</div>
+              <span onClick={()=>{setTab("words");}} style={{fontSize:13,color:C.gold,fontWeight:700,cursor:"pointer"}}>查看全部 ›</span>
             </div>
-            <div style={{fontSize:20,color:"rgba(255,255,255,0.4)"}}>›</div>
+            <div style={{background:"#fff",borderRadius:24,padding:"4px 0",boxShadow:"0 8px 30px rgba(0,0,0,0.12)"}}>
+              {todayWords.map((w,i)=>{
+                const done=mastered.has(w.word);
+                const bgColors=["#FFF5D8","#F9C5D133","#2BD0C433","#2E57D815","#FFE8D833","#F9C5D122","#FFF5D8","#2BD0C422"];
+                const fgColors=[C.error,C.error,"#2BD0C4",C.primary,C.error,"#F14D2C",C.gold,"#2BD0C4"];
+                return (
+                  <div key={w.word} style={{display:"flex",alignItems:"center",padding:"14px 18px",borderBottom:i<todayWords.length-1?"1px dashed #eef0f8":"none"}}>
+                    <div style={{width:40,height:40,borderRadius:14,background:done?"#2BD0C420":bgColors[i%8],display:"flex",alignItems:"center",justifyContent:"center",fontSize:done?16:15,fontWeight:900,color:done?"#2BD0C4":fgColors[i%8],flexShrink:0}}>
+                      {done?"✓":w.word[0].toUpperCase()}
+                    </div>
+                    <div style={{flex:1,marginLeft:14,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <span style={{fontSize:17,fontWeight:800,color:C.text}}>{w.word}</span>
+                        <span style={{fontSize:12,color:C.tl,fontFamily:"'JetBrains Mono',monospace"}}>{w.ph}</span>
+                      </div>
+                      <div style={{fontSize:13,color:C.tl,marginTop:2}}>{w.cn}</div>
+                    </div>
+                    <Speak text={w.word} size={34} color={C.primary}/>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          {/* ══ 英语游戏入口 ══ */}
-          <div style={{marginBottom:20}}>
-            <div style={{fontSize:14,fontWeight:800,color:"#5A7A9A",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>🎮 英语游戏</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          {/* ═══ 经典台词跟读入口 ═══ */}
+          <div style={{padding:"20px 20px 0"}}>
+            <div onClick={()=>setShowMovieRead(true)}
+              style={{cursor:"pointer",background:"rgba(255,255,255,0.1)",borderRadius:22,padding:"18px 20px",display:"flex",alignItems:"center",gap:14,border:"1.5px solid rgba(255,255,255,0.12)",transition:"transform 0.2s"}}
+              onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+              onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
+              <div style={{fontSize:32}}>🎬</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:15,fontWeight:800,color:"#fff",marginBottom:3}}>经典台词跟读</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>🦁 狮子王 · 🧊 冰雪奇缘 · 🧙 哈利波特</div>
+              </div>
+              <div style={{fontSize:20,color:"rgba(255,255,255,0.3)"}}>›</div>
+            </div>
+          </div>
+
+          {/* ═══ 英语游戏入口 ═══ */}
+          <div style={{padding:"20px 20px 0"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={{fontSize:18,fontWeight:900,color:"#fff"}}>英语游戏</div>
+              <span style={{fontSize:13,color:C.gold,fontWeight:700}}>更多游戏 ›</span>
+            </div>
+            <div style={{display:"flex",gap:12}}>
               <div onClick={()=>setShowWordJump(true)}
-                style={{cursor:"pointer",background:"linear-gradient(135deg,#1a2a4a,#2a1a3a)",borderRadius:16,padding:"16px",textAlign:"center",
-                  boxShadow:"0 4px 16px rgba(0,0,0,0.15)",transition:"transform 0.2s"}}
+                style={{flex:1,background:C.error,borderRadius:24,padding:"22px 18px",color:"#fff",cursor:"pointer",position:"relative",overflow:"hidden",minHeight:130,transition:"transform 0.2s"}}
                 onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
                 onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
-                <div style={{fontSize:32,marginBottom:6}}>🍄</div>
-                <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>单词跳跳</div>
-                <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginTop:2}}>撞砖块学单词</div>
+                <div style={{position:"absolute",right:-10,top:-10,opacity:0.12,fontSize:80}}>🍄</div>
+                <div style={{fontSize:36,marginBottom:10,position:"relative",zIndex:1}}>🍄</div>
+                <div style={{fontSize:17,fontWeight:900,position:"relative",zIndex:1}}>单词跳跳</div>
+                <div style={{fontSize:11,fontWeight:700,opacity:0.7,letterSpacing:1.5,marginTop:2}}>WORD JUMP</div>
+                <div style={{fontSize:12,marginTop:6,opacity:0.7}}>超级马里奥风格</div>
               </div>
               <div onClick={()=>setShowWordSlice(true)}
-                style={{cursor:"pointer",background:"linear-gradient(135deg,#2a0a2e,#1a1a3e)",borderRadius:16,padding:"16px",textAlign:"center",
-                  boxShadow:"0 4px 16px rgba(0,0,0,0.15)",transition:"transform 0.2s"}}
+                style={{flex:1,background:C.accent,borderRadius:24,padding:"22px 18px",color:"#fff",cursor:"pointer",position:"relative",overflow:"hidden",minHeight:130,transition:"transform 0.2s"}}
                 onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
                 onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
-                <div style={{fontSize:32,marginBottom:6}}>🍉</div>
-                <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>切水果</div>
-                <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginTop:2}}>滑动切单词</div>
+                <div style={{position:"absolute",right:-10,top:-10,opacity:0.12,fontSize:80}}>🍉</div>
+                <div style={{fontSize:36,marginBottom:10,position:"relative",zIndex:1}}>🍉</div>
+                <div style={{fontSize:17,fontWeight:900,position:"relative",zIndex:1}}>切水果</div>
+                <div style={{fontSize:11,fontWeight:700,opacity:0.7,letterSpacing:1.5,marginTop:2}}>WORD SLICE</div>
+                <div style={{fontSize:12,marginTop:6,opacity:0.7}}>滑动消除学单词</div>
               </div>
             </div>
           </div>
