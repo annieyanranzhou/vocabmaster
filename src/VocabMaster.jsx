@@ -5850,7 +5850,7 @@ function MovieReadScreen({ onClose }) {
   // Movie selection screen
   if (!selectedMovie) {
     return (
-      <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",padding:"24px 16px"}}>
+      <div style={{minHeight:"100vh",background:C.primary,fontFamily:"system-ui,sans-serif",padding:"24px 16px"}}>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
           <button onClick={onClose} style={{background:C.card,border:"2px solid #ffd4d4",color:C.error,padding:"8px 14px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>✕</button>
           <div>
@@ -5939,46 +5939,46 @@ function MovieReadScreen({ onClose }) {
   };
 
   return (
-    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",padding:"20px 16px 100px"}}>
+    <div style={{minHeight:"100vh",background:C.primary,fontFamily:"system-ui,sans-serif",padding:"20px 16px 100px"}}>
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
-        <button onClick={()=>setSelectedMovie(null)} style={{background:C.card,border:`2px solid ${movie.color}33`,color:movie.color,padding:"8px 14px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>← 返回</button>
+        <button onClick={()=>setSelectedMovie(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",padding:"8px 14px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>← 返回</button>
         <div style={{flex:1}}>
           <div style={{fontSize:16,fontWeight:800,color:"#fff"}}>{movie.emoji} {movie.name}</div>
           <div style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>{lineIdx+1} / {movie.lines.length}</div>
         </div>
-        <button onClick={onClose} style={{background:"none",border:"1px solid #ccc",color:"rgba(255,255,255,0.6)",padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:11}}>✕ 关闭</button>
+        <button onClick={onClose} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"rgba(255,255,255,0.6)",padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:11}}>✕ 关闭</button>
       </div>
 
       {/* Progress bar */}
-      <div style={{height:4,background:`${movie.color}15`,borderRadius:4,marginBottom:24,overflow:"hidden"}}>
-        <div style={{height:"100%",width:`${((lineIdx+1)/movie.lines.length)*100}%`,background:movie.color,borderRadius:4,transition:"width 0.4s ease"}}/>
+      <div style={{height:4,background:"rgba(255,255,255,0.15)",borderRadius:4,marginBottom:24,overflow:"hidden"}}>
+        <div style={{height:"100%",width:`${((lineIdx+1)/movie.lines.length)*100}%`,background:C.gold,borderRadius:4,transition:"width 0.4s ease"}}/>
       </div>
 
       {/* Quote card */}
-      <div style={{background:C.card,borderRadius:20,overflow:"hidden",border:`2px solid ${movie.color}22`,boxShadow:"0 4px 20px rgba(0,0,0,0.06)",marginBottom:20,maxWidth:460,margin:"0 auto 20px"}}>
+      <div style={{background:"#fff",borderRadius:20,overflow:"hidden",boxShadow:"0 8px 30px rgba(0,0,0,0.12)",marginBottom:20,maxWidth:460,margin:"0 auto 20px"}}>
         {/* Character header */}
-        <div style={{padding:"14px 18px",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{padding:"14px 18px",background:C.gold+"18",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:24}}>{movie.emoji}</span>
             <div>
-              <div style={{fontSize:13,fontWeight:700,color:"#fff"}}>{currentLine.character}</div>
-              <div style={{fontSize:10,color:"rgba(255,255,255,0.5)"}}>{movie.cn}</div>
+              <div style={{fontSize:13,fontWeight:700,color:C.text}}>{currentLine.character}</div>
+              <div style={{fontSize:10,color:C.tl}}>{movie.cn}</div>
             </div>
           </div>
           <div style={{display:"flex",gap:3}}>
-            {[1,2,3].map(s=><span key={s} style={{fontSize:10,color:s<=currentLine.difficulty?"#F8C740":"rgba(255,255,255,0.2)"}}>★</span>)}
+            {[1,2,3].map(s=><span key={s} style={{fontSize:10,color:s<=currentLine.difficulty?C.gold:"#ddd"}}>★</span>)}
           </div>
         </div>
 
         {/* Quote text */}
         <div style={{padding:"20px 18px"}}>
-          <div style={{fontSize:16,lineHeight:1.8,fontWeight:700,color:"#fff",marginBottom:10,fontStyle:"italic"}}>
+          <div style={{fontSize:16,lineHeight:1.8,fontWeight:700,color:C.text,marginBottom:10,fontStyle:"italic"}}>
             {matchResult ? matchResult.map((r,i) => (
               <span key={i} style={{color:r.matched?C.success:C.error,textDecoration:r.matched?"none":"underline wavy",fontWeight:r.matched?700:800,marginRight:3}}>{r.word} </span>
             )) : `"${currentLine.line}"`}
           </div>
-          <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",fontStyle:"italic",borderTop:`1px solid ${movie.color}15`,paddingTop:10}}>
+          <div style={{fontSize:12,color:C.tl,fontStyle:"italic",borderTop:"1px solid #eef0f8",paddingTop:10}}>
             🇨🇳 {currentLine.cnLine}
           </div>
         </div>
@@ -6010,14 +6010,14 @@ function MovieReadScreen({ onClose }) {
           {phase==="result"&&(
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               <div style={{padding:"6px 14px",borderRadius:12,
-                background:score>=80?`${C.success}15`:score>=60?"#FFF4D4":`${C.error}10`,
+                background:score>=80?`${C.success}15`:score>=60?C.gold+"15":`${C.error}10`,
                 border:`1.5px solid ${score>=80?C.success+"44":score>=60?C.gold+"44":C.error+"44"}`}}>
                 <span style={{fontSize:18,fontWeight:900,color:score>=80?C.success:score>=60?C.gold:C.error}}>{score}%</span>
-                <span style={{fontSize:11,color:"rgba(255,255,255,0.6)",marginLeft:4}}>{score>=80?"太棒了!":score>=60?"不错!":"再试试"}</span>
+                <span style={{fontSize:11,color:C.tl,marginLeft:4}}>{score>=80?"太棒了!":score>=60?"不错!":"再试试"}</span>
               </div>
               <button onClick={()=>{setPhase("idle");setMatchResult(null);setRecognized("");setScore(0);stoppedRef.current=false;}}
-                style={{padding:"10px 14px",borderRadius:14,background:C.card,border:"1.5px solid #E8EEFF",
-                  color:"rgba(255,255,255,0.8)",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                style={{padding:"10px 14px",borderRadius:14,background:"#f0f2f8",border:"none",
+                  color:C.text,cursor:"pointer",fontSize:12,fontWeight:700}}>
                 🔄 再试
               </button>
             </div>
@@ -6027,7 +6027,7 @@ function MovieReadScreen({ onClose }) {
         {/* Recognition text */}
         {recording && recognized && (
           <div style={{padding:"0 18px 14px"}}>
-            <div style={{fontSize:12,color:"rgba(255,255,255,0.8)",padding:"8px 12px",background:"#f8f8ff",borderRadius:10,fontStyle:"italic"}}>
+            <div style={{fontSize:12,color:C.tl,padding:"8px 12px",background:"#f8f8ff",borderRadius:10,fontStyle:"italic"}}>
               识别中：{recognized}
             </div>
           </div>
@@ -6037,16 +6037,16 @@ function MovieReadScreen({ onClose }) {
       {/* Navigation */}
       <div style={{display:"flex",gap:10,justifyContent:"center",maxWidth:460,margin:"0 auto"}}>
         <button onClick={goPrev} disabled={lineIdx===0}
-          style={{flex:1,padding:"14px",borderRadius:14,background:C.card,border:"2px solid #E8EEFF",
-            color:lineIdx===0?"#ccc":C.tm,cursor:lineIdx===0?"default":"pointer",fontSize:14,fontWeight:700,
+          style={{flex:1,padding:"14px",borderRadius:14,background:"rgba(255,255,255,0.12)",border:"none",
+            color:lineIdx===0?"rgba(255,255,255,0.3)":"#fff",cursor:lineIdx===0?"default":"pointer",fontSize:14,fontWeight:700,
             opacity:lineIdx===0?0.4:1}}>
           ‹ 上一条
         </button>
         <button onClick={goNext} disabled={lineIdx+1>=movie.lines.length}
           style={{flex:1,padding:"14px",borderRadius:14,
-            background:lineIdx+1>=movie.lines.length?C.card:`linear-gradient(135deg,${movie.color},${movie.color}cc)`,
-            border:lineIdx+1>=movie.lines.length?"2px solid #E8EEFF":"none",
-            color:lineIdx+1>=movie.lines.length?"#ccc":"#fff",cursor:lineIdx+1>=movie.lines.length?"default":"pointer",
+            background:lineIdx+1>=movie.lines.length?"rgba(255,255,255,0.08)":C.gold,
+            border:"none",
+            color:lineIdx+1>=movie.lines.length?"rgba(255,255,255,0.3)":"#fff",cursor:lineIdx+1>=movie.lines.length?"default":"pointer",
             fontSize:14,fontWeight:800,opacity:lineIdx+1>=movie.lines.length?0.4:1}}>
           下一条 ›
         </button>
@@ -9062,7 +9062,7 @@ export default function VocabMaster() {
           <div style={{height:8,background:"rgba(255,255,255,0.15)",borderRadius:8,marginBottom:wrongQueue.length>0?6:18,overflow:"hidden"}}><div style={{height:"100%",width:`${prog}%`,background:C.gold,borderRadius:8,transition:"width 0.4s ease"}}/></div>
           {wrongQueue.length>0&&!challengeMode&&(
             <div style={{fontSize:11,color:C.error,fontWeight:700,textAlign:"center",marginBottom:14,background:`${C.error}10`,borderRadius:8,padding:"4px 10px"}}>
-              🔁 {wrongQueue.length} 题答错，做完后会重复练习
+              🔁 {wrongQueue.length} 题待巩固，做完后再练一遍
             </div>
           )}
           <div style={{textAlign:"center",marginBottom:16}}>
@@ -9804,7 +9804,7 @@ export default function VocabMaster() {
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                       <div>
                         <div style={{fontSize:15,fontWeight:800,color:drillSel===(q.a||q.answer)?C.accent:C.error}}>
-                          {drillSel===(q.a||q.answer)?"✓ 正确！":"✗ 答错了"}
+                          {drillSel===(q.a||q.answer)?"✓ 正确！":"💪 再想想哦"}
                           {drillSel!==(q.a||q.answer)&&<span style={{fontFamily:"'JetBrains Mono',monospace",marginLeft:6}}>→ {q.a||q.answer}</span>}
                         </div>
                         <div style={{fontSize:13,color:drillSel===(q.a||q.answer)?C.accent:"rgba(255,255,255,0.7)",marginTop:2}}>💡 {q.tip||""}</div>
