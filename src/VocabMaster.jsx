@@ -4874,11 +4874,11 @@ function WordFamilyQ({exercise,onDone}) {
       <div style={{textAlign:"center"}}>
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.gold,fontWeight:700,marginBottom:10}}>🔤 Word Family</div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
-          <div style={{fontSize:34,fontWeight:800}}>{w.word}</div><Speak text={w.word} size={36} color={C.secondary}/>
+          <div style={{fontSize:34,fontWeight:900,color:"#fff"}}>{w.word}</div><Speak text={w.word} size={36} color={C.secondary}/>
         </div>
         <div style={{fontSize:17,color:"rgba(255,255,255,0.8)",marginTop:10,lineHeight:1.6}}>What is the <strong style={{color:C.gold}}>{exercise.targetType}</strong> form?</div>
       </div>
-      {done&&<div style={{textAlign:"center",padding:"10px 16px",background:`${C.lav}`,borderRadius:14,border:`1.5px solid ${C.secondary}33`,animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:C.gold,fontWeight:600}}>✨ {exercise.targetType}: {exercise.targetForm}</span></div>}
+      {done&&<div style={{textAlign:"center",padding:"10px 16px",background:"rgba(255,255,255,0.12)",borderRadius:14,border:"1.5px solid rgba(255,255,255,0.2)",animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:C.gold,fontWeight:600}}>✨ {exercise.targetType}: {exercise.targetForm}</span></div>}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.targetForm;let bg="#fff",bd="2px solid #eef0f8",cl=C.text;
           if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
@@ -4908,10 +4908,10 @@ function SynAntQ({exercise,onDone}) {
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.gold,fontWeight:700,marginBottom:10}}>🔗 Synonym</div>
         <div style={{fontSize:16,color:"rgba(255,255,255,0.8)",lineHeight:1.6}}>{exercise.question}</div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginTop:8}}>
-          <span style={{fontSize:28,fontWeight:800}}>{w.word}</span><Speak text={w.word} size={32} color={C.gold}/>
+          <span style={{fontSize:28,fontWeight:900,color:"#fff"}}>{w.word}</span><Speak text={w.word} size={32} color={C.gold}/>
         </div>
       </div>
-      {done&&<div style={{textAlign:"center",padding:"10px 16px",background:"#FFF8E8",borderRadius:14,border:`1.5px solid ${C.gold}44`,animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:C.gold,fontWeight:600}}>🇨🇳 {w.cn} · synonyms: {w.syn?.join(", ")}</span></div>}
+      {done&&<div style={{textAlign:"center",padding:"10px 16px",background:"rgba(255,255,255,0.12)",borderRadius:14,border:"1.5px solid rgba(255,255,255,0.2)",animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:C.gold,fontWeight:600}}>🇨🇳 {w.cn} · synonyms: {w.syn?.join(", ")}</span></div>}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.correct;let bg="#fff",bd="2px solid #eef0f8",cl=C.text;
           if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
@@ -4960,7 +4960,7 @@ function ErrorSpotQ({exercise,onDone}) {
         </div>
       </div>
       {found&&(
-        <div style={{textAlign:"center",padding:"12px 16px",background:`${C.success}08`,borderRadius:14,border:`1.5px solid ${C.success}33`,animation:"slideUp 0.3s ease"}}>
+        <div style={{textAlign:"center",padding:"12px 16px",background:"rgba(255,255,255,0.12)",borderRadius:14,border:"1.5px solid rgba(255,255,255,0.2)",animation:"slideUp 0.3s ease"}}>
           <div style={{fontSize:15,fontWeight:700,color:C.success}}>✅ Correct word: {exercise.correctWord}</div>
           <div style={{fontSize:13,color:"rgba(255,255,255,0.8)",marginTop:4}}>🇨🇳 {w.cn} · {w.en}</div>
         </div>
@@ -4995,13 +4995,13 @@ function PhraseCompleteQ({exercise,onDone}) {
         })}
       </div>
       {done&&(
-        <div style={{background:`${C.accent}08`,borderRadius:16,padding:"16px",border:`1.5px solid ${C.accent}22`,animation:"slideUp 0.3s ease"}}>
+        <div style={{background:"rgba(255,255,255,0.1)",borderRadius:16,padding:"16px",border:"1.5px solid rgba(255,255,255,0.2)",animation:"slideUp 0.3s ease"}}>
           <div style={{fontSize:15,fontWeight:700,color:C.accent,marginBottom:8}}>✨ {exercise.phraseFull}</div>
-          <div style={{fontSize:14,color:"rgba(255,255,255,0.8)",lineHeight:1.6,fontStyle:"italic",display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
+          <div style={{fontSize:14,color:"#fff",lineHeight:1.6,fontStyle:"italic",display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
             <span>"{exercise.phraseSent}"</span><Speak text={exercise.phraseSent} rate={0.82} size={28} color={C.accent}/>
           </div>
           {exercise.phraseSentCn&&(
-            <div style={{fontSize:13,color:"#8a7000",fontWeight:600,background:"rgba(255,220,50,0.12)",padding:"6px 12px",borderRadius:10,border:"1px solid rgba(255,200,0,0.2)"}}>
+            <div style={{fontSize:13,color:C.gold,fontWeight:600,background:"rgba(255,185,60,0.15)",padding:"6px 12px",borderRadius:10,border:"1px solid rgba(255,185,60,0.25)"}}>
               🇨🇳 {exercise.phraseSentCn}
             </div>
           )}
@@ -5218,7 +5218,7 @@ function SentBuildQ({exercise, onDone}) {
     <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",maxWidth:440}}>
       <div style={{textAlign:"center"}}>
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C_.secondary,fontWeight:700,marginBottom:8}}>🔤 造句 · Build the Sentence</div>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"14px 16px",borderRadius:16,background:`${C.error}12`,border:`1.5px solid ${C_.secondary}22`}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"14px 16px",borderRadius:16,background:"rgba(255,255,255,0.12)",border:"1.5px solid rgba(255,255,255,0.2)"}}>
           <div style={{fontSize:20}}>🧑‍💼</div>
           <div style={{fontSize:14,color:"#fff",fontWeight:600}}>{exercise.cn}</div>
         </div>
@@ -5226,7 +5226,7 @@ function SentBuildQ({exercise, onDone}) {
 
       {/* LISTEN phase */}
       {phase==="listen"&&(
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,padding:"28px 20px",borderRadius:20,background:`${C.error}10`,border:`2px solid ${C_.secondary}22`,animation:"slideUp 0.3s ease"}}>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,padding:"28px 20px",borderRadius:20,background:"rgba(255,255,255,0.08)",border:"2px solid rgba(255,255,255,0.15)",animation:"slideUp 0.3s ease"}}>
           <div style={{fontSize:13,color:"#fff",fontWeight:600}}>👂 先听句子，再来造句</div>
           <div style={{width:72,height:72,borderRadius:"50%",background:playing?C.primary:`${C.primary}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,cursor:"pointer",transition:"all 0.3s",boxShadow:playing?`0 8px 24px ${C_.secondary}44`:"none",animation:playing?"pulse 1s ease-in-out infinite":"none"}}
             onClick={()=>{if(!playing){setPlaying(true);speak(exercise.sentence,0.82).then(()=>setPlaying(false));}}}>
@@ -5259,7 +5259,7 @@ function SentBuildQ({exercise, onDone}) {
             </button>
           </div>
           {/* Answer area */}
-          <div style={{minHeight:56,padding:"10px 12px",borderRadius:14,border:`2px dashed ${done?(wrong?C_.error:C_.success):C_.primary}55`,background:done?(wrong?`${C_.error}08`:`${C_.success}08`):`${C_.primary}05`,display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
+          <div style={{minHeight:56,padding:"10px 12px",borderRadius:14,border:`2px dashed ${done?(wrong?C_.error:C_.success):"rgba(255,255,255,0.35)"}`,background:done?(wrong?`${C_.error}12`:`${C_.success}12`):"rgba(255,255,255,0.06)",display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
             {placed.length===0
               ? <div style={{color:"rgba(255,255,255,0.5)",fontSize:13,width:"100%",textAlign:"center"}}>点击下方单词，按顺序组成句子</div>
               : placed.map((w,i)=>(
