@@ -4681,31 +4681,31 @@ function LearnCard({exercise,onDone}) {
 
       {step===0&&(
         <div onClick={nextStep} style={{width:"100%",borderRadius:24,cursor:"pointer",background:C.gold,padding:"36px 24px",display:"flex",flexDirection:"column",alignItems:"center",gap:14,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.primary}33`}}>
-          <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:C.primary,fontWeight:800}}>📖 Word</div>
-          <div style={{fontSize:48,fontWeight:900,color:"#fff",fontFamily:"'Nunito',sans-serif"}}>{w.word}</div>
-          <div style={{fontSize:19,color:C.secondary,fontFamily:"'JetBrains Mono',monospace"}}>{w.ph}</div>
+          <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:C.error,fontWeight:800}}>📖 Word</div>
+          <div style={{fontSize:48,fontWeight:900,color:C.text,fontFamily:"'Nunito',sans-serif"}}>{w.word}</div>
+          <div style={{fontSize:19,color:"#666",fontFamily:"'JetBrains Mono',monospace"}}>{w.ph}</div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <Speak text={w.word} size={44} color={C.primary}/>
-            <button onClick={e=>{e.stopPropagation();speak(w.word,0.5);}} style={{background:C.mint,border:"none",color:"#fff",padding:"5px 14px",borderRadius:20,cursor:"pointer",fontSize:12,fontWeight:700}}>🐢</button>
-            <button onClick={e=>{e.stopPropagation();speak(w.word,1.1);}} style={{background:C.sky,border:"none",color:"#fff",padding:"5px 14px",borderRadius:20,cursor:"pointer",fontSize:12,fontWeight:700}}>🐇</button>
+            <button onClick={e=>{e.stopPropagation();speak(w.word,0.5);}} style={{background:C.mint,border:"none",color:C.text,padding:"5px 14px",borderRadius:20,cursor:"pointer",fontSize:12,fontWeight:700}}>🐢</button>
+            <button onClick={e=>{e.stopPropagation();speak(w.word,1.1);}} style={{background:C.sky,border:"none",color:C.text,padding:"5px 14px",borderRadius:20,cursor:"pointer",fontSize:12,fontWeight:700}}>🐇</button>
           </div>
-          <div style={{fontSize:17,color:"#fff",lineHeight:1.6,textAlign:"center"}}>{w.en}</div>
-          <div style={{fontSize:17,color:C.gold,fontWeight:700,padding:"8px 20px",background:"#FFF8E8",borderRadius:14,border:`1.5px solid ${C.gold}44`}}>🇨🇳 {w.cn}</div>
-          <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",marginTop:6,letterSpacing:1}}>👆 tap for phrases →</div>
+          <div style={{fontSize:17,color:C.text,lineHeight:1.6,textAlign:"center"}}>{w.en}</div>
+          <div style={{fontSize:17,color:C.error,fontWeight:700,padding:"8px 20px",background:"rgba(255,255,255,0.7)",borderRadius:14}}>🇨🇳 {w.cn}</div>
+          <div style={{fontSize:12,color:"rgba(0,0,0,0.4)",marginTop:6,letterSpacing:1}}>👆 tap for phrases →</div>
         </div>
       )}
 
       {step===1&&(
-        <div style={{width:"100%",borderRadius:24,background:"#fff",padding:"32px 22px",display:"flex",flexDirection:"column",alignItems:"center",gap:16,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.secondary}33`,animation:"slideUp 0.4s ease"}}>
-          <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:C.gold,fontWeight:800}}>💬 Phrases</div>
-          <div style={{fontSize:26,fontWeight:800,color:C.gold}}>{w.word}</div>
+        <div style={{width:"100%",borderRadius:24,background:"#fff",padding:"32px 22px",display:"flex",flexDirection:"column",alignItems:"center",gap:16,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.primary}22`,animation:"slideUp 0.4s ease"}}>
+          <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:C.error,fontWeight:800}}>💬 Phrases</div>
+          <div style={{fontSize:26,fontWeight:800,color:C.primary}}>{w.word}</div>
           <div style={{display:"flex",flexDirection:"column",gap:10,width:"100%"}}>
             {w.phrases.map((p,i)=>(
               <div key={i} style={{borderRadius:16,overflow:"hidden",border:`2px solid ${[C.primary,C.accent,C.gold][i]}22`,background:`${[C.primary,C.accent,C.gold][i]}06`}}>
                 <div onClick={e=>{e.stopPropagation();speak(p.phrase);setPhraseIdx(i);setShowPhraseSent(false);}}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"14px 18px",cursor:"pointer"}}>
                   <Speak text={p.phrase} size={30} color={[C.primary,C.accent,C.gold][i]}/>
-                  <span style={{fontSize:20,fontWeight:700,color:"#fff",fontFamily:"'Nunito',sans-serif"}}>{p.phrase}</span>
+                  <span style={{fontSize:20,fontWeight:700,color:C.text,fontFamily:"'Nunito',sans-serif"}}>{p.phrase}</span>
                 </div>
                 {phraseIdx===i&&(
                   <div style={{padding:"0 18px 16px",animation:"slideUp 0.3s ease"}}>
@@ -4717,7 +4717,7 @@ function LearnCard({exercise,onDone}) {
                     ):(
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
                         <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                          <div style={{fontSize:15,color:"#fff",lineHeight:1.7,fontStyle:"italic",flex:1}}>"{p.sent}"</div>
+                          <div style={{fontSize:15,color:C.text,lineHeight:1.7,fontStyle:"italic",flex:1}}>"{p.sent}"</div>
                           <Speak text={p.sent} rate={0.82} size={30} color={[C.primary,C.accent,C.gold][i]}/>
                         </div>
                         <div style={{fontSize:13,color:"#8a7000",fontWeight:600,background:"rgba(255,220,50,0.12)",padding:"5px 12px",borderRadius:10,border:"1px solid rgba(255,200,0,0.2)"}}>🇨🇳 {p.sentCn}</div>
@@ -4728,7 +4728,7 @@ function LearnCard({exercise,onDone}) {
               </div>
             ))}
           </div>
-          <button onClick={e=>{e.stopPropagation();nextStep();}} style={{background:`${C.secondary}12`,border:`2px solid ${C.secondary}33`,color:C.secondary,padding:"10px 28px",borderRadius:16,cursor:"pointer",fontSize:14,fontWeight:700,marginTop:4}}>
+          <button onClick={e=>{e.stopPropagation();nextStep();}} style={{background:C.error,border:"none",color:"#fff",padding:"10px 28px",borderRadius:16,cursor:"pointer",fontSize:14,fontWeight:700,marginTop:4}}>
             Continue to Sentence →
           </button>
         </div>
@@ -4736,20 +4736,20 @@ function LearnCard({exercise,onDone}) {
 
       {step===2&&(
         <div onClick={nextStep} style={{width:"100%",borderRadius:24,cursor:"pointer",background:C.gold,padding:"36px 24px",display:"flex",flexDirection:"column",alignItems:"center",gap:16,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.accent}33`,animation:"slideUp 0.4s ease"}}>
-          <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:"#3CC87A",fontWeight:800}}>📝 Sentence</div>
-          <div style={{fontSize:24,fontWeight:800,color:"#3CC87A"}}>{w.word}</div>
-          <div style={{fontSize:20,color:"#fff",lineHeight:1.8,textAlign:"center",fontWeight:500,maxWidth:400}}>"{w.ex}"</div>
-          <div style={{fontSize:15,color:"#8a7000",fontWeight:600,background:"rgba(255,220,50,0.15)",padding:"8px 18px",borderRadius:12,border:"1.5px solid rgba(255,200,0,0.25)",textAlign:"center",maxWidth:380}}>🇨🇳 {w.cn} — {w.en}</div>
-          <Speak text={w.ex} rate={0.82} size={44} color={C.accent}/>
-          <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",letterSpacing:1}}>👆 tap to continue</div>
+          <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:C.accent,fontWeight:800}}>📝 Sentence</div>
+          <div style={{fontSize:24,fontWeight:800,color:C.accent}}>{w.word}</div>
+          <div style={{fontSize:20,color:C.text,lineHeight:1.8,textAlign:"center",fontWeight:500,maxWidth:400}}>"{w.ex}"</div>
+          <div style={{fontSize:15,color:C.error,fontWeight:600,background:"rgba(255,255,255,0.7)",padding:"8px 18px",borderRadius:12,textAlign:"center",maxWidth:380}}>🇨🇳 {w.cn} — {w.en}</div>
+          <Speak text={w.ex} rate={0.82} size={44} color={C.primary}/>
+          <div style={{fontSize:12,color:"rgba(0,0,0,0.4)",letterSpacing:1}}>👆 tap to continue</div>
         </div>
       )}
 
       {step===3&&(
         <div style={{width:"100%",borderRadius:24,background:"#fff",padding:"32px 28px",display:"flex",flexDirection:"column",alignItems:"center",gap:14,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.success}33`,animation:"slideUp 0.4s ease"}}>
-          <div style={{fontSize:32,fontWeight:900,color:"#fff"}}>{w.word}</div>
-          <div style={{fontSize:15,color:"rgba(255,255,255,0.8)",textAlign:"center"}}>{w.en}</div>
-          <div style={{fontSize:15,color:C.gold,fontWeight:700}}>🇨🇳 {w.cn}</div>
+          <div style={{fontSize:32,fontWeight:900,color:C.text}}>{w.word}</div>
+          <div style={{fontSize:15,color:C.tl,textAlign:"center"}}>{w.en}</div>
+          <div style={{fontSize:15,color:C.error,fontWeight:700}}>🇨🇳 {w.cn}</div>
           <div style={{display:"flex",gap:12,marginTop:8}}>
             <button onClick={()=>onDone(false)} style={{background:`${C.error}12`,border:`2px solid ${C.error}44`,color:C.error,padding:"12px 26px",borderRadius:16,cursor:"pointer",fontSize:15,fontWeight:700}}>🔄 Still Learning</button>
             <button onClick={()=>onDone(true)} style={{background:`${C.success}12`,border:`2px solid ${C.success}44`,color:C.success,padding:"12px 26px",borderRadius:16,cursor:"pointer",fontSize:15,fontWeight:700}}>✅ Got It!</button>
@@ -4880,7 +4880,7 @@ function WordFamilyQ({exercise,onDone}) {
       </div>
       {done&&<div style={{textAlign:"center",padding:"10px 16px",background:`${C.lav}`,borderRadius:14,border:`1.5px solid ${C.secondary}33`,animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:C.gold,fontWeight:600}}>✨ {exercise.targetType}: {exercise.targetForm}</span></div>}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.targetForm;let bg=`${oc[i]}10`,bd=`2px solid ${oc[i]}33`,cl=C.text;
+        {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.targetForm;let bg="#fff",bd="2px solid #eef0f8",cl=C.text;
           if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
           return <button key={i} onClick={()=>go(opt)} style={{background:bg,border:bd,color:cl,padding:"12px 16px",borderRadius:14,cursor:done?"default":"pointer",fontSize:16,fontWeight:700,transition:"all 0.2s"}}>{opt}</button>;
         })}
@@ -4913,7 +4913,7 @@ function SynAntQ({exercise,onDone}) {
       </div>
       {done&&<div style={{textAlign:"center",padding:"10px 16px",background:"#FFF8E8",borderRadius:14,border:`1.5px solid ${C.gold}44`,animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:C.gold,fontWeight:600}}>🇨🇳 {w.cn} · synonyms: {w.syn?.join(", ")}</span></div>}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.correct;let bg=`${oc[i]}10`,bd=`2px solid ${oc[i]}33`,cl=C.text;
+        {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.correct;let bg="#fff",bd="2px solid #eef0f8",cl=C.text;
           if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
           return <button key={i} onClick={()=>go(opt)} style={{background:bg,border:bd,color:cl,padding:"12px 16px",borderRadius:14,cursor:done?"default":"pointer",fontSize:16,fontWeight:700,transition:"all 0.2s"}}>{opt}</button>;
         })}
@@ -4989,7 +4989,7 @@ function PhraseCompleteQ({exercise,onDone}) {
         <div style={{fontSize:28,fontWeight:800,color:"#fff"}}>{exercise.answerBeforeMain ? <><span style={{color:C.primary}}>?</span>{" + "}{exercise.mainWord}</> : <>{exercise.mainWord}{" + "}<span style={{color:C.primary}}>?</span></>}</div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.answer;let bg=`${oc[i]}10`,bd=`2px solid ${oc[i]}33`,cl=C.text;
+        {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.answer;let bg="#fff",bd="2px solid #eef0f8",cl=C.text;
           if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
           return <button key={i} onClick={()=>go(opt)} style={{background:bg,border:bd,color:cl,padding:"12px 16px",borderRadius:14,cursor:done?"default":"pointer",fontSize:16,fontWeight:700,transition:"all 0.2s"}}>{exercise.answerBeforeMain ? `${opt} ${exercise.mainWord}` : `${exercise.mainWord} ${opt}`}</button>;
         })}
@@ -5150,7 +5150,7 @@ function DialogueQ({exercise, onDone}) {
       <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
         {exercise.options.map((opt,i)=>{
           const it=sel===opt, ic=opt===exercise.correct;
-          let bg=`${oc[i%4]}10`, bd=`2px solid ${oc[i%4]}33`, cl=C_.text;
+          let bg="#fff", bd="2px solid #eef0f8", cl=C.text;
           if(done&&ic){bg=`${C_.success}18`;bd=`2px solid ${C_.success}`;cl=C_.success;}
           else if(done&&it&&!ic){bg=`${C_.error}12`;bd=`2px solid ${C_.error}`;cl=C_.error;}
           return (
@@ -6083,7 +6083,7 @@ function VerbFormsQ({exercise, onDone}) {
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         {exercise.options.map((opt,i)=>{
           const it=sel===opt, ic=opt===exercise.correct;
-          let bg=`${oc[i%4]}10`, bd=`2px solid ${oc[i%4]}33`, cl=C_.text;
+          let bg="#fff", bd="2px solid #eef0f8", cl=C.text;
           if(done&&ic){bg=`${C_.success}18`;bd=`2px solid ${C_.success}`;cl=C_.success;}
           else if(done&&it&&!ic){bg=`${C_.error}12`;bd=`2px solid ${C_.error}`;cl=C_.error;}
           return (
