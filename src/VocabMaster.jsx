@@ -4835,19 +4835,21 @@ function ChoiceQ({exercise,onDone}) {
       onDone(correct);
     },400);
   };
-  const oc=["#FF6B35","#7B2D8E","#00B4D8","#2DC653"];
+  const oc=[C.error,C.primary,C.accent,C.gold];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:22,width:"100%",maxWidth:440}}>
-      <div style={{textAlign:"center"}}>
-        {isRev?<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.accent,fontWeight:700,marginBottom:10}}>Which word?</div><div style={{fontSize:16,color:C.text,lineHeight:1.7}}>{w.en}</div><div style={{fontSize:15,color:C.gold,marginTop:6,fontWeight:600}}>🇨🇳 {w.cn}</div></>
-        :<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.primary,fontWeight:700,marginBottom:10}}>What does it mean?</div><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}><div style={{fontSize:34,fontWeight:800,fontFamily:"'Nunito',sans-serif"}}>{w.word}</div><Speak text={w.word} size={36} color={C.primary}/></div><div style={{fontSize:16,color:C.secondary,fontFamily:"'JetBrains Mono',monospace",marginTop:4}}>{w.ph}</div></>}
+      {/* Yellow word card */}
+      <div style={{background:C.gold,borderRadius:24,padding:"28px 24px",textAlign:"center",position:"relative",overflow:"hidden"}}>
+        <svg style={{position:"absolute",left:16,bottom:12,opacity:0.2}} width="30" height="10" viewBox="0 0 30 10"><path d="M0 5 Q5 0 10 5 Q15 10 20 5 Q25 0 30 5" stroke={C.primary} strokeWidth="2.5" fill="none"/></svg>
+        {isRev?<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.error,fontWeight:700,marginBottom:10}}>Which word?</div><div style={{fontSize:16,color:C.text,lineHeight:1.7}}>{w.en}</div><div style={{fontSize:15,color:C.error,marginTop:6,fontWeight:600}}>🇨🇳 {w.cn}</div></>
+        :<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.error,fontWeight:700,marginBottom:10}}>选择正确含义</div><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}><div style={{fontSize:34,fontWeight:800,fontFamily:"'Nunito',sans-serif",color:C.text}}>{w.word}</div></div><div style={{fontSize:16,color:"#666",fontFamily:"'JetBrains Mono',monospace",marginTop:4}}>{w.ph}</div><div style={{marginTop:12}}><Speak text={w.word} size={42} color={C.primary}/></div></>}
       </div>
-      {done&&<div style={{textAlign:"center",padding:"10px 16px",background:"#FFF8E8",borderRadius:14,border:`1.5px solid ${C.gold}44`,animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:C.gold,fontWeight:600}}>🇨🇳 {w.cn}</span><span style={{fontSize:13,color:C.tl,marginLeft:8}}>🔊 reading...</span></div>}
+      {done&&<div style={{textAlign:"center",padding:"10px 16px",background:C.error,borderRadius:14,animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:"#fff",fontWeight:700}}>🇨🇳 {w.cn}</span></div>}
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.correct;let bg=`${oc[i]}08`,bd=`2px solid ${oc[i]}22`,cl=C.text;
-          if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
-          return <button key={i} onClick={()=>go(opt)} style={{background:bg,border:bd,color:cl,padding:"14px 20px",borderRadius:16,cursor:done?"default":"pointer",fontSize:15,textAlign:"left",lineHeight:1.5,transition:"all 0.2s",fontFamily:"'Nunito',sans-serif",fontWeight:it?700:500}}>
-            <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:28,height:28,borderRadius:"50%",background:oc[i]+"18",color:oc[i],fontWeight:800,fontSize:13,marginRight:12}}>{String.fromCharCode(65+i)}</span>{opt}</button>;
+        {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.correct;let bg="#fff",bd="2px solid #eef0f8",cl=C.text;
+          if(done&&ic){bg=`${C.error}`,bd=`2px solid ${C.error}`;cl="#fff";}else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
+          return <button key={i} onClick={()=>go(opt)} style={{background:bg,border:bd,color:cl,padding:"16px 20px",borderRadius:16,cursor:done?"default":"pointer",fontSize:15,textAlign:"left",lineHeight:1.5,transition:"all 0.2s",fontFamily:"'Nunito',sans-serif",fontWeight:it?700:500,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+            <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:28,height:28,borderRadius:"50%",background:done&&ic?"rgba(255,255,255,0.3)":"#f0f2f8",color:done&&ic?"#fff":C.tl,fontWeight:800,fontSize:13,marginRight:12}}>{String.fromCharCode(65+i)}</span>{opt}</button>;
         })}
       </div>
     </div>
@@ -9043,21 +9045,21 @@ export default function VocabMaster() {
       {screen==="play"&&exs[idx]&&(
         <div style={{padding:"20px 20px",maxWidth:600,margin:"0 auto",position:"relative",zIndex:1}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-            <button onClick={()=>{window.speechSynthesis?.cancel();setScreen("home");}} style={{background:C.card,border:"2px solid #ffd4d4",color:C.error,padding:"8px 16px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>✕</button>
+            <button onClick={()=>{window.speechSynthesis?.cancel();setScreen("home");}} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",padding:"8px 16px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>✕</button>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <button onClick={()=>{setAnswered(false);setIdx(i=>Math.max(0,i-1));}} disabled={idx===0} style={{background:idx===0?"transparent":C.card,border:`2px solid ${idx===0?"transparent":"#e8e4f0"}`,color:idx===0?"#ccc":C.secondary,padding:"6px 12px",borderRadius:10,cursor:idx===0?"default":"pointer",fontSize:13,fontWeight:700,opacity:idx===0?0.3:1}}>‹ 上一题</button>
-              <div style={{fontSize:14,fontWeight:700,color:C.tl}}>{idx+1}/{exs.length}</div>
-              <button onClick={()=>{if(idx+1<exs.length){setAnswered(false);setIdx(i=>i+1);}}} disabled={idx+1>=exs.length} style={{background:idx+1>=exs.length?"transparent":C.card,border:`2px solid ${idx+1>=exs.length?"transparent":"#e8e4f0"}`,color:idx+1>=exs.length?"#ccc":C.secondary,padding:"6px 12px",borderRadius:10,cursor:idx+1>=exs.length?"default":"pointer",fontSize:13,fontWeight:700,opacity:idx+1>=exs.length?0.3:1}}>下一题 ›</button>
+              <button onClick={()=>{setAnswered(false);setIdx(i=>Math.max(0,i-1));}} disabled={idx===0} style={{background:idx===0?"transparent":"rgba(255,255,255,0.15)",border:"none",color:idx===0?"rgba(255,255,255,0.3)":"#fff",padding:"6px 12px",borderRadius:10,cursor:idx===0?"default":"pointer",fontSize:13,fontWeight:700,opacity:idx===0?0.3:1}}>‹ 上一题</button>
+              <div style={{fontSize:14,fontWeight:700,color:"rgba(255,255,255,0.7)"}}>{idx+1}/{exs.length}</div>
+              <button onClick={()=>{if(idx+1<exs.length){setAnswered(false);setIdx(i=>i+1);}}} disabled={idx+1>=exs.length} style={{background:idx+1>=exs.length?"transparent":"rgba(255,255,255,0.15)",border:"none",color:idx+1>=exs.length?"rgba(255,255,255,0.3)":"#fff",padding:"6px 12px",borderRadius:10,cursor:idx+1>=exs.length?"default":"pointer",fontSize:13,fontWeight:700,opacity:idx+1>=exs.length?0.3:1}}>下一题 ›</button>
             </div>
             {challengeMode
               ? <div style={{display:"flex",flexDirection:"column",alignItems:"center",background:C.gold,padding:"4px 12px",borderRadius:20,minWidth:70}}>
                   <div style={{fontSize:16,fontWeight:900,color:"#fff"}}>⚡ {challengeScore}</div>
                   {streak>=2&&<div style={{fontSize:10,color:"rgba(255,255,255,0.9)",fontWeight:700}}>×{Math.min(streak,5)} 倍率!</div>}
                 </div>
-              : streak>0&&<div style={{fontSize:14,fontWeight:800,color:"#F8C740",background:"rgba(248,199,64,0.1)",padding:"4px 12px",borderRadius:20}}>🔥{streak}</div>
+              : streak>0&&<div style={{fontSize:14,fontWeight:800,color:C.gold,background:"rgba(255,185,60,0.15)",padding:"4px 12px",borderRadius:20}}>🔥{streak}</div>
             }
           </div>
-          <div style={{height:8,background:"rgba(255,107,53,0.08)",borderRadius:8,marginBottom:wrongQueue.length>0?6:18,overflow:"hidden"}}><div style={{height:"100%",width:`${prog}%`,background:"linear-gradient(90deg,#4DB6FF,#3CC87A)",borderRadius:8,transition:"width 0.4s ease"}}/></div>
+          <div style={{height:8,background:"rgba(255,255,255,0.15)",borderRadius:8,marginBottom:wrongQueue.length>0?6:18,overflow:"hidden"}}><div style={{height:"100%",width:`${prog}%`,background:C.gold,borderRadius:8,transition:"width 0.4s ease"}}/></div>
           {wrongQueue.length>0&&!challengeMode&&(
             <div style={{fontSize:11,color:C.error,fontWeight:700,textAlign:"center",marginBottom:14,background:`${C.error}10`,borderRadius:8,padding:"4px 10px"}}>
               🔁 {wrongQueue.length} 题答错，做完后会重复练习
@@ -9198,7 +9200,7 @@ export default function VocabMaster() {
             </select>
           </div>
           <div style={{fontSize:13,color:"rgba(255,255,255,0.6)",marginBottom:14,fontWeight:600}}>{filtered.length} words</div>
-          <div style={{display:"flex",flexDirection:"column",gap:0,paddingBottom:40}}>
+          <div style={{display:"flex",flexDirection:"column",gap:0,paddingBottom:40,background:"#fff",borderRadius:24,overflow:"hidden",boxShadow:"0 8px 30px rgba(0,0,0,0.12)"}}>
             {filtered.map((w,wi)=>{
               const open=expanded===w.word;
               const isAdv=w.lv==="advanced";
@@ -9211,13 +9213,13 @@ export default function VocabMaster() {
                   <div
                     onClick={()=>{const nowOpen=expanded===w.word;setExpanded(nowOpen?null:w.word);if(!nowOpen)fetchWordImage(w.word);}}
                     style={{
-                      padding:"14px 4px",
+                      padding:"14px 18px",
                       cursor:"pointer",
                       display:"flex",
                       alignItems:"center",
                       justifyContent:"space-between",
-                      borderBottom:"1px solid #eee8f0",
-                      backgroundColor:open?"#faf7ff":"transparent",
+                      borderBottom:"1px solid #f0f0f5",
+                      backgroundColor:open?"#f8f6ff":"#fff",
                     }}
                   >
                     <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -9314,8 +9316,8 @@ export default function VocabMaster() {
       {screen==="home"&&tab==="progress"&&(
         <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
           <div style={{textAlign:"center",marginBottom:28,animation:"slideUp 0.5s ease"}}>
-            <h2 style={{fontSize:26,fontWeight:900,margin:"0 0 4px"}}>📊 学习进度</h2>
-            <div style={{fontSize:13,color:C.tl}}>Your Learning Progress</div>
+            <h2 style={{fontSize:26,fontWeight:900,margin:"0 0 4px",color:"#fff"}}>📊 学习进度</h2>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.6)"}}>Your Learning Progress</div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
             {[
@@ -9386,8 +9388,8 @@ export default function VocabMaster() {
       {screen==="home"&&tab==="settings"&&(
         <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
           <div style={{textAlign:"center",marginBottom:28}}>
-            <h2 style={{fontSize:26,fontWeight:900,margin:"0 0 4px"}}>⚙️ 设置</h2>
-            <div style={{fontSize:13,color:C.tl}}>Settings</div>
+            <h2 style={{fontSize:26,fontWeight:900,margin:"0 0 4px",color:"#fff"}}>⚙️ 设置</h2>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.6)"}}>Settings</div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div style={{background:C.card,borderRadius:20,padding:"20px",boxShadow:"0 4px 16px rgba(0,0,0,0.04)"}}>
