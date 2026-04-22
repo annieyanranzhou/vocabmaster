@@ -7811,7 +7811,7 @@ Include: word, cn (Chinese meaning), en (English definition), ex (example senten
               )}
 
               <button onClick={createQuiz} disabled={loading||!quizTitle||quizWords.length===0}
-                style={{...btn(C.grad1),background:C.grad1,opacity:loading||!quizTitle||quizWords.length===0?0.5:1,padding:"14px"}}>
+                style={{...btn(C.grad1),background:C.error,opacity:loading||!quizTitle||quizWords.length===0?0.5:1,padding:"14px"}}>
                 {loading?"生成中...":"🚀 生成分类专练词单"}
               </button>
 
@@ -7980,7 +7980,7 @@ function StudentPanel({ onClose, onStartCustomQuiz }) {
         {msg && <div style={{marginTop:12,fontSize:13,fontWeight:700,color:msg.startsWith("✅")?C.accent:C.error,textAlign:"center"}}>{msg}</div>}
         <div style={{display:"flex",gap:10,marginTop:16}}>
           <button onClick={joinClass} disabled={loading} style={{flex:1,background:C.secondary,border:"none",color:"#fff",padding:"13px",borderRadius:14,cursor:"pointer",fontSize:14,fontWeight:800}}>加入班级</button>
-          <button onClick={loadQuiz} disabled={loading} style={{flex:1,background:C.grad1,border:"none",color:"#fff",padding:"13px",borderRadius:14,cursor:"pointer",fontSize:14,fontWeight:800}}>获取词单</button>
+          <button onClick={loadQuiz} disabled={loading} style={{flex:1,background:C.error,border:"none",color:"#fff",padding:"13px",borderRadius:14,cursor:"pointer",fontSize:14,fontWeight:800}}>获取词单</button>
         </div>
         {quizData && (
           <button onClick={()=>{onStartCustomQuiz(quizData.words);onClose();}}
@@ -8081,7 +8081,7 @@ function AuthScreen({ onLogin }) {
           {success && <div style={{fontSize:13,color:"#1A7A4A",background:"#E8FFF4",borderRadius:10,padding:"10px 14px",fontWeight:600}}>{success}</div>}
 
           <button onClick={handle} disabled={loading}
-            style={{background:C.grad1,border:"none",color:"#fff",
+            style={{background:C.error,border:"none",color:"#fff",
               padding:"18px",borderRadius:14,cursor:loading?"wait":"pointer",fontSize:16,fontWeight:800,
               boxShadow:"0 6px 20px rgba(255,107,53,0.3)",marginTop:4,opacity:loading?0.7:1}}>
             {loading?"请稍候...":(mode==="login"?"登录 →":"注册 →")}
@@ -9050,7 +9050,7 @@ export default function VocabMaster() {
               <button onClick={()=>{if(idx+1<exs.length){setAnswered(false);setIdx(i=>i+1);}}} disabled={idx+1>=exs.length} style={{background:idx+1>=exs.length?"transparent":C.card,border:`2px solid ${idx+1>=exs.length?"transparent":"#e8e4f0"}`,color:idx+1>=exs.length?"#ccc":C.secondary,padding:"6px 12px",borderRadius:10,cursor:idx+1>=exs.length?"default":"pointer",fontSize:13,fontWeight:700,opacity:idx+1>=exs.length?0.3:1}}>下一题 ›</button>
             </div>
             {challengeMode
-              ? <div style={{display:"flex",flexDirection:"column",alignItems:"center",background:C.grad2,padding:"4px 12px",borderRadius:20,minWidth:70}}>
+              ? <div style={{display:"flex",flexDirection:"column",alignItems:"center",background:C.gold,padding:"4px 12px",borderRadius:20,minWidth:70}}>
                   <div style={{fontSize:16,fontWeight:900,color:"#fff"}}>⚡ {challengeScore}</div>
                   {streak>=2&&<div style={{fontSize:10,color:"rgba(255,255,255,0.9)",fontWeight:700}}>×{Math.min(streak,5)} 倍率!</div>}
                 </div>
@@ -9089,7 +9089,7 @@ export default function VocabMaster() {
           {/* Next button — appears after student answers */}
           {answered&&(
             <div style={{marginTop:20,animation:"slideUp 0.3s ease"}}>
-              <button onClick={goNext} style={{width:"100%",background:C.grad1,border:"none",color:"#fff",padding:"16px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:900,boxShadow:`0 8px 28px rgba(255,107,53,0.3)`}}>
+              <button onClick={goNext} style={{width:"100%",background:C.error,border:"none",color:"#fff",padding:"16px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:900,boxShadow:`0 8px 28px rgba(255,107,53,0.3)`}}>
                 {idx+1>=exs.length?"查看结果 →":"下一题 →"}
               </button>
             </div>
@@ -9108,7 +9108,7 @@ export default function VocabMaster() {
             {challengeScore>=150?"🏆":challengeScore>=100?"🥈":challengeScore>=50?"🥉":correct/res.length>=0.8?"🏆":correct/res.length>=0.5?"💪":"📖"}
           </div>
           {res.length===20&&challengeFinalScore>0&&(
-            <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",background:C.grad2,borderRadius:20,padding:"10px 24px",marginBottom:16,boxShadow:"0 6px 20px rgba(255,107,53,0.3)"}}>
+            <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",background:C.gold,borderRadius:20,padding:"10px 24px",marginBottom:16,boxShadow:"0 6px 20px rgba(255,107,53,0.3)"}}>
               <div style={{fontSize:32,fontWeight:900,color:"#fff"}}>⚡ {challengeFinalScore}</div>
               <div style={{fontSize:12,color:"rgba(255,255,255,0.85)",fontWeight:700}}>挑战赛得分</div>
             </div>
@@ -9161,7 +9161,7 @@ export default function VocabMaster() {
                 </div>
                 {ok
                   ? <span style={{fontSize:18}}>✅</span>
-                  : <button onClick={()=>startWordPractice(w)} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:10,background:C.grad1,border:"none",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                  : <button onClick={()=>startWordPractice(w)} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:10,background:C.error,border:"none",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                       🔁 再练
                     </button>
                 }
@@ -9169,8 +9169,8 @@ export default function VocabMaster() {
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             {res.length===20&&challengeFinalScore>0
-              ? <button onClick={startChallenge} style={{background:C.grad2,border:"none",color:"#fff",padding:"16px 32px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:800,boxShadow:"0 8px 28px rgba(255,107,53,0.27)"}}>⚡ 再战一局 · Again!</button>
-              : <button onClick={()=>startPractice()} style={{background:C.grad1,border:"none",color:"#fff",padding:"16px 32px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:800,boxShadow:"0 8px 28px rgba(255,107,53,0.27)"}}>再练 · Again!</button>
+              ? <button onClick={startChallenge} style={{background:C.gold,border:"none",color:"#fff",padding:"16px 32px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:800,boxShadow:"0 8px 28px rgba(255,107,53,0.27)"}}>⚡ 再战一局 · Again!</button>
+              : <button onClick={()=>startPractice()} style={{background:C.error,border:"none",color:"#fff",padding:"16px 32px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:800,boxShadow:"0 8px 28px rgba(255,107,53,0.27)"}}>再练 · Again!</button>
             }
             <button onClick={()=>setScreen("home")} style={{background:C.card,border:"2px solid #e8e4f0",color:C.tm,padding:"14px 32px",borderRadius:18,cursor:"pointer",fontSize:15,fontWeight:700}}>首页 · Home</button>
           </div>
@@ -9180,7 +9180,7 @@ export default function VocabMaster() {
       {screen==="home"&&tab==="words"&&(
         <div style={{padding:"24px 20px 100px",maxWidth:600,margin:"0 auto",position:"relative",zIndex:1}}>
           <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:22}}>
-            <h2 style={{fontSize:22,fontWeight:900,margin:0}}>📖 词汇表 · Word Bank</h2>
+            <h2 style={{fontSize:22,fontWeight:900,margin:0,color:"#fff"}}>📖 词汇表 · Word Bank</h2>
           </div>
           <div style={{display:"flex",gap:8,marginBottom:10}}>
             <input type="text" placeholder="搜索单词..." value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1,background:C.card,border:"2px solid #ffe0cc",color:C.text,padding:"10px 14px",borderRadius:14,fontSize:15,outline:"none",fontWeight:600}}/>
@@ -9197,7 +9197,7 @@ export default function VocabMaster() {
               <option value="all">全部难度</option><option value="basic">基础</option><option value="intermediate">中级</option><option value="advanced">高级</option>
             </select>
           </div>
-          <div style={{fontSize:13,color:C.tl,marginBottom:14,fontWeight:600}}>{filtered.length} words</div>
+          <div style={{fontSize:13,color:"rgba(255,255,255,0.6)",marginBottom:14,fontWeight:600}}>{filtered.length} words</div>
           <div style={{display:"flex",flexDirection:"column",gap:0,paddingBottom:40}}>
             {filtered.map((w,wi)=>{
               const open=expanded===w.word;
@@ -9297,7 +9297,7 @@ export default function VocabMaster() {
                       <button
                         onClick={(e)=>{e.stopPropagation(); startWordPractice(w);}}
                         style={{marginTop:16,width:"100%",padding:"12px",borderRadius:14,
-                          background:C.grad1,
+                          background:C.error,
                           border:"none",color:"#fff",fontSize:14,fontWeight:800,
                           cursor:"pointer",boxShadow:"0 4px 16px rgba(255,107,53,0.25)",
                           display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
@@ -9435,7 +9435,7 @@ export default function VocabMaster() {
             <div style={{background:C.card,borderRadius:20,padding:"20px",boxShadow:"0 4px 16px rgba(0,0,0,0.04)"}}>
               <div style={{fontSize:14,fontWeight:800,color:C.tm,marginBottom:12}}>🔑 班级 / 词单码</div>
               <button onClick={()=>setShowStudentPanel(true)}
-                style={{width:"100%",background:C.grad1,border:"none",color:"#fff",padding:"13px",borderRadius:14,cursor:"pointer",fontSize:14,fontWeight:800}}>
+                style={{width:"100%",background:C.error,border:"none",color:"#fff",padding:"13px",borderRadius:14,cursor:"pointer",fontSize:14,fontWeight:800}}>
                 输入邀请码 / 词单码
               </button>
             </div>
@@ -9461,8 +9461,8 @@ export default function VocabMaster() {
         <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
           <div style={{textAlign:"center",marginBottom:28}}>
             <div style={{fontSize:40,marginBottom:8}}>✏️</div>
-            <h2 style={{fontSize:24,fontWeight:900,margin:"0 0 6px"}}>专项练习</h2>
-            <div style={{fontSize:13,color:C.tl}}>Grammar Drills · 10题/局</div>
+            <h2 style={{fontSize:24,fontWeight:900,margin:"0 0 6px",color:"#fff"}}>专项练习</h2>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.6)"}}>Grammar Drills · 10题/局</div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             {[
@@ -9534,16 +9534,16 @@ export default function VocabMaster() {
       {screen==="home"&&tab==="drills"&&drillType&&!drillMode&&STAGE_CONFIG[drillType]&&(
         <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
           <button onClick={()=>{setDrillType(null);setDrillMode(null);}}
-            style={{position:"absolute",top:12,left:16,background:"none",border:"none",fontSize:22,cursor:"pointer",color:C.tm,padding:8}}>‹ 返回</button>
+            style={{position:"absolute",top:12,left:16,background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#fff",padding:8}}>‹ 返回</button>
           <div style={{textAlign:"center",marginBottom:32,marginTop:8}}>
             <div style={{fontSize:40,marginBottom:8}}>{STAGE_CONFIG[drillType].stages[0]?.icon||"✏️"}</div>
-            <h2 style={{fontSize:24,fontWeight:900,margin:"0 0 6px"}}>{STAGE_CONFIG[drillType].title}</h2>
-            <div style={{fontSize:13,color:C.tl}}>选择练习模式</div>
+            <h2 style={{fontSize:24,fontWeight:900,margin:"0 0 6px",color:"#fff"}}>{STAGE_CONFIG[drillType].title}</h2>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.6)"}}>选择练习模式</div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
             <div onClick={()=>{setDrillMode("random");startDrill(drillType);}}
-              style={{background:"linear-gradient(135deg,#667eea,#764ba2)",borderRadius:20,padding:"24px 20px",cursor:"pointer",
-                boxShadow:"0 6px 20px rgba(102,126,234,0.3)",display:"flex",gap:16,alignItems:"center"}}>
+              style={{background:C.primary,borderRadius:20,padding:"24px 20px",cursor:"pointer",
+                boxShadow:"0 6px 20px rgba(46,87,216,0.3)",display:"flex",gap:16,alignItems:"center"}}>
               <div style={{width:56,height:56,borderRadius:16,background:"rgba(255,255,255,0.2)",
                 display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,flexShrink:0}}>🎲</div>
               <div style={{flex:1}}>
@@ -9553,7 +9553,7 @@ export default function VocabMaster() {
               <div style={{fontSize:22,color:"rgba(255,255,255,0.6)"}}>›</div>
             </div>
             <div onClick={()=>setDrillMode("stage")}
-              style={{background:"linear-gradient(135deg,#f093fb,#f5576c)",borderRadius:20,padding:"24px 20px",cursor:"pointer",
+              style={{background:C.error,borderRadius:20,padding:"24px 20px",cursor:"pointer",
                 boxShadow:"0 6px 20px rgba(245,87,108,0.3)",display:"flex",gap:16,alignItems:"center"}}>
               <div style={{width:56,height:56,borderRadius:16,background:"rgba(255,255,255,0.2)",
                 display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,flexShrink:0}}>📂</div>
@@ -9571,11 +9571,11 @@ export default function VocabMaster() {
       {screen==="home"&&tab==="drills"&&drillType&&drillMode==="stage"&&!showGrammarCard&&!drillStage&&STAGE_CONFIG[drillType]&&(
         <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
           <button onClick={()=>{setDrillMode(null);}}
-            style={{position:"absolute",top:12,left:16,background:"none",border:"none",fontSize:22,cursor:"pointer",color:C.tm,padding:8}}>‹ 返回</button>
+            style={{position:"absolute",top:12,left:16,background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#fff",padding:8}}>‹ 返回</button>
           <div style={{textAlign:"center",marginBottom:24,marginTop:8}}>
             <div style={{fontSize:36,marginBottom:8}}>📂</div>
-            <h2 style={{fontSize:22,fontWeight:900,margin:"0 0 6px"}}>{STAGE_CONFIG[drillType].title}</h2>
-            <div style={{fontSize:13,color:C.tl}}>选择薄弱分类，针对性练习 · ≥80% 解锁下一关</div>
+            <h2 style={{fontSize:22,fontWeight:900,margin:"0 0 6px",color:"#fff"}}>{STAGE_CONFIG[drillType].title}</h2>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.6)"}}>选择薄弱分类，针对性练习 · ≥80% 解锁下一关</div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             {STAGE_CONFIG[drillType].stages.map((s, idx) => {
@@ -9591,7 +9591,7 @@ export default function VocabMaster() {
                     boxShadow:unlocked?"0 3px 12px rgba(0,0,0,0.06)":"none",opacity:unlocked?1:0.5,
                     display:"flex",gap:14,alignItems:"center",transition:"all 0.2s"}}>
                   <div style={{width:44,height:44,borderRadius:14,
-                    background:unlocked?(prog?.passed?"linear-gradient(135deg,#a8e063,#56ab2f)":"linear-gradient(135deg,#667eea,#764ba2)"):"#ccc",
+                    background:unlocked?(prog?.passed?C.accent:C.primary):"#ccc",
                     display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0,color:"#fff",fontWeight:800}}>
                     {unlocked ? (idx+1) : "🔒"}
                   </div>
@@ -9619,7 +9619,7 @@ export default function VocabMaster() {
       {screen==="home"&&tab==="drills"&&drillType&&drillMode==="stage"&&showGrammarCard&&drillStage&&(
         <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
           <button onClick={()=>{setShowGrammarCard(false);setDrillStage(null);}}
-            style={{position:"absolute",top:12,left:16,background:"none",border:"none",fontSize:22,cursor:"pointer",color:C.tm,padding:8}}>‹ 返回</button>
+            style={{position:"absolute",top:12,left:16,background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#fff",padding:8}}>‹ 返回</button>
           {(()=>{
             const lesson = GRAMMAR_LESSONS[drillStage];
             if(!lesson) { startStage(drillType, drillStage); return null; }
@@ -9628,8 +9628,8 @@ export default function VocabMaster() {
               <div style={{marginTop:8}}>
                 <div style={{textAlign:"center",marginBottom:20}}>
                   <div style={{fontSize:40,marginBottom:8}}>📖</div>
-                  <h2 style={{fontSize:22,fontWeight:900,margin:"0 0 4px"}}>{lesson.title}</h2>
-                  <div style={{fontSize:13,color:C.tl}}>先学后练，掌握更牢固</div>
+                  <h2 style={{fontSize:22,fontWeight:900,margin:"0 0 4px",color:"#fff"}}>{lesson.title}</h2>
+                  <div style={{fontSize:13,color:"rgba(255,255,255,0.6)"}}>先学后练，掌握更牢固</div>
                 </div>
                 <div style={{background:C.card,borderRadius:20,padding:"24px 20px",boxShadow:"0 4px 16px rgba(0,0,0,0.06)",marginBottom:20}}>
                   <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:14}}>📝 知识点</div>
@@ -9651,7 +9651,7 @@ export default function VocabMaster() {
                 )}
                 <div style={{display:"flex",gap:12}}>
                   <button onClick={()=>startStage(drillType, drillStage)}
-                    style={{flex:1,background:"linear-gradient(135deg,"+C.secondary+","+C.accent+")",border:"none",color:"#fff",
+                    style={{flex:1,background:C.error,border:"none",color:"#fff",
                       padding:"16px",borderRadius:16,cursor:"pointer",fontSize:16,fontWeight:800,
                       boxShadow:"0 4px 16px rgba(255,107,53,0.3)"}}>
                     ▶ 开始答题
@@ -9896,7 +9896,7 @@ export default function VocabMaster() {
               </button>
               {passed && nextStage && (
                 <button onClick={()=>{setDrillStage(nextStage.cat);setShowGrammarCard(true);setDrillFinished(false);}}
-                  style={{background:"linear-gradient(135deg,#667eea,#764ba2)",border:"none",color:"#fff",
+                  style={{background:C.primary,border:"none",color:"#fff",
                     padding:"16px",borderRadius:16,cursor:"pointer",fontSize:16,fontWeight:800}}>
                   ▶ 下一分类: {nextStage.icon} {nextStage.name}
                 </button>
