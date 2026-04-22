@@ -8824,8 +8824,6 @@ export default function VocabMaster() {
               {(t.id==="game"?showGame:(!showGame&&tab===t.id))&&<div style={{width:20,height:3,borderRadius:2,background:C.gold,marginTop:1}}/>}
             </button>
           ))}
-            </button>
-          ))}
         </div>
       )}
 
