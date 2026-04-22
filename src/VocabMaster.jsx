@@ -4680,32 +4680,32 @@ function LearnCard({exercise,onDone}) {
       {step<3&&dots}
 
       {step===0&&(
-        <div onClick={nextStep} style={{width:"100%",borderRadius:24,cursor:"pointer",background:`linear-gradient(135deg,${C.peach},${C.sky})`,padding:"36px 24px",display:"flex",flexDirection:"column",alignItems:"center",gap:14,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.primary}33`}}>
+        <div onClick={nextStep} style={{width:"100%",borderRadius:24,cursor:"pointer",background:C.gold,padding:"36px 24px",display:"flex",flexDirection:"column",alignItems:"center",gap:14,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.primary}33`}}>
           <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:C.primary,fontWeight:800}}>📖 Word</div>
-          <div style={{fontSize:48,fontWeight:900,color:C.text,fontFamily:"'Nunito',sans-serif"}}>{w.word}</div>
+          <div style={{fontSize:48,fontWeight:900,color:"#fff",fontFamily:"'Nunito',sans-serif"}}>{w.word}</div>
           <div style={{fontSize:19,color:C.secondary,fontFamily:"'JetBrains Mono',monospace"}}>{w.ph}</div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <Speak text={w.word} size={44} color={C.primary}/>
-            <button onClick={e=>{e.stopPropagation();speak(w.word,0.5);}} style={{background:C.mint,border:"none",color:C.text,padding:"5px 14px",borderRadius:20,cursor:"pointer",fontSize:12,fontWeight:700}}>🐢</button>
-            <button onClick={e=>{e.stopPropagation();speak(w.word,1.1);}} style={{background:C.sky,border:"none",color:C.text,padding:"5px 14px",borderRadius:20,cursor:"pointer",fontSize:12,fontWeight:700}}>🐇</button>
+            <button onClick={e=>{e.stopPropagation();speak(w.word,0.5);}} style={{background:C.mint,border:"none",color:"#fff",padding:"5px 14px",borderRadius:20,cursor:"pointer",fontSize:12,fontWeight:700}}>🐢</button>
+            <button onClick={e=>{e.stopPropagation();speak(w.word,1.1);}} style={{background:C.sky,border:"none",color:"#fff",padding:"5px 14px",borderRadius:20,cursor:"pointer",fontSize:12,fontWeight:700}}>🐇</button>
           </div>
-          <div style={{fontSize:17,color:C.text,lineHeight:1.6,textAlign:"center"}}>{w.en}</div>
+          <div style={{fontSize:17,color:"#fff",lineHeight:1.6,textAlign:"center"}}>{w.en}</div>
           <div style={{fontSize:17,color:C.gold,fontWeight:700,padding:"8px 20px",background:"#FFF8E8",borderRadius:14,border:`1.5px solid ${C.gold}44`}}>🇨🇳 {w.cn}</div>
-          <div style={{fontSize:12,color:C.tl,marginTop:6,letterSpacing:1}}>👆 tap for phrases →</div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",marginTop:6,letterSpacing:1}}>👆 tap for phrases →</div>
         </div>
       )}
 
       {step===1&&(
-        <div style={{width:"100%",borderRadius:24,background:`linear-gradient(135deg,${C.lav},#fff)`,padding:"32px 22px",display:"flex",flexDirection:"column",alignItems:"center",gap:16,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.secondary}33`,animation:"slideUp 0.4s ease"}}>
-          <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:C.secondary,fontWeight:800}}>💬 Phrases</div>
-          <div style={{fontSize:26,fontWeight:800,color:C.secondary}}>{w.word}</div>
+        <div style={{width:"100%",borderRadius:24,background:"#fff",padding:"32px 22px",display:"flex",flexDirection:"column",alignItems:"center",gap:16,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.secondary}33`,animation:"slideUp 0.4s ease"}}>
+          <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:C.gold,fontWeight:800}}>💬 Phrases</div>
+          <div style={{fontSize:26,fontWeight:800,color:C.gold}}>{w.word}</div>
           <div style={{display:"flex",flexDirection:"column",gap:10,width:"100%"}}>
             {w.phrases.map((p,i)=>(
               <div key={i} style={{borderRadius:16,overflow:"hidden",border:`2px solid ${[C.primary,C.accent,C.gold][i]}22`,background:`${[C.primary,C.accent,C.gold][i]}06`}}>
                 <div onClick={e=>{e.stopPropagation();speak(p.phrase);setPhraseIdx(i);setShowPhraseSent(false);}}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"14px 18px",cursor:"pointer"}}>
                   <Speak text={p.phrase} size={30} color={[C.primary,C.accent,C.gold][i]}/>
-                  <span style={{fontSize:20,fontWeight:700,color:C.text,fontFamily:"'Nunito',sans-serif"}}>{p.phrase}</span>
+                  <span style={{fontSize:20,fontWeight:700,color:"#fff",fontFamily:"'Nunito',sans-serif"}}>{p.phrase}</span>
                 </div>
                 {phraseIdx===i&&(
                   <div style={{padding:"0 18px 16px",animation:"slideUp 0.3s ease"}}>
@@ -4717,7 +4717,7 @@ function LearnCard({exercise,onDone}) {
                     ):(
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
                         <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                          <div style={{fontSize:15,color:C.text,lineHeight:1.7,fontStyle:"italic",flex:1}}>"{p.sent}"</div>
+                          <div style={{fontSize:15,color:"#fff",lineHeight:1.7,fontStyle:"italic",flex:1}}>"{p.sent}"</div>
                           <Speak text={p.sent} rate={0.82} size={30} color={[C.primary,C.accent,C.gold][i]}/>
                         </div>
                         <div style={{fontSize:13,color:"#8a7000",fontWeight:600,background:"rgba(255,220,50,0.12)",padding:"5px 12px",borderRadius:10,border:"1px solid rgba(255,200,0,0.2)"}}>🇨🇳 {p.sentCn}</div>
@@ -4735,20 +4735,20 @@ function LearnCard({exercise,onDone}) {
       )}
 
       {step===2&&(
-        <div onClick={nextStep} style={{width:"100%",borderRadius:24,cursor:"pointer",background:`linear-gradient(135deg,${C.sky},${C.mint})`,padding:"36px 24px",display:"flex",flexDirection:"column",alignItems:"center",gap:16,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.accent}33`,animation:"slideUp 0.4s ease"}}>
+        <div onClick={nextStep} style={{width:"100%",borderRadius:24,cursor:"pointer",background:C.gold,padding:"36px 24px",display:"flex",flexDirection:"column",alignItems:"center",gap:16,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.accent}33`,animation:"slideUp 0.4s ease"}}>
           <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:"#3CC87A",fontWeight:800}}>📝 Sentence</div>
           <div style={{fontSize:24,fontWeight:800,color:"#3CC87A"}}>{w.word}</div>
-          <div style={{fontSize:20,color:C.text,lineHeight:1.8,textAlign:"center",fontWeight:500,maxWidth:400}}>"{w.ex}"</div>
+          <div style={{fontSize:20,color:"#fff",lineHeight:1.8,textAlign:"center",fontWeight:500,maxWidth:400}}>"{w.ex}"</div>
           <div style={{fontSize:15,color:"#8a7000",fontWeight:600,background:"rgba(255,220,50,0.15)",padding:"8px 18px",borderRadius:12,border:"1.5px solid rgba(255,200,0,0.25)",textAlign:"center",maxWidth:380}}>🇨🇳 {w.cn} — {w.en}</div>
           <Speak text={w.ex} rate={0.82} size={44} color={C.accent}/>
-          <div style={{fontSize:12,color:C.tl,letterSpacing:1}}>👆 tap to continue</div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",letterSpacing:1}}>👆 tap to continue</div>
         </div>
       )}
 
       {step===3&&(
-        <div style={{width:"100%",borderRadius:24,background:`linear-gradient(135deg,${C.mint},#fff)`,padding:"32px 28px",display:"flex",flexDirection:"column",alignItems:"center",gap:14,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.success}33`,animation:"slideUp 0.4s ease"}}>
-          <div style={{fontSize:32,fontWeight:900,color:C.text}}>{w.word}</div>
-          <div style={{fontSize:15,color:C.tm,textAlign:"center"}}>{w.en}</div>
+        <div style={{width:"100%",borderRadius:24,background:"#fff",padding:"32px 28px",display:"flex",flexDirection:"column",alignItems:"center",gap:14,boxShadow:"0 12px 40px rgba(0,0,0,0.08)",border:`2px solid ${C.success}33`,animation:"slideUp 0.4s ease"}}>
+          <div style={{fontSize:32,fontWeight:900,color:"#fff"}}>{w.word}</div>
+          <div style={{fontSize:15,color:"rgba(255,255,255,0.8)",textAlign:"center"}}>{w.en}</div>
           <div style={{fontSize:15,color:C.gold,fontWeight:700}}>🇨🇳 {w.cn}</div>
           <div style={{display:"flex",gap:12,marginTop:8}}>
             <button onClick={()=>onDone(false)} style={{background:`${C.error}12`,border:`2px solid ${C.error}44`,color:C.error,padding:"12px 26px",borderRadius:16,cursor:"pointer",fontSize:15,fontWeight:700}}>🔄 Still Learning</button>
@@ -4791,10 +4791,10 @@ function DragFillQ({exercise,onDone}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,width:"100%",maxWidth:460}}>
       <div style={{textAlign:"center"}}>
-        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.accent,fontWeight:700,marginBottom:6}}>🧩 Drag to fill</div>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#2BD0C4",fontWeight:700,marginBottom:6}}>🧩 Drag to fill</div>
       </div>
       <div style={{background:C.card,borderRadius:20,padding:"22px 18px",boxShadow:"0 4px 20px rgba(0,0,0,0.06)",border:`2px solid ${C.accent}22`}}>
-        <div style={{fontSize:19,lineHeight:2.2,color:C.text,fontFamily:"'Nunito',sans-serif",fontWeight:500,textAlign:"center"}}>
+        <div style={{fontSize:19,lineHeight:2.2,color:"#fff",fontFamily:"'Nunito',sans-serif",fontWeight:500,textAlign:"center"}}>
           {exercise.template.map((t,i)=>{
             if(!t.blank)return <span key={i}>{t.text} </span>;
             const f=placed[t.id];const ok=done&&f===t.answer;const bad=done&&f&&f!==t.answer;
@@ -4815,7 +4815,7 @@ function DragFillQ({exercise,onDone}) {
       {touch&&!done&&<div style={{textAlign:"center",fontSize:13,color:C.gold,fontWeight:600,animation:"pulse 1.5s ease infinite"}}>👆 Tap a blank to place "{touch}"</div>}
       {done&&<div style={{textAlign:"center",padding:"12px 16px",background:"#FFF8E8",borderRadius:14,border:"1.5px solid #F4A23644"}}>
         <div style={{fontSize:14,color:C.gold,fontWeight:600,marginBottom:4}}>🇨🇳 {w.cn}</div>
-        <div style={{fontSize:13,color:C.tm}}>🔊 reading sentence...</div>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>🔊 reading sentence...</div>
       </div>}
     </div>
   );
@@ -4841,8 +4841,8 @@ function ChoiceQ({exercise,onDone}) {
       {/* Yellow word card */}
       <div style={{background:C.gold,borderRadius:24,padding:"28px 24px",textAlign:"center",position:"relative",overflow:"hidden"}}>
         <svg style={{position:"absolute",left:16,bottom:12,opacity:0.2}} width="30" height="10" viewBox="0 0 30 10"><path d="M0 5 Q5 0 10 5 Q15 10 20 5 Q25 0 30 5" stroke={C.primary} strokeWidth="2.5" fill="none"/></svg>
-        {isRev?<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.error,fontWeight:700,marginBottom:10}}>Which word?</div><div style={{fontSize:16,color:C.text,lineHeight:1.7}}>{w.en}</div><div style={{fontSize:15,color:C.error,marginTop:6,fontWeight:600}}>🇨🇳 {w.cn}</div></>
-        :<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.error,fontWeight:700,marginBottom:10}}>选择正确含义</div><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}><div style={{fontSize:34,fontWeight:800,fontFamily:"'Nunito',sans-serif",color:C.text}}>{w.word}</div></div><div style={{fontSize:16,color:"#666",fontFamily:"'JetBrains Mono',monospace",marginTop:4}}>{w.ph}</div><div style={{marginTop:12}}><Speak text={w.word} size={42} color={C.primary}/></div></>}
+        {isRev?<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.error,fontWeight:700,marginBottom:10}}>Which word?</div><div style={{fontSize:16,color:"#fff",lineHeight:1.7}}>{w.en}</div><div style={{fontSize:15,color:C.error,marginTop:6,fontWeight:600}}>🇨🇳 {w.cn}</div></>
+        :<><div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.error,fontWeight:700,marginBottom:10}}>选择正确含义</div><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}><div style={{fontSize:34,fontWeight:800,fontFamily:"'Nunito',sans-serif",color:"#fff"}}>{w.word}</div></div><div style={{fontSize:16,color:"#666",fontFamily:"'JetBrains Mono',monospace",marginTop:4}}>{w.ph}</div><div style={{marginTop:12}}><Speak text={w.word} size={42} color={C.primary}/></div></>}
       </div>
       {done&&<div style={{textAlign:"center",padding:"10px 16px",background:C.error,borderRadius:14,animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:"#fff",fontWeight:700}}>🇨🇳 {w.cn}</span></div>}
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -4872,13 +4872,13 @@ function WordFamilyQ({exercise,onDone}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:22,width:"100%",maxWidth:440}}>
       <div style={{textAlign:"center"}}>
-        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.secondary,fontWeight:700,marginBottom:10}}>🔤 Word Family</div>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.gold,fontWeight:700,marginBottom:10}}>🔤 Word Family</div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
           <div style={{fontSize:34,fontWeight:800}}>{w.word}</div><Speak text={w.word} size={36} color={C.secondary}/>
         </div>
-        <div style={{fontSize:17,color:C.tm,marginTop:10,lineHeight:1.6}}>What is the <strong style={{color:C.secondary}}>{exercise.targetType}</strong> form?</div>
+        <div style={{fontSize:17,color:"rgba(255,255,255,0.8)",marginTop:10,lineHeight:1.6}}>What is the <strong style={{color:C.gold}}>{exercise.targetType}</strong> form?</div>
       </div>
-      {done&&<div style={{textAlign:"center",padding:"10px 16px",background:`${C.lav}`,borderRadius:14,border:`1.5px solid ${C.secondary}33`,animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:C.secondary,fontWeight:600}}>✨ {exercise.targetType}: {exercise.targetForm}</span></div>}
+      {done&&<div style={{textAlign:"center",padding:"10px 16px",background:`${C.lav}`,borderRadius:14,border:`1.5px solid ${C.secondary}33`,animation:"slideUp 0.3s ease"}}><span style={{fontSize:14,color:C.gold,fontWeight:600}}>✨ {exercise.targetType}: {exercise.targetForm}</span></div>}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.targetForm;let bg=`${oc[i]}10`,bd=`2px solid ${oc[i]}33`,cl=C.text;
           if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
@@ -4906,7 +4906,7 @@ function SynAntQ({exercise,onDone}) {
     <div style={{display:"flex",flexDirection:"column",gap:22,width:"100%",maxWidth:440}}>
       <div style={{textAlign:"center"}}>
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.gold,fontWeight:700,marginBottom:10}}>🔗 Synonym</div>
-        <div style={{fontSize:16,color:C.tm,lineHeight:1.6}}>{exercise.question}</div>
+        <div style={{fontSize:16,color:"rgba(255,255,255,0.8)",lineHeight:1.6}}>{exercise.question}</div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginTop:8}}>
           <span style={{fontSize:28,fontWeight:800}}>{w.word}</span><Speak text={w.word} size={32} color={C.gold}/>
         </div>
@@ -4944,7 +4944,7 @@ function ErrorSpotQ({exercise,onDone}) {
     <div style={{display:"flex",flexDirection:"column",gap:22,width:"100%",maxWidth:460}}>
       <div style={{textAlign:"center"}}>
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.error,fontWeight:700,marginBottom:6}}>🔍 Error Spotter</div>
-        <div style={{fontSize:15,color:C.tm,lineHeight:1.6}}>Find the <strong style={{color:C.error}}>wrong word</strong> in this sentence:</div>
+        <div style={{fontSize:15,color:"rgba(255,255,255,0.8)",lineHeight:1.6}}>Find the <strong style={{color:C.error}}>wrong word</strong> in this sentence:</div>
       </div>
       <div style={{background:C.card,borderRadius:20,padding:"24px 20px",boxShadow:"0 4px 20px rgba(0,0,0,0.06)",border:`2px solid ${C.error}22`}}>
         <div style={{fontSize:19,lineHeight:2,textAlign:"center",fontFamily:"'Nunito',sans-serif"}}>
@@ -4962,7 +4962,7 @@ function ErrorSpotQ({exercise,onDone}) {
       {found&&(
         <div style={{textAlign:"center",padding:"12px 16px",background:`${C.success}08`,borderRadius:14,border:`1.5px solid ${C.success}33`,animation:"slideUp 0.3s ease"}}>
           <div style={{fontSize:15,fontWeight:700,color:C.success}}>✅ Correct word: {exercise.correctWord}</div>
-          <div style={{fontSize:13,color:C.tm,marginTop:4}}>🇨🇳 {w.cn} · {w.en}</div>
+          <div style={{fontSize:13,color:"rgba(255,255,255,0.8)",marginTop:4}}>🇨🇳 {w.cn} · {w.en}</div>
         </div>
       )}
     </div>
@@ -4985,8 +4985,8 @@ function PhraseCompleteQ({exercise,onDone}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:22,width:"100%",maxWidth:440}}>
       <div style={{textAlign:"center"}}>
-        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.primary,fontWeight:700,marginBottom:10}}>💬 Complete the phrase</div>
-        <div style={{fontSize:28,fontWeight:800,color:C.text}}>{exercise.answerBeforeMain ? <><span style={{color:C.primary}}>?</span>{" + "}{exercise.mainWord}</> : <>{exercise.mainWord}{" + "}<span style={{color:C.primary}}>?</span></>}</div>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.gold,fontWeight:700,marginBottom:10}}>💬 Complete the phrase</div>
+        <div style={{fontSize:28,fontWeight:800,color:"#fff"}}>{exercise.answerBeforeMain ? <><span style={{color:C.primary}}>?</span>{" + "}{exercise.mainWord}</> : <>{exercise.mainWord}{" + "}<span style={{color:C.primary}}>?</span></>}</div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         {exercise.options.map((opt,i)=>{const it=sel===opt,ic=opt===exercise.answer;let bg=`${oc[i]}10`,bd=`2px solid ${oc[i]}33`,cl=C.text;
@@ -4997,7 +4997,7 @@ function PhraseCompleteQ({exercise,onDone}) {
       {done&&(
         <div style={{background:`${C.accent}08`,borderRadius:16,padding:"16px",border:`1.5px solid ${C.accent}22`,animation:"slideUp 0.3s ease"}}>
           <div style={{fontSize:15,fontWeight:700,color:C.accent,marginBottom:8}}>✨ {exercise.phraseFull}</div>
-          <div style={{fontSize:14,color:C.tm,lineHeight:1.6,fontStyle:"italic",display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
+          <div style={{fontSize:14,color:"rgba(255,255,255,0.8)",lineHeight:1.6,fontStyle:"italic",display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
             <span>"{exercise.phraseSent}"</span><Speak text={exercise.phraseSent} rate={0.82} size={28} color={C.accent}/>
           </div>
           {exercise.phraseSentCn&&(
@@ -5054,7 +5054,7 @@ function MatchQ({exercise,onDone}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",maxWidth:500}}>
       <div style={{textAlign:"center"}}>
-        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.secondary,fontWeight:700}}>🔗 Match</div>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.gold,fontWeight:700}}>🔗 Match</div>
         <div style={{display:"flex",justifyContent:"center",gap:6,marginTop:8}}>
           {exercise.pairs.map((_,i)=>(
             <div key={i} style={{width:12,height:12,borderRadius:"50%",background:Object.keys(matches).length>i?C.success:`${C.tl}33`,transition:"all 0.3s"}}/>
@@ -5127,7 +5127,7 @@ function DialogueQ({exercise, onDone}) {
       </div>
       {/* Person A — asks a question */}
       <div style={{display:"flex",alignItems:"flex-end",gap:10}}>
-        <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${C_.secondary},${C_.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>👩</div>
+        <div style={{width:40,height:40,borderRadius:"50%",background:C.error,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>👩</div>
         <div style={{background:C_.card,borderRadius:"4px 18px 18px 18px",padding:"12px 16px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",maxWidth:300}}>
           <div style={{fontSize:14,lineHeight:1.6,color:C_.text,fontWeight:600,marginBottom:6}}>{exercise.question}</div>
           <Speak text={exercise.question} size={22} color={C_.secondary}/>
@@ -5135,7 +5135,7 @@ function DialogueQ({exercise, onDone}) {
       </div>
       {/* Person B — reply (blank or revealed) */}
       <div style={{display:"flex",alignItems:"flex-end",gap:10,flexDirection:"row-reverse"}}>
-        <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${C_.primary},${C_.gold})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>👦</div>
+        <div style={{width:40,height:40,borderRadius:"50%",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>👦</div>
         <div style={{borderRadius:"18px 4px 18px 18px",padding:"12px 16px",minWidth:100,
           background:done?(sel===exercise.correct?`${C_.success}15`:`${C_.error}10`):C_.card,
           border:done?(sel===exercise.correct?`2px solid ${C_.success}44`:`2px solid ${C_.error}44`):`2px dashed ${C_.primary}33`,
@@ -5218,7 +5218,7 @@ function SentBuildQ({exercise, onDone}) {
     <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",maxWidth:440}}>
       <div style={{textAlign:"center"}}>
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C_.secondary,fontWeight:700,marginBottom:8}}>🔤 造句 · Build the Sentence</div>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"14px 16px",borderRadius:16,background:`linear-gradient(135deg,${C_.secondary}10,${C_.accent}10)`,border:`1.5px solid ${C_.secondary}22`}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"14px 16px",borderRadius:16,background:`${C.error}12`,border:`1.5px solid ${C_.secondary}22`}}>
           <div style={{fontSize:20}}>🧑‍💼</div>
           <div style={{fontSize:14,color:C_.tm,fontWeight:600}}>{exercise.cn}</div>
         </div>
@@ -5226,9 +5226,9 @@ function SentBuildQ({exercise, onDone}) {
 
       {/* LISTEN phase */}
       {phase==="listen"&&(
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,padding:"28px 20px",borderRadius:20,background:`linear-gradient(135deg,${C_.secondary}08,${C_.accent}08)`,border:`2px solid ${C_.secondary}22`,animation:"slideUp 0.3s ease"}}>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,padding:"28px 20px",borderRadius:20,background:`${C.error}10`,border:`2px solid ${C_.secondary}22`,animation:"slideUp 0.3s ease"}}>
           <div style={{fontSize:13,color:C_.tm,fontWeight:600}}>👂 先听句子，再来造句</div>
-          <div style={{width:72,height:72,borderRadius:"50%",background:playing?`linear-gradient(135deg,${C_.secondary},${C_.accent})`:`${C_.secondary}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,cursor:"pointer",transition:"all 0.3s",boxShadow:playing?`0 8px 24px ${C_.secondary}44`:"none",animation:playing?"pulse 1s ease-in-out infinite":"none"}}
+          <div style={{width:72,height:72,borderRadius:"50%",background:playing?C.primary:`${C.primary}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,cursor:"pointer",transition:"all 0.3s",boxShadow:playing?`0 8px 24px ${C_.secondary}44`:"none",animation:playing?"pulse 1s ease-in-out infinite":"none"}}
             onClick={()=>{if(!playing){setPlaying(true);speak(exercise.sentence,0.82).then(()=>setPlaying(false));}}}>
             {playing?"🔊":"🔈"}
           </div>
@@ -5240,7 +5240,7 @@ function SentBuildQ({exercise, onDone}) {
                   🔁 再听一遍
                 </button>
                 <button onClick={replayAndBuild}
-                  style={{background:`linear-gradient(135deg,${C_.secondary},${C_.accent})`,border:"none",color:"#fff",padding:"12px 28px",borderRadius:14,cursor:"pointer",fontSize:15,fontWeight:800,boxShadow:`0 6px 20px ${C_.secondary}33`}}>
+                  style={{background:C.error,border:"none",color:"#fff",padding:"12px 28px",borderRadius:14,cursor:"pointer",fontSize:15,fontWeight:800,boxShadow:`0 6px 20px ${C_.secondary}33`}}>
                   ✏️ 开始造句 →
                 </button>
               </div>
@@ -5283,7 +5283,7 @@ function SentBuildQ({exercise, onDone}) {
             ))}
           </div>
           {!done&&(
-            <button onClick={check} disabled={placed.length===0} style={{background:placed.length===0?"#ccc":`linear-gradient(135deg,${C_.secondary},${C_.accent})`,border:"none",color:"#fff",padding:"14px",borderRadius:14,cursor:placed.length===0?"default":"pointer",fontSize:15,fontWeight:800,opacity:placed.length===0?0.5:1,transition:"all 0.2s"}}>
+            <button onClick={check} disabled={placed.length===0} style={{background:placed.length===0?"#ccc":C.error,border:"none",color:"#fff",padding:"14px",borderRadius:14,cursor:placed.length===0?"default":"pointer",fontSize:15,fontWeight:800,opacity:placed.length===0?0.5:1,transition:"all 0.2s"}}>
               ✓ 检查 · Check
             </button>
           )}
@@ -5341,20 +5341,20 @@ function ListenDefQ({exercise, onDone}) {
       <div style={{textAlign:"center",padding:"8px 0 4px"}}>
         <div style={{fontSize:14,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:10}}>👂 Listen to Definition</div>
         <button onClick={readDef}
-          style={{width:64,height:64,borderRadius:"50%",background:"linear-gradient(135deg,#00B4D8,#7B61FF)",border:"none",cursor:"pointer",fontSize:28,boxShadow:"0 4px 16px rgba(0,180,216,0.35)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
+          style={{width:64,height:64,borderRadius:"50%",background:C.primary,border:"none",cursor:"pointer",fontSize:28,boxShadow:"0 4px 16px rgba(0,180,216,0.35)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
           🔊
         </button>
       </div>
       <div style={{background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
-        <div style={{fontSize:16,lineHeight:1.7,color:C.text,fontWeight:600}}>{exercise.enDef}</div>
-        <div style={{fontSize:13,color:C.tl,marginTop:6,paddingTop:6,borderTop:`1px solid ${C.primary}15`,fontStyle:"italic"}}>
+        <div style={{fontSize:16,lineHeight:1.7,color:"#fff",fontWeight:600}}>{exercise.enDef}</div>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.6)",marginTop:6,paddingTop:6,borderTop:`1px solid ${C.primary}15`,fontStyle:"italic"}}>
           🇨🇳 {exercise.cnDef}
         </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         {exercise.options.map((opt,i) => {
           const it=sel===opt, ic=opt===exercise.answer;
-          let bg=`${oc[i%4]}10`, bd=`2px solid ${oc[i%4]}33`, cl=C.text;
+          let bg="#fff", bd="2px solid #eef0f8", cl=C.text;
           if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}
           else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
           return <button key={i} onClick={()=>go(opt)}
@@ -5401,7 +5401,7 @@ function ListenPickQ({exercise, onDone}) {
       <div style={{textAlign:"center",padding:"12px 0 8px"}}>
         <div style={{fontSize:14,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:12}}>👂 Listen & Choose</div>
         <button onClick={()=>speak(w.word, 0.82)}
-          style={{width:80,height:80,borderRadius:"50%",background:"linear-gradient(135deg,#00B4D8,#7B61FF)",border:"none",cursor:"pointer",fontSize:36,boxShadow:"0 4px 20px rgba(0,180,216,0.4)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
+          style={{width:80,height:80,borderRadius:"50%",background:C.primary,border:"none",cursor:"pointer",fontSize:36,boxShadow:"0 4px 20px rgba(0,180,216,0.4)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
           🔊
         </button>
         {/* 答案始终占位，答前透明答后显示，防止位置跳动 */}
@@ -5410,7 +5410,7 @@ function ListenPickQ({exercise, onDone}) {
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         {exercise.options.map((opt,i) => {
           const it=sel===opt, ic=opt===exercise.answer;
-          let bg=`${oc[i%4]}10`, bd=`2px solid ${oc[i%4]}33`, cl=C.text;
+          let bg="#fff", bd="2px solid #eef0f8", cl=C.text;
           if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}
           else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
           return <button key={i} onClick={()=>go(opt)}
@@ -5466,12 +5466,12 @@ function ListenFillQ({exercise, onDone}) {
       <div style={{textAlign:"center",padding:"8px 0 4px"}}>
         <div style={{fontSize:14,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:10}}>👂 Listen & Fill</div>
         <button onClick={playAudio}
-          style={{width:64,height:64,borderRadius:"50%",background:"linear-gradient(135deg,#00B4D8,#7B61FF)",border:"none",cursor:"pointer",fontSize:28,boxShadow:"0 4px 16px rgba(0,180,216,0.35)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
+          style={{width:64,height:64,borderRadius:"50%",background:C.primary,border:"none",cursor:"pointer",fontSize:28,boxShadow:"0 4px 16px rgba(0,180,216,0.35)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
           🔊
         </button>
       </div>
       <div style={{background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
-        <div style={{fontSize:17,lineHeight:1.8,color:C.text,fontWeight:500}}>
+        <div style={{fontSize:17,lineHeight:1.8,color:"#fff",fontWeight:500}}>
           {exercise.masked.split("___").map((part,i,arr) => (
             <span key={i}>{part}{i<arr.length-1 && (
               done
@@ -5481,7 +5481,7 @@ function ListenFillQ({exercise, onDone}) {
           ))}
         </div>
         {exercise.sentCn && (
-          <div style={{fontSize:13,color:C.tl,marginTop:8,paddingTop:8,borderTop:`1px solid ${C.primary}15`,fontStyle:"italic"}}>
+          <div style={{fontSize:13,color:"rgba(255,255,255,0.6)",marginTop:8,paddingTop:8,borderTop:`1px solid ${C.primary}15`,fontStyle:"italic"}}>
             🇨🇳 {exercise.sentCn}
           </div>
         )}
@@ -5489,7 +5489,7 @@ function ListenFillQ({exercise, onDone}) {
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         {exercise.options.map((opt,i) => {
           const it=sel===opt, ic=opt===exercise.answer;
-          let bg=`${oc[i%4]}10`, bd=`2px solid ${oc[i%4]}33`, cl=C.text;
+          let bg="#fff", bd="2px solid #eef0f8", cl=C.text;
           if(done&&ic){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}
           else if(done&&it&&!ic){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
           return <button key={i} onClick={()=>go(opt)}
@@ -5663,12 +5663,12 @@ function FollowReadQ({exercise, onDone}) {
       {/* Title */}
       <div style={{textAlign:"center",padding:"8px 0"}}>
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#00B4D8",fontWeight:700,marginBottom:6}}>🎙️ Follow & Read</div>
-        <div style={{fontSize:13,color:C.tm,fontWeight:600}}>听示范 → 跟读 → 对比</div>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.8)",fontWeight:600}}>听示范 → 跟读 → 对比</div>
       </div>
 
       {/* Target sentence card */}
       <div style={{background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
-        <div style={{fontSize:16,lineHeight:1.8,color:C.text,fontWeight:700,marginBottom:8}}>
+        <div style={{fontSize:16,lineHeight:1.8,color:"#fff",fontWeight:700,marginBottom:8}}>
           {matchResult ? matchResult.map((r, i) => (
             <span key={i} style={{
               color: r.matched ? C.success : C.error,
@@ -5678,7 +5678,7 @@ function FollowReadQ({exercise, onDone}) {
             }}>{r.word} </span>
           )) : sentence}
         </div>
-        <div style={{fontSize:12,color:C.tl,borderTop:`1px solid ${C.primary}15`,paddingTop:8,fontStyle:"italic"}}>
+        <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",borderTop:`1px solid ${C.primary}15`,paddingTop:8,fontStyle:"italic"}}>
           🇨🇳 {sentCn}
         </div>
       </div>
@@ -5687,7 +5687,7 @@ function FollowReadQ({exercise, onDone}) {
       <div style={{display:"flex",gap:10,justifyContent:"center"}}>
         <button onClick={playDemo} disabled={playingDemo || recording}
           style={{display:"flex",alignItems:"center",gap:6,padding:"10px 20px",borderRadius:14,
-            background:playingDemo?"linear-gradient(135deg,#00B4D8,#7B61FF)":"#fff",
+            background:playingDemo?C.primary:"#fff",
             border:playingDemo?"none":"2px solid #00B4D833",
             color:playingDemo?"#fff":"#00B4D8",cursor:"pointer",fontSize:14,fontWeight:700,
             transition:"all 0.2s"}}>
@@ -5696,7 +5696,7 @@ function FollowReadQ({exercise, onDone}) {
         {recordBlob && (
           <button onClick={playUserRecording} disabled={playingUser}
             style={{display:"flex",alignItems:"center",gap:6,padding:"10px 20px",borderRadius:14,
-              background:playingUser?"linear-gradient(135deg,#FF6B6B,#FF8C5A)":"#fff",
+              background:playingUser?C.error:"#fff",
               border:playingUser?"none":"2px solid #FF6B6B33",
               color:playingUser?"#fff":"#FF6B6B",cursor:"pointer",fontSize:14,fontWeight:700,
               transition:"all 0.2s"}}>
@@ -5711,7 +5711,7 @@ function FollowReadQ({exercise, onDone}) {
           {!recording ? (
             <button onClick={startRecording}
               style={{width:80,height:80,borderRadius:"50%",
-                background:"linear-gradient(135deg,#FF6B6B,#FF8C5A)",
+                background:C.error,
                 border:"4px solid #fff",boxShadow:"0 4px 20px rgba(255,107,83,0.4)",
                 cursor:"pointer",fontSize:32,color:"#fff",
                 display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>
@@ -5720,7 +5720,7 @@ function FollowReadQ({exercise, onDone}) {
           ) : (
             <button onClick={stopRecording}
               style={{width:80,height:80,borderRadius:"50%",
-                background:"linear-gradient(135deg,#FF3333,#FF6B6B)",
+                background:C.error,
                 border:"4px solid #fff",boxShadow:"0 4px 20px rgba(255,50,50,0.5)",
                 cursor:"pointer",fontSize:28,color:"#fff",
                 display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto",
@@ -5728,11 +5728,11 @@ function FollowReadQ({exercise, onDone}) {
               ⬛
             </button>
           )}
-          <div style={{fontSize:12,color:C.tl,marginTop:8,fontWeight:600}}>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",marginTop:8,fontWeight:600}}>
             {recording ? "录音中...点击停止" : "点击开始跟读"}
           </div>
           {recording && recognized && (
-            <div style={{fontSize:13,color:C.tm,marginTop:8,padding:"8px 14px",background:"#f8f8ff",borderRadius:10,fontStyle:"italic"}}>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.8)",marginTop:8,padding:"8px 14px",background:"#f8f8ff",borderRadius:10,fontStyle:"italic"}}>
               识别中：{recognized}
             </div>
           )}
@@ -5744,7 +5744,7 @@ function FollowReadQ({exercise, onDone}) {
         <div style={{textAlign:"center"}}>
           {/* Score circle */}
           <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",
-            background:score>=80?"linear-gradient(135deg,#3CC87A,#00B4D8)":score>=60?"linear-gradient(135deg,#F8C740,#FF8C5A)":"linear-gradient(135deg,#FF6B6B,#FF3333)",
+            background:score>=80?C.accent:score>=60?C.gold:C.error,
             borderRadius:20,padding:"14px 28px",marginBottom:12,
             boxShadow:"0 4px 16px rgba(0,0,0,0.12)"}}>
             <div style={{fontSize:24,fontWeight:900,color:"#fff"}}>{score}%</div>
@@ -5755,14 +5755,14 @@ function FollowReadQ({exercise, onDone}) {
 
           {/* Recognition result */}
           <div style={{background:"#fff",borderRadius:14,padding:"14px 16px",marginBottom:16,border:"1.5px solid #E8EEFF",textAlign:"left"}}>
-            <div style={{fontSize:11,color:C.tl,fontWeight:700,marginBottom:6}}>🤖 识别结果：</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.6)",fontWeight:700,marginBottom:6}}>🤖 识别结果：</div>
             <div style={{fontSize:14,color:recognized?C.text:C.tl,lineHeight:1.6,fontWeight:600}}>
               {recognized || "(未识别到语音)"}
             </div>
           </div>
 
           {/* Legend */}
-          <div style={{display:"flex",gap:16,justifyContent:"center",marginBottom:16,fontSize:12,color:C.tl}}>
+          <div style={{display:"flex",gap:16,justifyContent:"center",marginBottom:16,fontSize:12,color:"rgba(255,255,255,0.6)"}}>
             <span><span style={{color:C.success,fontWeight:800}}>■</span> 识别正确</span>
             <span><span style={{color:C.error,fontWeight:800}}>■</span> 未识别到</span>
           </div>
@@ -5771,12 +5771,12 @@ function FollowReadQ({exercise, onDone}) {
           <div style={{display:"flex",gap:10}}>
             <button onClick={()=>{setPhase("listen");setMatchResult(null);setRecognized("");setRecordBlob(null);setScore(0);stoppedRef.current=false;}}
               style={{flex:1,padding:"14px",borderRadius:14,background:C.card,border:"2px solid #E8EEFF",
-                color:C.tm,cursor:"pointer",fontSize:14,fontWeight:700}}>
+                color:"rgba(255,255,255,0.8)",cursor:"pointer",fontSize:14,fontWeight:700}}>
               🔄 再试一次
             </button>
             <button onClick={handleNext}
               style={{flex:1,padding:"14px",borderRadius:14,
-                background:score>=60?"linear-gradient(135deg,#3CC87A,#00B4D8)":"linear-gradient(135deg,#FF8C5A,#FF6B6B)",
+                background:score>=60?C.accent:C.error,
                 border:"none",color:"#fff",cursor:"pointer",fontSize:14,fontWeight:800}}>
               {score>=60?"✓ 下一题":"→ 跳过"}
             </button>
@@ -5854,14 +5854,14 @@ function MovieReadScreen({ onClose }) {
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
           <button onClick={onClose} style={{background:C.card,border:"2px solid #ffd4d4",color:C.error,padding:"8px 14px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>✕</button>
           <div>
-            <div style={{fontSize:20,fontWeight:900,color:C.text}}>🎬 经典台词跟读</div>
-            <div style={{fontSize:12,color:C.tl}}>选择一部电影开始跟读练习</div>
+            <div style={{fontSize:20,fontWeight:900,color:"#fff"}}>🎬 经典台词跟读</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.6)"}}>选择一部电影开始跟读练习</div>
           </div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:14,maxWidth:460,margin:"0 auto"}}>
           {Object.entries(MOVIE_LINES).map(([key, movie]) => (
             <div key={key} onClick={() => { setSelectedMovie(key); setLineIdx(0); setPhase("idle"); setMatchResult(null); setRecognized(""); setScore(0); stoppedRef.current=false; }}
-              style={{background:"linear-gradient(135deg,#1A1A2E,#2D1B69)",borderRadius:20,padding:"24px 20px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,transition:"transform 0.2s",border:`2px solid ${movie.color}33`}}
+              style={{background:"rgba(255,255,255,0.1)",borderRadius:20,padding:"24px 20px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,transition:"transform 0.2s",border:`2px solid ${movie.color}33`}}
               onMouseEnter={e=>e.currentTarget.style.transform="translateY(-3px)"}
               onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
               <div style={{fontSize:44}}>{movie.emoji}</div>
@@ -5944,10 +5944,10 @@ function MovieReadScreen({ onClose }) {
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
         <button onClick={()=>setSelectedMovie(null)} style={{background:C.card,border:`2px solid ${movie.color}33`,color:movie.color,padding:"8px 14px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>← 返回</button>
         <div style={{flex:1}}>
-          <div style={{fontSize:16,fontWeight:800,color:C.text}}>{movie.emoji} {movie.name}</div>
-          <div style={{fontSize:11,color:C.tl}}>{lineIdx+1} / {movie.lines.length}</div>
+          <div style={{fontSize:16,fontWeight:800,color:"#fff"}}>{movie.emoji} {movie.name}</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>{lineIdx+1} / {movie.lines.length}</div>
         </div>
-        <button onClick={onClose} style={{background:"none",border:"1px solid #ccc",color:C.tl,padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:11}}>✕ 关闭</button>
+        <button onClick={onClose} style={{background:"none",border:"1px solid #ccc",color:"rgba(255,255,255,0.6)",padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:11}}>✕ 关闭</button>
       </div>
 
       {/* Progress bar */}
@@ -5958,7 +5958,7 @@ function MovieReadScreen({ onClose }) {
       {/* Quote card */}
       <div style={{background:C.card,borderRadius:20,overflow:"hidden",border:`2px solid ${movie.color}22`,boxShadow:"0 4px 20px rgba(0,0,0,0.06)",marginBottom:20,maxWidth:460,margin:"0 auto 20px"}}>
         {/* Character header */}
-        <div style={{padding:"14px 18px",background:"linear-gradient(135deg,#1A1A2E,#2D1B69)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{padding:"14px 18px",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:24}}>{movie.emoji}</span>
             <div>
@@ -5973,12 +5973,12 @@ function MovieReadScreen({ onClose }) {
 
         {/* Quote text */}
         <div style={{padding:"20px 18px"}}>
-          <div style={{fontSize:16,lineHeight:1.8,fontWeight:700,color:C.text,marginBottom:10,fontStyle:"italic"}}>
+          <div style={{fontSize:16,lineHeight:1.8,fontWeight:700,color:"#fff",marginBottom:10,fontStyle:"italic"}}>
             {matchResult ? matchResult.map((r,i) => (
               <span key={i} style={{color:r.matched?C.success:C.error,textDecoration:r.matched?"none":"underline wavy",fontWeight:r.matched?700:800,marginRight:3}}>{r.word} </span>
             )) : `"${currentLine.line}"`}
           </div>
-          <div style={{fontSize:12,color:C.tl,fontStyle:"italic",borderTop:`1px solid ${movie.color}15`,paddingTop:10}}>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",fontStyle:"italic",borderTop:`1px solid ${movie.color}15`,paddingTop:10}}>
             🇨🇳 {currentLine.cnLine}
           </div>
         </div>
@@ -5994,7 +5994,7 @@ function MovieReadScreen({ onClose }) {
           {phase==="idle"&&(
             <button onClick={startRec}
               style={{display:"flex",alignItems:"center",gap:6,padding:"10px 18px",borderRadius:14,
-                background:"linear-gradient(135deg,#FF6B6B,#FF8C5A)",border:"none",
+                background:C.error,border:"none",
                 color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700}}>
               🎙️ 开始跟读
             </button>
@@ -6013,11 +6013,11 @@ function MovieReadScreen({ onClose }) {
                 background:score>=80?`${C.success}15`:score>=60?"#FFF4D4":`${C.error}10`,
                 border:`1.5px solid ${score>=80?C.success+"44":score>=60?C.gold+"44":C.error+"44"}`}}>
                 <span style={{fontSize:18,fontWeight:900,color:score>=80?C.success:score>=60?C.gold:C.error}}>{score}%</span>
-                <span style={{fontSize:11,color:C.tl,marginLeft:4}}>{score>=80?"太棒了!":score>=60?"不错!":"再试试"}</span>
+                <span style={{fontSize:11,color:"rgba(255,255,255,0.6)",marginLeft:4}}>{score>=80?"太棒了!":score>=60?"不错!":"再试试"}</span>
               </div>
               <button onClick={()=>{setPhase("idle");setMatchResult(null);setRecognized("");setScore(0);stoppedRef.current=false;}}
                 style={{padding:"10px 14px",borderRadius:14,background:C.card,border:"1.5px solid #E8EEFF",
-                  color:C.tm,cursor:"pointer",fontSize:12,fontWeight:700}}>
+                  color:"rgba(255,255,255,0.8)",cursor:"pointer",fontSize:12,fontWeight:700}}>
                 🔄 再试
               </button>
             </div>
@@ -6027,7 +6027,7 @@ function MovieReadScreen({ onClose }) {
         {/* Recognition text */}
         {recording && recognized && (
           <div style={{padding:"0 18px 14px"}}>
-            <div style={{fontSize:12,color:C.tm,padding:"8px 12px",background:"#f8f8ff",borderRadius:10,fontStyle:"italic"}}>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.8)",padding:"8px 12px",background:"#f8f8ff",borderRadius:10,fontStyle:"italic"}}>
               识别中：{recognized}
             </div>
           </div>
@@ -6074,7 +6074,7 @@ function VerbFormsQ({exercise, onDone}) {
     <div style={{display:"flex",flexDirection:"column",gap:20,width:"100%",maxWidth:440}}>
       <div style={{textAlign:"center"}}>
         <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C_.secondary,fontWeight:700,marginBottom:10}}>🔀 动词变形 · Verb Forms</div>
-        <div style={{padding:"18px",borderRadius:18,background:`linear-gradient(135deg,${C_.secondary}12,${C_.accent}08)`,border:`1.5px solid ${C_.secondary}22`,marginBottom:4}}>
+        <div style={{padding:"18px",borderRadius:18,background:`${C.error}10`,border:`1.5px solid ${C_.secondary}22`,marginBottom:4}}>
           <div style={{fontSize:13,color:C_.tm,marginBottom:8,fontWeight:600}}>{exercise.question}</div>
           <div style={{fontSize:36,fontWeight:900,color:C_.text}}>{exercise.word.word}</div>
           <div style={{fontSize:13,color:C_.tl,marginTop:4}}>{exercise.label}</div>
@@ -7818,7 +7818,7 @@ Include: word, cn (Chinese meaning), en (English definition), ex (example senten
               </button>
 
               {shareCode && (
-                <div style={{background:"linear-gradient(135deg,#E8FFF4,#D8EEFF)",borderRadius:16,padding:"16px",textAlign:"center"}}>
+                <div style={{background:C.peach,borderRadius:16,padding:"16px",textAlign:"center"}}>
                   <div style={{fontSize:13,color:C.tm,marginBottom:8}}>分享码（发给学生）：</div>
                   <div style={{fontSize:28,fontWeight:900,color:C.primary,letterSpacing:4}}>{shareCode}</div>
                   <div style={{fontSize:12,color:C.tl,marginTop:8}}>学生在设置页面输入分享码即可开始练习</div>
@@ -8039,7 +8039,7 @@ function AuthScreen({ onLogin }) {
   };
 
   return (
-    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#EAF4FF,#EEE8FF)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+    <div style={{minHeight:"100vh",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{background:"#fff",borderRadius:28,padding:"36px 32px",maxWidth:400,width:"100%",boxShadow:"0 20px 60px rgba(77,182,255,0.15)"}}>
         {/* Logo */}
         <div style={{textAlign:"center",marginBottom:28}}>
@@ -8736,8 +8736,8 @@ export default function VocabMaster() {
   };
   // ── Auth gate ──
   if (!authReady) return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(160deg,#fff5f0,#f5f0ff)"}}>
-      <div style={{textAlign:"center"}}><div style={{fontSize:48,marginBottom:12}}>📚</div><div style={{fontSize:16,color:"#8A8494",fontWeight:600}}>Loading...</div></div>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.primary}}>
+      <div style={{textAlign:"center"}}><div style={{fontSize:48,marginBottom:12}}>📚</div><div style={{fontSize:16,color:"rgba(255,255,255,0.6)",fontWeight:600}}>Loading...</div></div>
     </div>
   );
   if (!authUser) return <AuthScreen onLogin={(user)=>{ setAuthUser(user); setAuthReady(true); if(user?.email==='annieyanranzhou@gmail.com') setIsTeacher(true); }}/>;
@@ -8753,8 +8753,8 @@ export default function VocabMaster() {
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
       <style>{`@keyframes cfall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:0}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}*{box-sizing:border-box}button:active{transform:scale(0.96)!important}::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:rgba(255,107,53,0.2);border-radius:8px}#cal-strip::-webkit-scrollbar{display:none}#cal-strip{-ms-overflow-style:none;scrollbar-width:none}`}</style>
       <Confetti active={showConfetti}/>
-      <div style={{position:"fixed",top:-80,right:-80,width:300,height:300,borderRadius:"50%",background:"rgba(255,107,53,0.07)",filter:"blur(60px)",pointerEvents:"none"}}/>
-      <div style={{position:"fixed",bottom:-60,left:-60,width:250,height:250,borderRadius:"50%",background:"rgba(123,45,142,0.07)",filter:"blur(60px)",pointerEvents:"none"}}/>
+      <div style={{position:"fixed",top:-80,right:-80,width:300,height:300,borderRadius:"50%",background:"rgba(255,185,60,0.08)",filter:"blur(60px)",pointerEvents:"none"}}/>
+      <div style={{position:"fixed",bottom:-60,left:-60,width:250,height:250,borderRadius:"50%",background:"rgba(43,208,196,0.06)",filter:"blur(60px)",pointerEvents:"none"}}/>
 
       {/* ── BOTTOM NAV (hidden during play/results) ── */}
       {showStudentPanel && (
@@ -9115,11 +9115,11 @@ export default function VocabMaster() {
               <div style={{fontSize:12,color:"rgba(255,255,255,0.85)",fontWeight:700}}>挑战赛得分</div>
             </div>
           )}
-          <h2 style={{fontSize:32,fontWeight:900,margin:"0 0 6px"}}>{correct/res.length>=0.8?"太棒了!":correct/res.length>=0.5?"继续加油!":"再接再厉!"}</h2>
-          <p style={{color:C.tl,fontSize:15,marginBottom:24}}>{correct/res.length>=0.8?"Outstanding!":correct/res.length>=0.5?"Keep going!":"Practice more!"}</p>
+          <h2 style={{fontSize:32,fontWeight:900,margin:"0 0 6px",color:"#fff"}}>{correct/res.length>=0.8?"太棒了!":correct/res.length>=0.5?"继续加油!":"再接再厉!"}</h2>
+          <p style={{color:"rgba(255,255,255,0.6)",fontSize:15,marginBottom:24}}>{correct/res.length>=0.8?"Outstanding!":correct/res.length>=0.5?"Keep going!":"Practice more!"}</p>
           <div style={{display:"flex",justifyContent:"center",marginBottom:24}}>
-            <div style={{width:120,height:120,borderRadius:"50%",background:`conic-gradient(#3CC87A ${correct/res.length*360}deg, #E8FFF4 0deg)`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 32px rgba(45,198,83,0.15)"}}>
-              <div style={{width:92,height:92,borderRadius:"50%",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column"}}><div style={{fontSize:28,fontWeight:900,color:C.success}}>{correct}</div><div style={{fontSize:11,color:C.tl}}>/{res.length}</div></div>
+            <div style={{width:120,height:120,borderRadius:"50%",background:`conic-gradient(${C.gold} ${correct/res.length*360}deg, #E8FFF4 0deg)`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 32px rgba(45,198,83,0.15)"}}>
+              <div style={{width:92,height:92,borderRadius:"50%",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column"}}><div style={{fontSize:28,fontWeight:900,color:C.success}}>{correct}</div><div style={{fontSize:11,color:C.tl}}>/{res.length}</div></div>
             </div>
           </div>
           {/* Session summary - only show for non-challenge */}
@@ -9174,7 +9174,7 @@ export default function VocabMaster() {
               ? <button onClick={startChallenge} style={{background:C.gold,border:"none",color:"#fff",padding:"16px 32px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:800,boxShadow:"0 8px 28px rgba(255,107,53,0.27)"}}>⚡ 再战一局 · Again!</button>
               : <button onClick={()=>startPractice()} style={{background:C.error,border:"none",color:"#fff",padding:"16px 32px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:800,boxShadow:"0 8px 28px rgba(255,107,53,0.27)"}}>再练 · Again!</button>
             }
-            <button onClick={()=>setScreen("home")} style={{background:C.card,border:"2px solid #e8e4f0",color:C.tm,padding:"14px 32px",borderRadius:18,cursor:"pointer",fontSize:15,fontWeight:700}}>首页 · Home</button>
+            <button onClick={()=>setScreen("home")} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",padding:"14px 32px",borderRadius:18,cursor:"pointer",fontSize:15,fontWeight:700}}>首页 · Home</button>
           </div>
         </div>
       )}
@@ -9449,7 +9449,7 @@ export default function VocabMaster() {
               <div style={{background:C.card,borderRadius:20,padding:"20px",boxShadow:"0 4px 16px rgba(0,0,0,0.04)"}}>
                 <div style={{fontSize:14,fontWeight:800,color:C.tm,marginBottom:12}}>🏫 教师控制台</div>
                 <button onClick={()=>setTeacherScreen("dashboard")}
-                  style={{width:"100%",background:"linear-gradient(135deg,#4DB6FF,#9B6FFF)",border:"none",color:"#fff",padding:"13px",borderRadius:14,cursor:"pointer",fontSize:14,fontWeight:800}}>
+                  style={{width:"100%",background:C.error,border:"none",color:"#fff",padding:"13px",borderRadius:14,cursor:"pointer",fontSize:14,fontWeight:800}}>
                   进入教师端 →
                 </button>
               </div>
@@ -9645,7 +9645,7 @@ export default function VocabMaster() {
                   </div>
                 </div>
                 {lesson.key && (
-                  <div style={{background:"linear-gradient(135deg,#fff9e6,#fff3d6)",borderRadius:16,padding:"16px 18px",marginBottom:24,
+                  <div style={{background:C.peach,borderRadius:16,padding:"16px 18px",marginBottom:24,
                     border:"1px solid #ffd86033"}}>
                     <div style={{fontSize:14,fontWeight:800,color:"#8B6914",marginBottom:6}}>🔑 关键点</div>
                     <div style={{fontSize:13,color:"#6B5210",lineHeight:1.6}}>{lesson.key}</div>
@@ -9680,15 +9680,15 @@ export default function VocabMaster() {
               :drillType==="speaking"?"🎙️ 口语专项"
               :"⏰ 动词时态";
         return (
-          <div style={{position:"fixed",inset:0,zIndex:100,background:C.bg,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{position:"fixed",inset:0,zIndex:100,background:C.primary,display:"flex",flexDirection:"column",overflow:"hidden"}}>
             {/* ── Fixed Top Bar ── */}
-            <div style={{flexShrink:0,padding:"12px 16px 8px",borderBottom:`1px solid ${C.bg}`}}>
+            <div style={{flexShrink:0,padding:"12px 16px 8px",borderBottom:"1px solid rgba(255,255,255,0.1)"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,maxWidth:600,margin:"0 auto"}}>
-                <button onClick={()=>{setDrillType(null);setDrillMode(null);setDrillStage(null);}} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:C.tm,padding:4}}>✕</button>
-                <div style={{flex:1,height:8,background:"rgba(0,0,0,0.06)",borderRadius:8,margin:"0 14px",overflow:"hidden"}}>
-                  <div style={{height:"100%",width:`${((drillIdx+(drillDone?1:0))/drillQuestions.length)*100}%`,background:`linear-gradient(90deg,${C.secondary},${C.accent})`,borderRadius:8,transition:"width 0.4s ease"}}/>
+                <button onClick={()=>{setDrillType(null);setDrillMode(null);setDrillStage(null);}} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#fff",padding:4}}>✕</button>
+                <div style={{flex:1,height:8,background:"rgba(255,255,255,0.2)",borderRadius:8,margin:"0 14px",overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${((drillIdx+(drillDone?1:0))/drillQuestions.length)*100}%`,background:C.gold,borderRadius:8,transition:"width 0.4s ease"}}/>
                 </div>
-                <div style={{fontSize:13,fontWeight:700,color:C.tl,whiteSpace:"nowrap"}}>{drillIdx+1}/{drillQuestions.length}</div>
+                <div style={{fontSize:13,fontWeight:700,color:"rgba(255,255,255,0.7)",whiteSpace:"nowrap"}}>{drillIdx+1}/{drillQuestions.length}</div>
               </div>
             </div>
 
@@ -9697,7 +9697,7 @@ export default function VocabMaster() {
               <div style={{width:"100%",maxWidth:600}}>
               {/* Type badge */}
               <div style={{textAlign:"center",marginBottom:10,flexShrink:0}}>
-                <span style={{display:"inline-block",padding:"4px 12px",borderRadius:20,background:C.card,fontSize:11,fontWeight:700,color:C.tm}}>{typeLabel}{drillStage&&STAGE_CONFIG[drillType]?(" · "+(STAGE_CONFIG[drillType].stages.find(s=>s.cat===drillStage)?.name||"")):""}</span>
+                <span style={{display:"inline-block",padding:"4px 12px",borderRadius:20,background:"rgba(255,255,255,0.15)",fontSize:11,fontWeight:700,color:"#fff"}}>{typeLabel}{drillStage&&STAGE_CONFIG[drillType]?(" · "+(STAGE_CONFIG[drillType].stages.find(s=>s.cat===drillStage)?.name||"")):""}</span>
               </div>
 
               {/* Question — listen/speaking types use dedicated components */}
@@ -9772,7 +9772,7 @@ export default function VocabMaster() {
               {(q.opts||q.options||[]).map((opt,i)=>{
                 const isCorrect = opt===(q.a||q.answer);
                 const isSelected = opt===drillSel;
-                let bg=`${oc[i%4]}10`, bd=`2px solid ${oc[i%4]}33`, cl=C.text;
+                let bg="#fff", bd="2px solid #eef0f8", cl=C.text;
                 if(drillDone&&isCorrect){bg=`${C.success}18`;bd=`2px solid ${C.success}`;cl=C.success;}
                 else if(drillDone&&isSelected&&!isCorrect){bg=`${C.error}12`;bd=`2px solid ${C.error}`;cl=C.error;}
                 return (
@@ -9796,18 +9796,18 @@ export default function VocabMaster() {
             {/* ── Fixed Bottom Bar — 固定高度，答前空白，答后变色 ── */}
             {!(drillQuestions[drillIdx]?.type==="follow_read")&&(
               <div style={{flexShrink:0,height:140,padding:"12px 20px 16px",boxSizing:"border-box",
-                background:drillDone?(drillSel===(q.a||q.answer)?"#e8f5e9":"#fbe9e7"):C.bg,
-                borderTop:drillDone?`1px solid ${drillSel===(q.a||q.answer)?"#a5d6a744":"#ffab9144"}`:"1px solid transparent",
+                background:drillDone?(drillSel===(q.a||q.answer)?C.accent+"22":C.error+"18"):"rgba(255,255,255,0.05)",
+                borderTop:drillDone?`1px solid ${drillSel===(q.a||q.answer)?C.accent+"44":C.error+"44"}`:"1px solid rgba(255,255,255,0.1)",
                 transition:"background 0.3s ease",display:"flex",alignItems:"center"}}>
                 <div style={{maxWidth:600,margin:"0 auto",width:"100%"}}>
                   {drillDone ? (<>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                       <div>
-                        <div style={{fontSize:15,fontWeight:800,color:drillSel===(q.a||q.answer)?"#2e7d32":"#c62828"}}>
+                        <div style={{fontSize:15,fontWeight:800,color:drillSel===(q.a||q.answer)?C.accent:C.error}}>
                           {drillSel===(q.a||q.answer)?"✓ 正确！":"✗ 答错了"}
                           {drillSel!==(q.a||q.answer)&&<span style={{fontFamily:"'JetBrains Mono',monospace",marginLeft:6}}>→ {q.a||q.answer}</span>}
                         </div>
-                        <div style={{fontSize:13,color:drillSel===(q.a||q.answer)?"#388e3c":"#d32f2f",marginTop:2}}>💡 {q.tip||""}</div>
+                        <div style={{fontSize:13,color:drillSel===(q.a||q.answer)?C.accent:"rgba(255,255,255,0.7)",marginTop:2}}>💡 {q.tip||""}</div>
                       </div>
                       <div onClick={()=>{
                         // Build complete sentence: handle "A...B" (two-blank) and single-blank
@@ -9826,7 +9826,7 @@ export default function VocabMaster() {
                       }} style={{cursor:"pointer",fontSize:24,padding:"4px 8px",flexShrink:0}}>🔊</div>
                     </div>
                     <button onClick={drillNext}
-                      style={{width:"100%",background:drillSel===(q.a||q.answer)?"#4caf50":"linear-gradient(135deg,"+C.secondary+","+C.accent+")",
+                      style={{width:"100%",background:drillSel===(q.a||q.answer)?C.accent:C.error,
                         border:"none",color:"#fff",padding:"14px",borderRadius:14,
                         cursor:"pointer",fontSize:17,fontWeight:800}}>
                       {drillIdx+1>=drillQuestions.length?"查看结果 →":"继续 →"}
@@ -9866,21 +9866,21 @@ export default function VocabMaster() {
             </div>
           )}
           {isStageMode && passed && nextStage && (
-            <div style={{background:"linear-gradient(135deg,#e8f5e9,#c8e6c9)",borderRadius:14,padding:"12px 16px",marginBottom:16,
+            <div style={{background:C.accent+"18",borderRadius:14,padding:"12px 16px",marginBottom:16,
               border:"1px solid #a5d6a722"}}>
               <div style={{fontSize:14,fontWeight:800,color:"#2e7d32"}}>🔓 太棒了！本分类已掌握</div>
               <div style={{fontSize:12,color:"#388e3c",marginTop:4}}>{nextStage.icon} {nextStage.name}</div>
             </div>
           )}
           {isStageMode && !passed && (
-            <div style={{background:"linear-gradient(135deg,#fff3e0,#ffe0b2)",borderRadius:14,padding:"12px 16px",marginBottom:16,
+            <div style={{background:C.gold+"18",borderRadius:14,padding:"12px 16px",marginBottom:16,
               border:"1px solid #ffb74d22"}}>
               <div style={{fontSize:14,fontWeight:800,color:"#e65100"}}>继续加油！≥80% 正确率即为掌握</div>
               <div style={{fontSize:12,color:"#bf360c",marginTop:4}}>当前 {Math.round(rate*100)}%，再试一次吧！</div>
             </div>
           )}
           <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",
-            background:`linear-gradient(135deg,${C.secondary},${C.accent})`,
+            background:C.error,
             borderRadius:24,padding:"20px 40px",marginBottom:28,
             boxShadow:"0 8px 28px rgba(0,0,0,0.15)"}}>
             <div style={{fontSize:44,fontWeight:900,color:"#fff"}}>{drillCorrect}</div>
@@ -9892,7 +9892,7 @@ export default function VocabMaster() {
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {isStageMode ? (<>
               <button onClick={()=>startStage(drillType, drillStage)}
-                style={{background:`linear-gradient(135deg,${C.secondary},${C.accent})`,border:"none",color:"#fff",
+                style={{background:C.error,border:"none",color:"#fff",
                   padding:"16px",borderRadius:16,cursor:"pointer",fontSize:16,fontWeight:800}}>
                 🔁 再练本分类
               </button>
@@ -9910,7 +9910,7 @@ export default function VocabMaster() {
               </button>
             </>) : (<>
               <button onClick={()=>startDrill(drillType)}
-                style={{background:`linear-gradient(135deg,${C.secondary},${C.accent})`,border:"none",color:"#fff",
+                style={{background:C.error,border:"none",color:"#fff",
                   padding:"16px",borderRadius:16,cursor:"pointer",fontSize:16,fontWeight:800}}>
                 🔁 再练一局
               </button>
