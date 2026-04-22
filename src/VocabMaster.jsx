@@ -458,27 +458,29 @@ const playCelebrationSound = () => {
 
 /* ═══ COLORS ═══ */
 const C = {
-  bg:"#F7F9FF",          // 冰雾白背景
+  // ══ Maxima 配色方案 ══
+  bg:"#EEF2FF",          // 淡蓝灰背景
   card:"#FFFFFF",         // 卡片白
-  primary:"#4DB6FF",      // 极光蓝 - 主色
-  secondary:"#9B6FFF",    // 星云紫 - 副色
-  accent:"#3CC87A",       // 薄荷绿 - 成功/按钮
-  success:"#3CC87A",      // 薄荷绿
-  error:"#FF6B6B",        // 珊瑚红
-  gold:"#F8C740",         // 活力黄 - 积分/连击
-  text:"#1A1A2E",         // 深夜蓝 - 正文
-  tl:"#8A9BBF",           // 蓝灰 - 辅助文字
+  primary:"#2E57D8",      // 宝蓝 Cobalt - 主色
+  secondary:"#F14D2C",    // 橙红 Orange - 副色/CTA
+  accent:"#2BD0C4",       // 青绿 Teal - 成功/辅助按钮
+  success:"#2BD0C4",      // 青绿 Teal
+  error:"#F14D2C",        // 橙红 Orange
+  gold:"#FFB93C",         // 暖黄 Yellow - 积分/连击/卡片高亮
+  text:"#1A1A2E",         // 深色正文
+  tl:"#7A8BB5",           // 蓝灰 - 辅助文字
   tm:"#3D4A6B",           // 中深蓝 - 次级文字
-  mint:"#C8F5E0",         // 淡绿
-  lav:"#EAE4FF",          // 淡紫
-  peach:"#FFF4D4",        // 淡黄
-  sky:"#D8EEFF",          // 淡蓝
-  nav:"#1A1A2E",          // 导航栏深色
+  mint:"#D4F5EE",         // 淡青绿
+  lav:"#FFE8D8",          // 淡橙
+  peach:"#FFF5D8",        // 奶油 Cream
+  sky:"#D8E4FF",          // 淡宝蓝
+  nav:"#2E57D8",          // 宝蓝导航栏
+  pink:"#F9C5D1",         // 粉色装饰
   // 渐变色（用于按钮/标题）
-  grad1:"linear-gradient(135deg,#4DB6FF,#9B6FFF)",   // 蓝→紫
-  grad2:"linear-gradient(135deg,#F8C740,#FF8C5A)",   // 黄→橙（挑战赛）
-  grad3:"linear-gradient(135deg,#3CC87A,#4DB6FF)",   // 绿→蓝（成功）
-  grad4:"linear-gradient(135deg,#9B6FFF,#FF6B6B)",   // 紫→红（高级词）
+  grad1:"linear-gradient(135deg,#2E57D8,#2BD0C4)",   // 宝蓝→青绿
+  grad2:"linear-gradient(135deg,#FFB93C,#F14D2C)",   // 暖黄→橙红（挑战赛）
+  grad3:"linear-gradient(135deg,#2BD0C4,#2E57D8)",   // 青绿→宝蓝（成功）
+  grad4:"linear-gradient(135deg,#F14D2C,#FFB93C)",   // 橙红→暖黄（高级词）
 };
 AUDIO_HASH_MAP = _AUDIO_MAP; // alias for listen_fill
 
