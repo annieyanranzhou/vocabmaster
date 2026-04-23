@@ -1001,7 +1001,7 @@ export default function PetSystem() {
         <div style={{display:"flex",gap:8}}>
           <button onClick={() => setView("dex")} style={{background:"none",border:"1px solid rgba(255,255,255,0.25)",color:"#fff",padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:10}}>图鉴</button>
           {pets.length < 6 && (
-            <button onClick={() => setView("choose")} style={{background:"none",border:"1px solid #7B61FF55",color:"#7B61FF",padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:10,fontWeight:700}}>+ 领养</button>
+            <button onClick={() => setView("choose")} style={{background:"none",border:"1px solid rgba(255,255,255,0.25)",color:"#fff",padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:10,fontWeight:700}}>+ 领养</button>
           )}
         </div>
       </div>
@@ -1036,7 +1036,7 @@ export default function PetSystem() {
               )}
               {/* Pet name */}
               <div style={{fontSize:9,color,fontWeight:700,letterSpacing:1,marginBottom:4}}>{TYPE_NAME[p.type]} · Lv.{p.level}</div>
-              <div style={{fontSize:11,fontWeight:900,color:"#fff",marginBottom:8}}>{EVO_DATA[p.type][p.level]}</div>
+              <div style={{fontSize:11,fontWeight:900,color:C.text,marginBottom:8}}>{EVO_DATA[p.type][p.level]}</div>
               {/* Pet sprite */}
               <div style={{textAlign:"center",marginBottom:8}}>
                 <div style={{display:"inline-block",animation:isFeedAnim?"feedPop 0.6s ease":"none",cursor:"pointer"}}
@@ -1082,9 +1082,9 @@ export default function PetSystem() {
         {/* Empty slots */}
         {pets.length < 6 && Array(6 - pets.length).fill(0).map((_,i) => (
           <div key={`empty-${i}`} onClick={() => setView("choose")}
-            style={{background:"#f0f2ff",borderRadius:20,padding:"14px 12px",border:"2px dashed #d0d4ff",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",minHeight:260,gap:8,opacity:0.7}}>
-            <div style={{fontSize:32,color:"#c0c4e0"}}>+</div>
-            <div style={{fontSize:11,color:"#a0a4c0",fontWeight:700}}>领养伙伴</div>
+            style={{background:"rgba(255,255,255,0.08)",borderRadius:20,padding:"14px 12px",border:"2px dashed rgba(255,255,255,0.2)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",minHeight:260,gap:8,opacity:0.7}}>
+            <div style={{fontSize:32,color:"rgba(255,255,255,0.4)"}}>+</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",fontWeight:700}}>领养伙伴</div>
           </div>
         ))}
       </div>

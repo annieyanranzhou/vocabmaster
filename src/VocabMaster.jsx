@@ -4667,9 +4667,9 @@ function LearnCard({exercise,onDone}) {
   const dots=(
     <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:14}}>
       {["Word","Phrases","Sentence"].map((l,i)=>(
-        <div key={i} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 12px",borderRadius:20,background:step===i?`${[C.primary,C.secondary,C.accent][i]}18`:"transparent",border:`2px solid ${step===i?[C.primary,C.secondary,C.accent][i]:C.tl+"33"}`,transition:"all 0.3s"}}>
-          <div style={{width:8,height:8,borderRadius:"50%",background:step>=i?[C.primary,C.secondary,C.accent][i]:C.tl+"44",transition:"all 0.3s"}}/>
-          <span style={{fontSize:11,fontWeight:700,color:step===i?[C.primary,C.secondary,C.accent][i]:C.tl}}>{l}</span>
+        <div key={i} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 12px",borderRadius:20,background:step===i?"rgba(255,255,255,0.15)":"transparent",border:`2px solid ${step===i?"rgba(255,255,255,0.35)":"rgba(255,255,255,0.15)"}`,transition:"all 0.3s"}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:step>=i?[C.gold,C.error,C.accent][i]:"rgba(255,255,255,0.25)",transition:"all 0.3s"}}/>
+          <span style={{fontSize:11,fontWeight:700,color:step===i?"#fff":"rgba(255,255,255,0.5)"}}>{l}</span>
         </div>
       ))}
     </div>
@@ -5070,11 +5070,11 @@ function MatchQ({exercise,onDone}) {
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {exercise.pairs.map((w,i)=>(
             <button key={w} onClick={()=>clickW(w)}
-              style={{background:matches[w]?`${C.success}12`:selW===w?C.gold:"#fff",
-                border:matches[w]?`2px solid ${C.success}`:selW===w?`2px solid ${C.gold}`:"2px solid #eef0f8",
-                color:matches[w]?C.success:C.text,padding:"12px 14px",borderRadius:14,
+              style={{background:matches[w]?C.gold:selW===w?C.gold:"#fff",
+                border:matches[w]?`2px solid ${C.gold}`:selW===w?`2px solid ${C.gold}`:"2px solid #eef0f8",
+                color:matches[w]?"#fff":selW===w?"#fff":C.text,padding:"12px 14px",borderRadius:14,
                 cursor:(matches[w]||finishing)?"default":"pointer",fontSize:15,fontWeight:700,
-                opacity:matches[w]?0.6:1,transition:"all 0.2s"}}>
+                opacity:matches[w]?0.7:1,transition:"all 0.2s"}}>
               {w}
             </button>
           ))}
@@ -5084,13 +5084,13 @@ function MatchQ({exercise,onDone}) {
             const matched=Object.values(matches).includes(m);
             return (
               <button key={i} onClick={()=>clickM(m)}
-                style={{background:matched?`${C.success}12`:wrong===m?`${C.error}12`:"#fff",
-                  border:matched?`2px solid ${C.success}`:wrong===m?`2px solid ${C.error}`:"2px solid #eef0f8",
-                  color:matched?C.success:wrong===m?C.error:C.text,
+                style={{background:matched?C.gold:wrong===m?`${C.error}15`:"#fff",
+                  border:matched?`2px solid ${C.gold}`:wrong===m?`2px solid ${C.error}`:"2px solid #eef0f8",
+                  color:matched?"#fff":wrong===m?C.error:C.text,
                   padding:"12px 14px",borderRadius:14,
                   cursor:(matched||finishing)?"default":"pointer",
                   fontSize:12,textAlign:"left",lineHeight:1.5,
-                  opacity:matched?0.6:1,transition:"all 0.2s"}}>
+                  opacity:matched?0.7:1,transition:"all 0.2s"}}>
                 {m.length>60?m.slice(0,60)+"…":m}
               </button>
             );
@@ -5263,7 +5263,7 @@ function SentBuildQ({exercise, onDone}) {
             {placed.length===0
               ? <div style={{color:"rgba(255,255,255,0.5)",fontSize:13,width:"100%",textAlign:"center"}}>点击下方单词，按顺序组成句子</div>
               : placed.map((w,i)=>(
-                  <button key={i+"-"+w} onClick={()=>removeWord(w,i)} style={{padding:"6px 12px",borderRadius:20,background:done?(wrong?`${C_.error}18`:`${C_.success}18`):tileColors[i%5]+"18",border:`1.5px solid ${done?(wrong?C_.error:C_.success):tileColors[i%5]}55`,color:done?(wrong?C_.error:C_.success):tileColors[i%5],fontSize:14,fontWeight:700,cursor:done?"default":"pointer",transition:"all 0.2s"}}>
+                  <button key={i+"-"+w} onClick={()=>removeWord(w,i)} style={{padding:"6px 12px",borderRadius:20,background:done?(wrong?`${C_.error}`:C_.accent):"#fff",border:done?"none":"1.5px solid #eef0f8",color:done?"#fff":C.text,fontSize:14,fontWeight:700,cursor:done?"default":"pointer",transition:"all 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
                     {w}
                   </button>
                 ))
