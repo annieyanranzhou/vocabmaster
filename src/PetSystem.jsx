@@ -927,22 +927,22 @@ export default function PetSystem() {
             ← 返回
           </button>
         )}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,maxWidth:480,margin:"0 auto 24px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,maxWidth:400,margin:"0 auto 24px"}}>
           {["fox","cat","penguin","dragon","shiba","bunny"].map(type => {
             const color = TYPE_COLOR[type];
             const alreadyOwned = owned.includes(type);
             return (
               <div key={type} onClick={() => !alreadyOwned && !allOwned && addPet(type)}
-                style={{background:TYPE_BG[type],border:`2px solid ${alreadyOwned?"#ccc":color+"55"}`,borderRadius:16,padding:"20px 12px 16px",cursor:alreadyOwned||allOwned?"default":"pointer",textAlign:"center",opacity:alreadyOwned||allOwned?0.5:1,transition:"all 0.2s",position:"relative"}}
-                onMouseEnter={e => { if(!alreadyOwned&&!allOwned){e.currentTarget.style.borderColor=color;e.currentTarget.style.transform="translateY(-4px)";} }}
+                style={{background:TYPE_BG[type],border:`2px solid ${alreadyOwned?"#ccc":color+"55"}`,borderRadius:14,padding:"12px 8px 10px",cursor:alreadyOwned||allOwned?"default":"pointer",textAlign:"center",opacity:alreadyOwned||allOwned?0.5:1,transition:"all 0.2s",position:"relative"}}
+                onMouseEnter={e => { if(!alreadyOwned&&!allOwned){e.currentTarget.style.borderColor=color;e.currentTarget.style.transform="translateY(-3px)";} }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor=alreadyOwned?"#ccc":color+"55";e.currentTarget.style.transform="translateY(0)"; }}>
-                {alreadyOwned && <div style={{position:"absolute",top:8,right:8,fontSize:10,color:"#888",fontWeight:700}}>已拥有</div>}
-                <div style={{fontSize:9,color,letterSpacing:2,marginBottom:8}}>No.{TYPE_NUM[type]}</div>
-                <div style={{display:"flex",justifyContent:"center",marginBottom:10}}>
-                  <PetPixel type={type} level={1} mood="happy" size={72}/>
+                {alreadyOwned && <div style={{position:"absolute",top:6,right:6,fontSize:9,color:"#888",fontWeight:700}}>已拥有</div>}
+                <div style={{fontSize:8,color,letterSpacing:2,marginBottom:4}}>No.{TYPE_NUM[type]}</div>
+                <div style={{display:"flex",justifyContent:"center",marginBottom:6}}>
+                  <PetPixel type={type} level={1} mood="happy" size={48}/>
                 </div>
-                <div style={{fontSize:13,fontWeight:900,color:C.text,marginBottom:2}}>{EVO_DATA[type][3]}</div>
-                <div style={{fontSize:10,color,fontWeight:700,letterSpacing:1}}>{TYPE_NAME[type]}</div>
+                <div style={{fontSize:11,fontWeight:900,color:C.text,marginBottom:1}}>{EVO_DATA[type][3]}</div>
+                <div style={{fontSize:9,color,fontWeight:700,letterSpacing:1}}>{TYPE_NAME[type]}</div>
               </div>
             );
           })}
