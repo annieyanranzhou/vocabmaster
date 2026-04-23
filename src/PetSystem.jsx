@@ -913,17 +913,17 @@ export default function PetSystem() {
     const owned = pets.map(p => p.type);
     const allOwned = owned.length >= 6;
     return (
-      <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",padding:"24px 16px"}}>
+      <div style={{background:"transparent",fontFamily:"system-ui,sans-serif",padding:"24px 16px 100px"}}>
         <style>{css}</style>
         <div style={{textAlign:"center",marginBottom:20}}>
-          <div style={{fontSize:19,fontWeight:900,color:C.text,letterSpacing:2}}>✦ UGLY PETS ✦</div>
-          <div style={{fontSize:11,color:C.sub,letterSpacing:3,marginTop:4}}>
+          <div style={{fontSize:19,fontWeight:900,color:"#fff",letterSpacing:2}}>✦ UGLY PETS ✦</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.6)",letterSpacing:3,marginTop:4}}>
             {pets.length === 0 ? "选择你的第一只伙伴" : `已有 ${pets.length}/6 只 · 再选一只`}
           </div>
         </div>
         {pets.length > 0 && (
           <button onClick={() => setView("home")}
-            style={{display:"block",margin:"0 auto 16px",background:"none",border:"1px solid #ccc",color:C.sub,padding:"6px 16px",borderRadius:8,cursor:"pointer",fontSize:12}}>
+            style={{display:"block",margin:"0 auto 16px",background:"none",border:"1px solid rgba(255,255,255,0.25)",color:"#fff",padding:"6px 16px",borderRadius:8,cursor:"pointer",fontSize:12}}>
             ← 返回
           </button>
         )}
@@ -957,11 +957,11 @@ export default function PetSystem() {
     if (!p) { setView("choose"); return null; }
     const color = TYPE_COLOR[p.type];
     return (
-      <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",padding:"16px"}}>
+      <div style={{background:"transparent",fontFamily:"system-ui,sans-serif",padding:"16px 16px 100px"}}>
         <style>{css}</style>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
-          <button onClick={() => setView("home")} style={{background:"none",border:`1px solid ${color}44`,color,padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:12}}>← 返回</button>
-          <div style={{fontSize:13,color:C.text,fontWeight:900}}>进化图鉴 · {EVO_DATA[p.type][p.level]}</div>
+          <button onClick={() => setView("home")} style={{background:"none",border:"none",color:"#fff",background:"rgba(255,255,255,0.15)",padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:12}}>← 返回</button>
+          <div style={{fontSize:13,color:"#fff",fontWeight:900}}>进化图鉴 · {EVO_DATA[p.type][p.level]}</div>
         </div>
         {[1,2,3,4,5].map(lv => {
           const unlocked = p.totalFed >= EVO_REQ[lv];
@@ -988,7 +988,7 @@ export default function PetSystem() {
 
   // ── Home: 4-pet grid ──
   return (
-    <div style={{background:C.bg,fontFamily:"system-ui,sans-serif",position:"relative",overflow:"hidden"}}>
+    <div style={{background:"transparent",fontFamily:"system-ui,sans-serif",position:"relative",overflow:"hidden"}}>
       <style>{css}</style>
 
       {evoAnim && (
@@ -997,9 +997,9 @@ export default function PetSystem() {
 
       {/* Header */}
       <div style={{background:C.nav,borderBottom:`1px solid #e0e6ff`,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{fontSize:14,fontWeight:900,color:C.text,letterSpacing:2}}>✦ UGLY PETS ✦</div>
+        <div style={{fontSize:14,fontWeight:900,color:"#fff",letterSpacing:2}}>✦ UGLY PETS ✦</div>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={() => setView("dex")} style={{background:"none",border:"1px solid #ccc",color:C.sub,padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:10}}>图鉴</button>
+          <button onClick={() => setView("dex")} style={{background:"none",border:"1px solid rgba(255,255,255,0.25)",color:"#fff",padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:10}}>图鉴</button>
           {pets.length < 6 && (
             <button onClick={() => setView("choose")} style={{background:"none",border:"1px solid #7B61FF55",color:"#7B61FF",padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:10,fontWeight:700}}>+ 领养</button>
           )}
@@ -1009,11 +1009,11 @@ export default function PetSystem() {
       {/* Food counter */}
       <div style={{background:C.nav,padding:"10px 16px",borderBottom:"1px solid #e0e6ff",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
-          <span style={{fontSize:11,color:C.sub}}>库存粮食  </span>
-          <span style={{fontSize:20,fontWeight:900,color:C.text}}>{state.food}</span>
-          <span style={{fontSize:12,color:C.sub}}> 个</span>
+          <span style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>库存粮食  </span>
+          <span style={{fontSize:20,fontWeight:900,color:"#fff"}}>{state.food}</span>
+          <span style={{fontSize:12,color:"rgba(255,255,255,0.6)"}}> 个</span>
         </div>
-        <div style={{fontSize:11,color:C.sub}}>学习赚取，喂食进化</div>
+        <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>学习赚取，喂食进化</div>
       </div>
 
       {/* Pet grid */}
@@ -1036,7 +1036,7 @@ export default function PetSystem() {
               )}
               {/* Pet name */}
               <div style={{fontSize:9,color,fontWeight:700,letterSpacing:1,marginBottom:4}}>{TYPE_NAME[p.type]} · Lv.{p.level}</div>
-              <div style={{fontSize:11,fontWeight:900,color:C.text,marginBottom:8}}>{EVO_DATA[p.type][p.level]}</div>
+              <div style={{fontSize:11,fontWeight:900,color:"#fff",marginBottom:8}}>{EVO_DATA[p.type][p.level]}</div>
               {/* Pet sprite */}
               <div style={{textAlign:"center",marginBottom:8}}>
                 <div style={{display:"inline-block",animation:isFeedAnim?"feedPop 0.6s ease":"none",cursor:"pointer"}}
@@ -1049,7 +1049,7 @@ export default function PetSystem() {
               {/* HP bar */}
               <div style={{marginBottom:4}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                  <span style={{fontSize:9,color:C.sub}}>HP</span>
+                  <span style={{fontSize:9,color:"rgba(255,255,255,0.6)"}}>HP</span>
                   <span style={{fontSize:9,color:mood.color,fontWeight:700}}>{p.happiness}/100</span>
                 </div>
                 <div style={{height:4,background:"#e0e6ff",borderRadius:3,overflow:"hidden"}}>
@@ -1060,13 +1060,13 @@ export default function PetSystem() {
               {p.level < 5 && (
                 <div style={{marginBottom:8}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                    <span style={{fontSize:9,color:C.sub}}>→ Lv{p.level+1}</span>
+                    <span style={{fontSize:9,color:"rgba(255,255,255,0.5)"}}>→ Lv{p.level+1}</span>
                     <span style={{fontSize:9,color}}>{evoProgress}%</span>
                   </div>
                   <div style={{height:4,background:"#e0e6ff",borderRadius:3,overflow:"hidden"}}>
                     <div style={{width:`${evoProgress}%`,height:"100%",background:`linear-gradient(90deg,${color},#ffd700)`,borderRadius:3,transition:"width 0.4s"}}/>
                   </div>
-                  <div style={{fontSize:9,color:C.sub,marginTop:2,textAlign:"center"}}>还需喂食 {Math.max(0,nextLvReq-p.totalFed)} 次</div>
+                  <div style={{fontSize:9,color:"rgba(255,255,255,0.5)",marginTop:2,textAlign:"center"}}>还需喂食 {Math.max(0,nextLvReq-p.totalFed)} 次</div>
                 </div>
               )}
               {p.level === 5 && <div style={{textAlign:"center",fontSize:10,color:"#ffd700",marginBottom:8,letterSpacing:2}}>✦ MAX ✦</div>}
@@ -1090,13 +1090,13 @@ export default function PetSystem() {
       </div>
 
       {/* How to earn food */}
-      <div style={{padding:"14px 16px",background:C.bg}}>
-        <div style={{fontSize:11,color:C.sub,letterSpacing:1,marginBottom:10,fontWeight:700}}>如何获得粮食</div>
+      <div style={{padding:"14px 16px",background:"transparent"}}>
+        <div style={{fontSize:11,color:"rgba(255,255,255,0.7)",letterSpacing:1,marginBottom:10,fontWeight:700}}>如何获得粮食</div>
         {[{icon:"✏️",text:"每答对5题",reward:"+1"},{icon:"📝",text:"完成专项练习",reward:"+3~10"},{icon:"🎙️",text:"完成口语专项",reward:"+3~10"},{icon:"🎮",text:"闯关通过一关",reward:"+2"},{icon:"🏆",text:"完成挑战赛",reward:"+5"}].map((item,i) => (
           <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:i<4?`1px solid ${C.border}`:"none"}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <span style={{fontSize:14}}>{item.icon}</span>
-              <span style={{fontSize:12,color:C.sub}}>{item.text}</span>
+              <span style={{fontSize:12,color:"rgba(255,255,255,0.6)"}}>{item.text}</span>
             </div>
             <span style={{fontSize:12,color:"#7B61FF",fontWeight:900}}>{item.reward}</span>
           </div>
