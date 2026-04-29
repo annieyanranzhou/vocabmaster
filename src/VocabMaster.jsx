@@ -4,6 +4,7 @@ import WordJump from './WordJump.jsx';
 import WordSlice from './WordSlice.jsx';
 import PetSystem, { addPetFood } from './PetSystem.jsx';
 import { ThemeProvider, useTheme } from './ThemeContext.jsx';
+import { AppShell, FrostCard, FrostButton, FrostProgress, AppBottomNav, StatCard, AssetImg } from './ThemedUI.jsx';
 
 /* ═══ SUPABASE CLIENT ═══ */
 const SUPABASE_URL = "https://pjrtgwmesbswwydhdbor.supabase.co";
@@ -8741,7 +8742,7 @@ function VocabMasterInner() {
   const filtered=VOCAB.filter(w=>{const ms=w.word.toLowerCase().includes(search.toLowerCase())||w.en.toLowerCase().includes(search.toLowerCase())||w.cn.includes(search);return ms&&(lvFilter==="all"||w.lv===lvFilter)&&(posFilter==="all"||w.pos===posFilter);});
 
   return (
-    <div style={{minHeight:"100vh",background:colors.bg,backgroundImage:`url(${assets.bgPattern})`,backgroundSize:"cover",backgroundAttachment:"fixed",fontFamily:"'Nunito','Noto Sans SC',system-ui,sans-serif",color:C.text,position:"relative"}}>
+    <AppShell>
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
       <style>{`@keyframes cfall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:0}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}*{box-sizing:border-box}button:active{transform:scale(0.96)!important}::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:rgba(255,107,53,0.2);border-radius:8px}#cal-strip::-webkit-scrollbar{display:none}#cal-strip{-ms-overflow-style:none;scrollbar-width:none}`}</style>
       <Confetti active={showConfetti}/>
@@ -8805,75 +8806,49 @@ function VocabMasterInner() {
           }}/>
       )}
       {(showGame||screen!=="play"&&screen!=="results")&&(
-        <div style={{position:"fixed",bottom:0,left:0,right:0,background:`linear-gradient(180deg,${colors.primary} 0%,${colors.primaryDark||colors.primary} 100%)`,borderRadius:"22px 22px 0 0",display:"flex",alignItems:"flex-end",justifyContent:"space-around",zIndex:100,padding:"0 8px 10px",boxShadow:`0 -4px 24px ${colors.primary}20`,height:72}}>
-          {[
-            {id:"today",icon:"🏠",label:"首页",emoji:true},
-            {id:"words",icon:"📖",label:"学习",emoji:true},
-            {id:"_center",icon:null,label:"练习",center:true},
-            {id:"drills",icon:"✏️",label:"词库",emoji:true},
-            {id:"settings",icon:"⚙️",label:"我的",emoji:true},
-          ].map(t=>(
-            <button key={t.id} onClick={()=>{
-              if(t.id==="_center"){startPractice(todayWords);return;}
-              setShowGame(false);setTab(t.id);if(screen!=="home")setScreen("home");
-            }} style={{flex:t.center?0:1,width:t.center?60:undefined,padding:t.center?"0":"8px 0 0",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative"}}>
-              {t.center?(
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginTop:-24}}>
-                  <div style={{width:56,height:56,borderRadius:28,background:`linear-gradient(135deg,${colors.primary},${colors.primaryLight})`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 6px 24px ${colors.primary}45`,border:"3.5px solid rgba(255,255,255,0.5)"}}>
-                    <span style={{fontSize:28,lineHeight:1}}>{themeId==="yuki"?"❄️":"✦"}</span>
-                  </div>
-                  <span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.7)",marginTop:3}}>{t.label}</span>
-                </div>
-              ):(
-                <>
-                  <span style={{fontSize:22,filter:(!showGame&&tab===t.id)?"none":"grayscale(0.3) opacity(0.5)"}}>{t.icon}</span>
-                  <span style={{fontSize:10,fontWeight:700,color:(!showGame&&tab===t.id)?colors.navActive:"rgba(255,255,255,0.45)"}}>{t.label}</span>
-                  {(!showGame&&tab===t.id)&&<div style={{width:5,height:5,borderRadius:3,background:colors.navActive,marginTop:1}}/>}
-                </>
-              )}
-            </button>
-          ))}
-        </div>
+        <AppBottomNav
+          activeTab={showGame?'_game':tab}
+          onTabChange={(id)=>{setShowGame(false);setTab(id);if(screen!=="home")setScreen("home");}}
+          onCenterPress={()=>startPractice(todayWords)}
+        />
       )}
 
       {screen==="home"&&tab==="today"&&(
-        <div style={{padding:"0 0 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
-          {/* ═══ Top: Avatar + Name + Points ═══ */}
-          <div style={{padding:"14px 20px 0",display:"flex",alignItems:"center",gap:12}}>
-            <div style={{width:56,height:56,borderRadius:28,border:`2.5px solid ${colors.primaryLight}40`,background:`${colors.primaryLight}15`,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <img src={assets.heroAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";}}/>
-              <span style={{fontSize:28,position:"absolute"}}>{themeId==="yuki"?"🧑‍🎓":"🧙‍♀️"}</span>
+        <div style={{padding:"16px 16px 110px"}}>
+
+          {/* ═══ AppTopBar: Avatar + Name + Points ═══ */}
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+            <div style={{width:52,height:52,borderRadius:26,border:`2px solid ${colors.cardBorder}`,overflow:"hidden",flexShrink:0,background:colors.cardGlass}}>
+              <AssetImg src={assets.heroAvatar} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
             </div>
             <div style={{flex:1}}>
-              <div style={{fontSize:20,fontWeight:900,color:C.text}}>{skin.mascotName}</div>
-              <div style={{fontSize:12,color:C.tm}}>{skin.label}学徒  Lv.{Math.min(99,Math.floor(mastered.size/5)+1)}</div>
+              <div style={{fontSize:18,fontWeight:800,color:colors.text}}>{skin.mascotName}</div>
+              <div style={{fontSize:12,color:colors.textSecondary,fontWeight:500}}>{skin.label}学徒 · Lv.{Math.min(99,Math.floor(mastered.size/5)+1)}</div>
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.7)",borderRadius:22,padding:"7px 14px",border:`1px solid ${colors.primary}15`,boxShadow:`0 2px 8px ${colors.primary}08`}}>
-              <span style={{fontSize:14}}>{themeId==="yuki"?"❄️":"🌙"}</span>
-              <span style={{fontSize:17,fontWeight:800,color:C.text}}>{mastered.size>0?mastered.size*3:0}</span>
-              <span style={{fontSize:16}}>⭐</span>
-            </div>
+            <FrostCard variant="compact" style={{padding:"6px 14px",display:"flex",alignItems:"center",gap:6}}>
+              <AssetImg src={assets.navIcons?.practice} style={{width:16,height:16}}/>
+              <span style={{fontSize:16,fontWeight:800,color:colors.text}}>{mastered.size>0?mastered.size*3:0}</span>
+              <span style={{fontSize:15}}>⭐</span>
+            </FrostCard>
           </div>
 
-          {/* ═══ Hero Card: 今日学习计划 + 角色立绘 ═══ */}
-          <div style={{padding:"14px 16px 0"}}>
-            <div style={{background:C.card,borderRadius:24,padding:"22px 24px 24px",position:"relative",overflow:"hidden",border:`1.5px solid ${colors.primary}12`,boxShadow:`0 8px 32px ${colors.primary}08`,backdropFilter:"blur(12px)"}}>
-              {/* 装饰角标 */}
-              <span style={{position:"absolute",top:8,left:10,fontSize:10,color:`${colors.primary}18`}}>❄</span>
-              <span style={{position:"absolute",top:8,right:10,fontSize:10,color:`${colors.primary}18`}}>❄</span>
-              <span style={{position:"absolute",bottom:8,left:10,fontSize:10,color:`${colors.primary}18`}}>❄</span>
-              <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:6}}>✦ 今日学习计划</div>
+          {/* ═══ TodayPlanHeroCard ═══ */}
+          <FrostCard variant="hero" showCorners style={{marginBottom:12,position:"relative",minHeight:160,overflow:"hidden"}}>
+            <div style={{position:"absolute",inset:0,zIndex:0,opacity:0.15}}>
+              <AssetImg src={assets.bgHero} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+            </div>
+            <div style={{position:"relative",zIndex:2,maxWidth:"55%"}}>
+              <div style={{fontSize:14,fontWeight:800,color:colors.text,marginBottom:8}}>✦ 今日学习计划</div>
               <div style={{display:"flex",alignItems:"baseline",gap:3}}>
-                <span style={{fontSize:48,fontWeight:900,color:colors.primary,lineHeight:1}}>{todayWords.length}</span>
-                <span style={{fontSize:16,fontWeight:600,color:C.tm}}>/20 词</span>
+                <span style={{fontSize:52,fontWeight:900,color:colors.primary,lineHeight:1,letterSpacing:"-0.02em"}}>{todayWords.length}</span>
+                <span style={{fontSize:17,fontWeight:600,color:colors.textSecondary}}>/20 词</span>
               </div>
-              <div style={{fontSize:12,color:C.tl,marginTop:8}}>{themeCopy.studyMotivation}</div>
-              {/* 角色立绘 */}
-              <img src={assets.heroCharacter} alt="" style={{position:"absolute",right:0,bottom:-4,width:140,height:185,objectFit:"contain",pointerEvents:"none",opacity:0.95}} onError={e=>{e.target.style.display="none";}}/>
+              <div style={{fontSize:12,color:colors.textMuted,marginTop:10}}>{themeCopy.studyMotivation}</div>
             </div>
-          </div>
+            <AssetImg src={assets.heroCharacter} style={{position:"absolute",right:-8,bottom:-8,width:160,height:200,zIndex:1,pointerEvents:"none"}}/>
+          </FrostCard>
 
-          {/* ═══ Stats Row ═══ */}
+          {/* ═══ StatsRow ═══ */}
           {(()=>{
             const todayStr=new Date().toDateString();
             const lastDate=localStorage.getItem("vm_last_date");
@@ -8881,295 +8856,91 @@ function VocabMasterInner() {
             if(lastDate!==todayStr&&mastered.size>0){
               const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
               const newDays=lastDate===yesterday.toDateString()?streakDays+1:1;
-              localStorage.setItem("vm_streak_days",newDays);
-              localStorage.setItem("vm_last_date",todayStr);
+              localStorage.setItem("vm_streak_days",newDays);localStorage.setItem("vm_last_date",todayStr);
             }
             const days=parseInt(localStorage.getItem("vm_streak_days")||"1");
             const todayAnswered=(()=>{try{return parseInt(localStorage.getItem("vm_daily_answered_"+new Date().toDateString())||"0")}catch(e){return 0}})();
             return (
-              <div style={{display:"flex",gap:8,padding:"12px 16px 0"}}>
-                {[
-                  {label:"学习时长",value:Math.max(1,Math.floor(todayAnswered*0.8)),unit:"min",deco:"❄"},
-                  {label:"掌握单词",value:mastered.size,unit:"词",deco:"✦"},
-                  {label:"连续天数",value:days,unit:"天",deco:"❄"},
-                ].map((s,i)=>(
-                  <div key={i} style={{flex:1,background:C.card,backdropFilter:"blur(12px)",borderRadius:18,padding:"14px 8px",textAlign:"center",border:`1px solid ${colors.primary}10`,boxShadow:`0 4px 16px ${colors.primary}05`}}>
-                    <div style={{fontSize:11,color:C.tm,fontWeight:600}}><span style={{fontSize:8,opacity:0.4}}>{s.deco}</span> {s.label}</div>
-                    <div style={{fontSize:28,fontWeight:900,color:C.text,lineHeight:1.3}}>{s.value}<span style={{fontSize:12,fontWeight:500,color:C.tl}}> {s.unit}</span></div>
-                  </div>
-                ))}
+              <div style={{display:"flex",gap:8,marginBottom:12}}>
+                <StatCard label="学习时长" value={Math.max(1,Math.floor(todayAnswered*0.8))} unit="min" icon="✦"/>
+                <StatCard label="掌握单词" value={mastered.size} unit="词" icon="✦"/>
+                <StatCard label="连续天数" value={days} unit="天" icon="✦"/>
               </div>
             );
           })()}
 
-          {/* ═══ 今日主题 Card ═══ */}
-          <div style={{padding:"12px 16px 0"}}>
-            <div style={{background:C.card,borderRadius:22,padding:"18px 20px",border:`1px solid ${colors.primary}10`,boxShadow:`0 4px 16px ${colors.primary}05`,position:"relative",overflow:"hidden",minHeight:100}}>
-              <div style={{fontSize:12,color:C.tm,fontWeight:600,marginBottom:4}}>✦ 今日主题</div>
-              <div style={{fontSize:22,fontWeight:900,color:C.text}}>词汇冒险</div>
-              <div style={{fontSize:13,color:C.tm,marginTop:2}}>Vocabulary Adventure</div>
-              <img src={`/theme-assets/${themeId}/theme-illust.png`} alt="" style={{position:"absolute",right:0,bottom:0,width:160,height:100,objectFit:"cover",opacity:0.8,borderRadius:"0 0 22px 0"}} onError={e=>{e.target.style.display="none";}}/>
+          {/* ═══ TodayThemeCard ═══ */}
+          <FrostCard style={{marginBottom:12,position:"relative",overflow:"hidden",minHeight:90}}>
+            <div style={{position:"relative",zIndex:2}}>
+              <div style={{fontSize:12,color:colors.textSecondary,fontWeight:600,marginBottom:4}}>✦ 今日主题</div>
+              <div style={{fontSize:22,fontWeight:900,color:colors.text}}>冰川与自然</div>
+              <div style={{fontSize:13,color:colors.textSecondary,marginTop:2}}>Glaciers & Nature</div>
             </div>
-          </div>
+            <AssetImg src={assets.themeIllust} style={{position:"absolute",right:0,bottom:0,width:160,height:100,objectFit:"cover",borderRadius:"0 0 22px 0",opacity:0.85}}/>
+          </FrostCard>
 
-          {/* ═══ CTA + Quick Actions ═══ */}
+          {/* ═══ StartPracticeButton ═══ */}
           {(()=>{
             const today=new Date();today.setHours(0,0,0,0);
             const sel=new Date(calendarDate);sel.setHours(0,0,0,0);
             const isToday=sel.getTime()===today.getTime();
+            return (
+              <FrostButton
+                variant="primary"
+                onClick={()=>startPractice(todayWords)}
+                icon={<span style={{width:40,height:40,borderRadius:20,background:"rgba(255,255,255,0.2)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>▶</span>}
+                style={{marginBottom:12,justifyContent:"flex-start",height:72}}
+              >
+                <div style={{textAlign:"left",flex:1}}>
+                  <div style={{fontSize:17,fontWeight:900}}>{isToday?"开始今日练习":"补学这天的词"}</div>
+                  <div style={{fontSize:13,fontWeight:600,opacity:0.8,marginTop:2}}>还剩 {todayWords.length} 个词 · 预计 {Math.ceil(todayWords.length*0.7)} 分钟</div>
+                </div>
+                <span style={{fontSize:22,opacity:0.6}}>›</span>
+              </FrostButton>
+            );
+          })()}
+
+          {/* ═══ QuickEntryGrid ═══ */}
+          {(()=>{
             const wrongWords=JSON.parse(localStorage.getItem("vm_wrong_words")||"[]");
             const wrongVocab=VOCAB.filter(w=>wrongWords.includes(w.word));
             const startWrongBook=()=>{if(wrongVocab.length>0)startPractice(wrongVocab.slice(0,10));};
             return (
-              <div style={{padding:"12px 16px 0"}}>
-                <button onClick={()=>startPractice(todayWords)} style={{width:"100%",padding:"18px 20px",borderRadius:20,background:styles.primaryButton.background,border:styles.primaryButton.border||"none",color:"#fff",fontSize:17,fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:styles.primaryButton.boxShadow,marginBottom:10}}>
-                  <span style={{width:40,height:40,borderRadius:"50%",background:"rgba(255,255,255,0.2)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>▶</span>
-                  <div style={{textAlign:"left"}}>
-                    <div>{isToday?"开始今日练习":"补学这天的词"}</div>
-                    <div style={{fontSize:13,fontWeight:600,opacity:0.8,marginTop:2}}>还剩 {todayWords.length} 个词 · 预计 {Math.ceil(todayWords.length*0.7)} 分钟</div>
-                  </div>
-                  <span style={{marginLeft:"auto",fontSize:22,opacity:0.7}}>›</span>
-                </button>
-                <div style={{display:"flex",gap:10}}>
-                  <div onClick={startWrongBook} style={{flex:1,background:`${colors.primary}12`,borderRadius:20,padding:"18px 16px",cursor:wrongVocab.length>0?"pointer":"default",border:`1px solid ${colors.primary}10`}}>
-                    <div style={{fontSize:28,marginBottom:8}}>🎯</div>
-                    <div style={{fontSize:16,fontWeight:900,color:C.text}}>错题斩</div>
-                    <div style={{fontSize:12,color:C.tm,fontWeight:600}}>{wrongVocab.length>0?wrongVocab.length+"词待复习":"暂无错题"}</div>
-                  </div>
-                  <div onClick={startChallenge} style={{flex:1,background:`${colors.primaryLight}18`,borderRadius:20,padding:"18px 16px",cursor:"pointer",border:`1px solid ${colors.primaryLight}15`}}>
-                    <div style={{fontSize:28,marginBottom:8}}>🏆</div>
-                    <div style={{fontSize:16,fontWeight:900,color:C.text}}>挑战赛</div>
-                    <div style={{fontSize:12,color:C.tm,fontWeight:600}}>20题 · 全词库</div>
-                  </div>
-                </div>
+              <div style={{display:"flex",gap:10,marginBottom:12}}>
+                <FrostCard variant="compact" style={{flex:1,cursor:wrongVocab.length>0?"pointer":"default"}} onClick={startWrongBook}>
+                  <div style={{fontSize:22,marginBottom:6}}>🎯</div>
+                  <div style={{fontSize:15,fontWeight:800,color:colors.text}}>错题斩</div>
+                  <div style={{fontSize:12,color:colors.textSecondary}}>{wrongVocab.length>0?wrongVocab.length+"词待复习":"暂无错题"}</div>
+                </FrostCard>
+                <FrostCard variant="compact" style={{flex:1,cursor:"pointer"}} onClick={startChallenge}>
+                  <div style={{fontSize:22,marginBottom:6}}>🏆</div>
+                  <div style={{fontSize:15,fontWeight:800,color:colors.text}}>挑战赛</div>
+                  <div style={{fontSize:12,color:colors.textSecondary}}>20题 · 全词库</div>
+                </FrostCard>
               </div>
             );
           })()}
 
-          {/* ═══ 今日任务 + 伙伴 ═══ */}
-          <div style={{padding:"12px 16px 0"}}>
-            <div style={{background:C.card,borderRadius:22,padding:"18px 20px 20px",border:`1px solid ${colors.primary}10`,boxShadow:`0 4px 16px ${colors.primary}05`,position:"relative"}}>
-              <span style={{position:"absolute",top:8,left:10,fontSize:10,color:`${colors.primary}18`}}>❄</span>
-              <span style={{position:"absolute",top:8,right:10,fontSize:10,color:`${colors.primary}18`}}>❄</span>
-              <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:14}}>✦ 今日任务</div>
-              {[
-                {label:"学习新词",done:Math.min(todayWords.length,mastered.size),total:todayWords.length},
-                {label:"复习巩固",done:Math.floor(total*0.7),total:30},
-                {label:"练习挑战",done:Math.min(5,Math.floor(total/4)),total:5},
-              ].map((t,i)=>{
-                const pct=t.total>0?Math.min(100,Math.round(t.done/t.total*100)):0;
-                return (
-                <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:i<2?10:0}}>
-                  <div style={{width:20,height:20,borderRadius:10,flexShrink:0,background:pct>0?colors.primary:`${colors.primary}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#fff",fontWeight:700}}>✓</div>
-                  <span style={{fontSize:13,fontWeight:700,color:C.text,width:68}}>{t.label}</span>
-                  <div style={{flex:1,height:7,borderRadius:4,background:`${colors.primary}08`,overflow:"hidden"}}>
-                    <div style={{width:`${pct}%`,height:"100%",borderRadius:4,background:`linear-gradient(90deg,${colors.primary},${colors.primaryLight})`,boxShadow:pct>0?`0 0 8px ${colors.primary}30`:"none",transition:"width 0.6s ease"}}/>
-                  </div>
-                  <span style={{fontSize:12,fontWeight:700,color:C.tm,minWidth:40,textAlign:"right"}}>{t.done}/{t.total}</span>
+          {/* ═══ TodayTasksCard ═══ */}
+          <FrostCard showCorners style={{marginBottom:12,position:"relative"}}>
+            <div style={{fontSize:14,fontWeight:800,color:colors.text,marginBottom:14}}>✦ 今日任务</div>
+            {[
+              {label:"学习新词",done:Math.min(todayWords.length,mastered.size),total:todayWords.length},
+              {label:"复习巩固",done:Math.floor(total*0.7),total:30},
+              {label:"练习挑战",done:Math.min(5,Math.floor(total/4)),total:5},
+            ].map((t,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:i<2?12:0}}>
+                <div style={{width:22,height:22,borderRadius:11,flexShrink:0,background:t.done>0?colors.primary:`${colors.primary}20`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <span style={{fontSize:10,color:"#fff",fontWeight:700}}>✓</span>
                 </div>
-              );})}
-              {/* 伙伴角色 */}
-              <img src={assets.petCharacter} alt={skin.petName} style={{position:"absolute",right:-4,bottom:-12,width:80,height:90,objectFit:"contain",pointerEvents:"none",opacity:0.9}} onError={e=>{e.target.style.display="none";}}/>
-            </div>
-          </div>
-
-          {/* ═══ Word list ═══ */}
-          <div style={{padding:"16px 16px 0"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={{fontSize:18,fontWeight:900,color:C.text}}>今日词单</div>
-              <span onClick={()=>{setTab("words");}} style={{fontSize:13,color:colors.primary,fontWeight:700,cursor:"pointer"}}>查看全部 ›</span>
-            </div>
-            <div style={{background:C.card,borderRadius:22,padding:"4px 0",boxShadow:`0 4px 20px ${colors.primary}06`,border:`1px solid ${colors.primary}10`}}>
-              {todayWords.map((w,i)=>{
-                const done=mastered.has(w.word);
-                return (
-                  <div key={w.word} style={{display:"flex",alignItems:"center",padding:"14px 18px",borderBottom:i<todayWords.length-1?`1px solid ${colors.primary}08`:"none"}}>
-                    <div style={{width:40,height:40,borderRadius:14,background:done?`${colors.success}15`:`${colors.primary}08`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:done?16:15,fontWeight:900,color:done?colors.success:colors.primary,flexShrink:0}}>
-                      {done?"✓":w.word[0].toUpperCase()}
-                    </div>
-                    <div style={{flex:1,marginLeft:14,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                        <span style={{fontSize:17,fontWeight:800,color:C.text}}>{w.word}</span>
-                        <span style={{fontSize:12,color:C.tl,fontFamily:"'JetBrains Mono',monospace"}}>{w.ph}</span>
-                      </div>
-                      <div style={{fontSize:13,color:C.tl,marginTop:2}}>{w.cn}</div>
-                    </div>
-                    <Speak text={w.word} size={34} color={colors.primary}/>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* ═══ 经典台词跟读入口 ═══ */}
-          <div style={{padding:"16px 16px 0"}}>
-            <div onClick={()=>setShowMovieRead(true)} style={{cursor:"pointer",background:C.card,borderRadius:22,padding:"18px 20px",display:"flex",alignItems:"center",gap:14,border:`1.5px solid ${colors.primary}10`,boxShadow:`0 4px 16px ${colors.primary}05`,transition:"transform 0.2s"}} onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"} onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
-              <div style={{fontSize:32}}>🎬</div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:3}}>经典台词跟读</div>
-                <div style={{fontSize:11,color:C.tl}}>🦁 狮子王 · 🧊 冰雪奇缘 · 🧙 哈利波特</div>
+                <span style={{fontSize:13,fontWeight:700,color:colors.text,width:68}}>{t.label}</span>
+                <FrostProgress value={t.done} max={t.total} height={7}/>
+                <span style={{fontSize:12,fontWeight:700,color:colors.textSecondary,minWidth:42,textAlign:"right"}}>{t.done}/{t.total}</span>
               </div>
-              <div style={{fontSize:20,color:C.tl}}>›</div>
-            </div>
-          </div>
+            ))}
+            <AssetImg src={assets.petCharacter} style={{position:"absolute",right:0,bottom:-10,width:80,height:90,pointerEvents:"none",opacity:0.9}}/>
+          </FrostCard>
 
-          {/* ═══ 英语游戏入口 ═══ */}
-          <div style={{padding:"16px 16px 0"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={{fontSize:18,fontWeight:900,color:C.text}}>英语游戏</div>
-            </div>
-            <div style={{display:"flex",gap:12}}>
-              <div onClick={()=>setShowWordJump(true)} style={{flex:1,background:styles.primaryButton.background,borderRadius:22,padding:"22px 18px",color:"#fff",cursor:"pointer",position:"relative",overflow:"hidden",minHeight:120,transition:"transform 0.2s",boxShadow:`0 6px 20px ${colors.primary}25`}} onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"} onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
-                <div style={{position:"absolute",right:-10,top:-10,opacity:0.12,fontSize:80}}>🍄</div>
-                <div style={{fontSize:36,marginBottom:10,position:"relative",zIndex:1}}>🍄</div>
-                <div style={{fontSize:17,fontWeight:900,position:"relative",zIndex:1}}>单词跳跳</div>
-                <div style={{fontSize:11,fontWeight:700,opacity:0.7,marginTop:2}}>WORD JUMP</div>
-              </div>
-              <div onClick={()=>setShowWordSlice(true)} style={{flex:1,background:`linear-gradient(135deg,${colors.primaryLight},${colors.primary})`,borderRadius:22,padding:"22px 18px",color:"#fff",cursor:"pointer",position:"relative",overflow:"hidden",minHeight:120,transition:"transform 0.2s",boxShadow:`0 6px 20px ${colors.primaryLight}25`}} onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"} onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
-                <div style={{position:"absolute",right:-10,top:-10,opacity:0.12,fontSize:80}}>🍉</div>
-                <div style={{fontSize:36,marginBottom:10,position:"relative",zIndex:1}}>🍉</div>
-                <div style={{fontSize:17,fontWeight:900,position:"relative",zIndex:1}}>切水果</div>
-                <div style={{fontSize:11,fontWeight:700,opacity:0.7,marginTop:2}}>WORD SLICE</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {screen==="play"&&exs[idx]&&(
-        <div style={{padding:"20px 20px",maxWidth:600,margin:"0 auto",position:"relative",zIndex:1}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-            <button onClick={()=>{window.speechSynthesis?.cancel();setScreen("home");}} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",padding:"8px 16px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700}}>✕</button>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <button onClick={()=>{setAnswered(false);setIdx(i=>Math.max(0,i-1));}} disabled={idx===0} style={{background:idx===0?"transparent":"rgba(255,255,255,0.15)",border:"none",color:idx===0?"rgba(255,255,255,0.3)":"#fff",padding:"6px 12px",borderRadius:10,cursor:idx===0?"default":"pointer",fontSize:13,fontWeight:700,opacity:idx===0?0.3:1}}>‹ 上一题</button>
-              <div style={{fontSize:14,fontWeight:700,color:"rgba(255,255,255,0.7)"}}>{idx+1}/{exs.length}</div>
-              <button onClick={()=>{if(idx+1<exs.length){setAnswered(false);setIdx(i=>i+1);}}} disabled={idx+1>=exs.length} style={{background:idx+1>=exs.length?"transparent":"rgba(255,255,255,0.15)",border:"none",color:idx+1>=exs.length?"rgba(255,255,255,0.3)":"#fff",padding:"6px 12px",borderRadius:10,cursor:idx+1>=exs.length?"default":"pointer",fontSize:13,fontWeight:700,opacity:idx+1>=exs.length?0.3:1}}>下一题 ›</button>
-            </div>
-            {challengeMode
-              ? <div style={{display:"flex",flexDirection:"column",alignItems:"center",background:C.gold,padding:"4px 12px",borderRadius:20,minWidth:70}}>
-                  <div style={{fontSize:16,fontWeight:900,color:"#fff"}}>⚡ {challengeScore}</div>
-                  {streak>=2&&<div style={{fontSize:10,color:"rgba(255,255,255,0.9)",fontWeight:700}}>×{Math.min(streak,5)} 倍率!</div>}
-                </div>
-              : streak>0&&<div style={{fontSize:14,fontWeight:800,color:C.gold,background:"rgba(255,185,60,0.15)",padding:"4px 12px",borderRadius:20}}>🔥{streak}</div>
-            }
-          </div>
-          <div style={{height:8,background:"rgba(255,255,255,0.15)",borderRadius:8,marginBottom:wrongQueue.length>0?6:18,overflow:"hidden"}}><div style={{height:"100%",width:`${prog}%`,background:C.gold,borderRadius:8,transition:"width 0.4s ease"}}/></div>
-          {wrongQueue.length>0&&!challengeMode&&(
-            <div style={{fontSize:11,color:C.error,fontWeight:700,textAlign:"center",marginBottom:14,background:`${C.error}10`,borderRadius:8,padding:"4px 10px"}}>
-              🔁 {wrongQueue.length} 题待巩固，做完后再练一遍
-            </div>
-          )}
-          <div style={{textAlign:"center",marginBottom:16}}>
-            {challengeMode&&<div style={{fontSize:11,color:"#FF6B35",fontWeight:700,marginBottom:4}}>⚡ 挑战赛 · 第{idx+1}/20题</div>}
-            <span style={{display:"inline-block",padding:"5px 14px",borderRadius:20,background:C.card,boxShadow:"0 2px 8px rgba(0,0,0,0.06)",fontSize:12,fontWeight:700,color:C.tm}}>
-              {exs[idx].type==="learn"&&"📖 Learn"}{exs[idx].type==="mc"&&"🎯 Choice"}{exs[idx].type==="listen_pick"&&"👂 Listen"}{exs[idx].type==="listen_fill"&&"👂 Fill"}{exs[idx].type==="dragfill"&&"🧩 Drag Fill"}{exs[idx].type==="reverse"&&"🔄 Reverse"}{exs[idx].type==="wordfamily"&&"🔤 Word Family"}{exs[idx].type==="synant"&&"🔗 Synonym"}{exs[idx].type==="errorspot"&&"🔍 Error Spot"}{exs[idx].type==="phrasecomplete"&&"💬 Phrase"}{exs[idx].type==="match"&&"🔗 Match"}{exs[idx].type==="dialogue"&&"💬 Dialogue"}{exs[idx].type==="sentbuild"&&"🔤 Build"}{exs[idx].type==="verbforms"&&"🔀 Verb Forms"}{exs[idx].type==="follow_read"&&"🎙️ Follow Read"}
-            </span>
-          </div>
-          <div key={exs[idx].id} style={{display:"flex",justifyContent:"center",animation:"slideUp 0.3s ease"}}>
-            {exs[idx].type==="learn"&&<LearnCard exercise={exs[idx]} onDone={handleDone}/>}
-            {exs[idx].type==="listen_pick"&&<ListenPickQ key={idx} exercise={exs[idx]} onDone={handleDone}/>}
-            {exs[idx].type==="listen_fill"&&<ListenFillQ key={idx} exercise={exs[idx]} onDone={handleDone}/>}
-            {exs[idx].type==="listen_def"&&<ListenDefQ key={idx} exercise={exs[idx]} onDone={handleDone}/>}
-            {exs[idx].type==="follow_read"&&<FollowReadQ key={idx} exercise={exs[idx]} onDone={handleDone}/>}
-            {(exs[idx].type==="mc"||exs[idx].type==="reverse")&&<ChoiceQ exercise={exs[idx]} onDone={handleDone}/>}
-            {exs[idx].type==="dragfill"&&<DragFillQ exercise={exs[idx]} onDone={handleDone}/>}
-            {exs[idx].type==="wordfamily"&&<WordFamilyQ exercise={exs[idx]} onDone={handleDone}/>}
-            {exs[idx].type==="synant"&&<SynAntQ exercise={exs[idx]} onDone={handleDone}/>}
-            {exs[idx].type==="errorspot"&&<ErrorSpotQ exercise={exs[idx]} onDone={handleDone}/>}
-            {exs[idx].type==="phrasecomplete"&&<PhraseCompleteQ exercise={exs[idx]} onDone={handleDone}/>}
-            {exs[idx].type==="match"&&<MatchQ exercise={exs[idx]} onDone={handleDone}/>}
-            {exs[idx].type==="dialogue"&&<DialogueQ exercise={exs[idx]} onDone={handleDone}/>}
-            {exs[idx].type==="sentbuild"&&<SentBuildQ exercise={exs[idx]} onDone={handleDone}/>}
-            {exs[idx].type==="verbforms"&&<VerbFormsQ exercise={exs[idx]} onDone={handleDone}/>}
-          </div>
-          {/* Next button — appears after student answers */}
-          {answered&&(
-            <div style={{marginTop:20,animation:"slideUp 0.3s ease"}}>
-              <button onClick={goNext} style={{width:"100%",background:C.error,border:"none",color:"#fff",padding:"16px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:900,boxShadow:`0 8px 28px rgba(255,107,53,0.3)`}}>
-                {idx+1>=exs.length?"查看结果 →":"下一题 →"}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {screen==="results"&&(
-        <div style={{padding:"36px 20px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1,textAlign:"center"}}>
-          {/* Challenge results header */}
-          {res.length>0&&res[0]?.challengeRound
-            ? null
-            : null
-          }
-          <div style={{fontSize:72,marginBottom:12,animation:"float 2s ease-in-out infinite"}}>
-            {challengeScore>=150?"🏆":challengeScore>=100?"🥈":challengeScore>=50?"🥉":correct/res.length>=0.8?"🏆":correct/res.length>=0.5?"💪":"📖"}
-          </div>
-          {res.length===20&&challengeFinalScore>0&&(
-            <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",background:C.gold,borderRadius:20,padding:"10px 24px",marginBottom:16,boxShadow:"0 6px 20px rgba(255,107,53,0.3)"}}>
-              <div style={{fontSize:32,fontWeight:900,color:"#fff"}}>⚡ {challengeFinalScore}</div>
-              <div style={{fontSize:12,color:"rgba(255,255,255,0.85)",fontWeight:700}}>挑战赛得分</div>
-            </div>
-          )}
-          <h2 style={{fontSize:32,fontWeight:900,margin:"0 0 6px",color:"#fff"}}>{correct/res.length>=0.8?"太棒了!":correct/res.length>=0.5?"继续加油!":"再接再厉!"}</h2>
-          <p style={{color:"rgba(255,255,255,0.6)",fontSize:15,marginBottom:24}}>{correct/res.length>=0.8?"Outstanding!":correct/res.length>=0.5?"Keep going!":"Practice more!"}</p>
-          <div style={{display:"flex",justifyContent:"center",marginBottom:24}}>
-            <div style={{width:120,height:120,borderRadius:"50%",background:`conic-gradient(${C.gold} ${correct/res.length*360}deg, #E8FFF4 0deg)`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 32px rgba(45,198,83,0.15)"}}>
-              <div style={{width:92,height:92,borderRadius:"50%",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column"}}><div style={{fontSize:28,fontWeight:900,color:C.success}}>{correct}</div><div style={{fontSize:11,color:C.tl}}>/{res.length}</div></div>
-            </div>
-          </div>
-          {/* Session summary - only show for non-challenge */}
-          {!(res.length===20&&challengeFinalScore>0)&&(()=>{
-            const nonRetry = res.filter(r=>!r.id?.includes("_retry"));
-            const newLearned = nonRetry.filter(r=>r.correct).length;
-            const retried = res.filter(r=>r.id?.includes("_retry")&&r.correct).length;
-            const maxStreak = (() => {
-              let max=0,cur=0;
-              nonRetry.forEach(r=>{ if(r.correct){cur++;max=Math.max(max,cur);}else cur=0; });
-              return max;
-            })();
-            const confusedPairs = nonRetry.filter(r=>!r.correct).length;
-            const summaryItems = [
-              {icon:"✨",label:"今天新学",val:`${newLearned} 词`,c:C.success},
-              {icon:"🔁",label:"复习命中",val:`${retried} 词`,c:C.secondary},
-              {icon:"⚡",label:"最高连对",val:`${maxStreak} 个`,c:C.gold},
-              {icon:"📌",label:"需要加强",val:`${confusedPairs} 词`,c:C.error},
-            ];
-            return (
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
-                {summaryItems.map((item,i)=>(
-                  <div key={i} style={{background:C.card,borderRadius:16,padding:"14px 12px",textAlign:"center",border:`2px solid ${item.c}18`,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-                    <div style={{fontSize:22}}>{item.icon}</div>
-                    <div style={{fontSize:20,fontWeight:900,color:item.c,marginTop:2}}>{item.val}</div>
-                    <div style={{fontSize:11,color:C.tl,fontWeight:600,marginTop:2}}>{item.label}</div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24,textAlign:"left"}}>
-            {daily.map(w=>{const wr=res.filter(r=>r.word?.word===w.word);const ok=wr.length>0&&wr.every(r=>r.correct);
-              return <div key={w.word} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderRadius:14,background:ok?`${C.success}08`:C.card,border:`1.5px solid ${ok?C.success+"33":"#f0eaf5"}`,boxShadow:"0 2px 8px rgba(0,0,0,0.03)"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
-                  <Speak text={w.word} size={28} color={ok?C.success:C.gold}/>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:15}}>{w.word}</div>
-                    <div style={{fontSize:12,color:C.tl}}>{w.cn}</div>
-                  </div>
-                </div>
-                {ok
-                  ? <span style={{fontSize:18}}>✅</span>
-                  : <button onClick={()=>startWordPractice(w)} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:10,background:C.error,border:"none",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                      🔁 再练
-                    </button>
-                }
-              </div>;})}
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            {res.length===20&&challengeFinalScore>0
-              ? <button onClick={startChallenge} style={{background:C.gold,border:"none",color:"#fff",padding:"16px 32px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:800,boxShadow:"0 8px 28px rgba(255,107,53,0.27)"}}>⚡ 再战一局 · Again!</button>
-              : <button onClick={()=>startPractice()} style={{background:C.error,border:"none",color:"#fff",padding:"16px 32px",borderRadius:18,cursor:"pointer",fontSize:17,fontWeight:800,boxShadow:"0 8px 28px rgba(255,107,53,0.27)"}}>再练 · Again!</button>
-            }
-            <button onClick={()=>setScreen("home")} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",padding:"14px 32px",borderRadius:18,cursor:"pointer",fontSize:15,fontWeight:700}}>首页 · Home</button>
-          </div>
         </div>
       )}
 
@@ -9932,6 +9703,6 @@ function VocabMasterInner() {
         );
       })()}
 
-    </div>
+    </AppShell>
   );
 }
