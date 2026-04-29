@@ -4777,7 +4777,7 @@ function DragFillQ({exercise,onDone}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,width:"100%",maxWidth:460}}>
       <div style={{textAlign:"center"}}>
-        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#2BD0C4",fontWeight:700,marginBottom:6}}>🧩 Drag to fill</div>
+        <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:C.accent,fontWeight:700,marginBottom:6}}>🧩 Drag to fill</div>
       </div>
       <div style={{background:C.card,borderRadius:20,padding:"22px 18px",boxShadow:"0 4px 20px rgba(0,0,0,0.06)",border:`2px solid ${C.accent}22`}}>
         <div style={{fontSize:19,lineHeight:2.2,color:C.text,fontFamily:"'Nunito',sans-serif",fontWeight:500,textAlign:"center"}}>
@@ -8807,12 +8807,12 @@ function VocabMasterInner() {
       {(showGame||screen!=="play"&&screen!=="results")&&(
         <div style={{position:"fixed",bottom:0,left:0,right:0,background:`linear-gradient(180deg,${colors.primary} 0%,${colors.primaryDark||colors.primary} 100%)`,borderRadius:"20px 20px 0 0",display:"flex",alignItems:"flex-end",zIndex:100,padding:"0 0 8px",boxShadow:`0 -4px 20px ${colors.primary}25`}}>
           {[
-            {id:"today",icon:assets.navIcons?.home||"🏠",label:"今日"},
-            {id:"words",icon:assets.navIcons?.study||"📖",label:"词库"},
+            {id:"today",icon:"🏠",label:"今日"},
+            {id:"words",icon:"📖",label:"词库"},
             {id:"game",icon:null,label:"练习",center:true},
-            {id:"drills",icon:assets.navIcons?.wordbank||"✏️",label:"专项"},
+            {id:"drills",icon:"✏️",label:"专项"},
             {id:"progress",icon:"📊",label:"进度"},
-            {id:"settings",icon:assets.navIcons?.profile||"⚙️",label:"设置"},
+            {id:"settings",icon:"⚙️",label:"设置"},
           ].map(t=>(
             <button key={t.id} onClick={()=>{if(t.id==="game"){setShowGame(true);return;}setShowGame(false);setTab(t.id);if(screen!=="home")setScreen("home");}} style={{flex:1,padding:t.center?"0 0 8px":"10px 0 4px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
               {t.center?(

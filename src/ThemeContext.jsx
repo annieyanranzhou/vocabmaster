@@ -61,6 +61,7 @@ const YUKI = {
   assets: {
     heroCharacter: assetPath('yuki','hero-character.png'),
     heroCharacterFull: assetPath('yuki','hero-character-full.png'),
+    heroAvatar: assetPath('yuki','hero-avatar.png'),
     petCharacter: assetPath('yuki','pet-bear.png'),
     petCharacterSmall: assetPath('yuki','pet-bear-small.png'),
     appIcon: assetPath('yuki','app-icon.png'),
@@ -245,6 +246,7 @@ const LUNA = {
   assets: {
     heroCharacter: assetPath('luna','hero-character.png'),
     heroCharacterFull: assetPath('luna','hero-character-full.png'),
+    heroAvatar: assetPath('luna','hero-avatar.png'),
     petCharacter: assetPath('luna','pet-cat.png'),
     petCharacterSmall: assetPath('luna','pet-cat-small.png'),
     appIcon: assetPath('luna','app-icon.png'),
