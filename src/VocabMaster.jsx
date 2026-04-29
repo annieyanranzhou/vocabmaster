@@ -8805,28 +8805,30 @@ function VocabMasterInner() {
           }}/>
       )}
       {(showGame||screen!=="play"&&screen!=="results")&&(
-        <div style={{position:"fixed",bottom:0,left:0,right:0,background:`linear-gradient(180deg,${colors.primary} 0%,${colors.primaryDark||colors.primary} 100%)`,borderRadius:"20px 20px 0 0",display:"flex",alignItems:"flex-end",zIndex:100,padding:"0 0 8px",boxShadow:`0 -4px 20px ${colors.primary}25`}}>
+        <div style={{position:"fixed",bottom:0,left:0,right:0,background:`linear-gradient(180deg,${colors.primary} 0%,${colors.primaryDark||colors.primary} 100%)`,borderRadius:"22px 22px 0 0",display:"flex",alignItems:"flex-end",justifyContent:"space-around",zIndex:100,padding:"0 8px 10px",boxShadow:`0 -4px 24px ${colors.primary}20`,height:72}}>
           {[
-            {id:"today",icon:"🏠",label:"今日"},
-            {id:"words",icon:"📖",label:"词库"},
-            {id:"game",icon:null,label:"练习",center:true},
-            {id:"drills",icon:"✏️",label:"专项"},
-            {id:"progress",icon:"📊",label:"进度"},
-            {id:"settings",icon:"⚙️",label:"设置"},
+            {id:"today",icon:"🏠",label:"首页",emoji:true},
+            {id:"words",icon:"📖",label:"学习",emoji:true},
+            {id:"_center",icon:null,label:"练习",center:true},
+            {id:"drills",icon:"✏️",label:"词库",emoji:true},
+            {id:"settings",icon:"⚙️",label:"我的",emoji:true},
           ].map(t=>(
-            <button key={t.id} onClick={()=>{if(t.id==="game"){setShowGame(true);return;}setShowGame(false);setTab(t.id);if(screen!=="home")setScreen("home");}} style={{flex:1,padding:t.center?"0 0 8px":"10px 0 4px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+            <button key={t.id} onClick={()=>{
+              if(t.id==="_center"){startPractice(todayWords);return;}
+              setShowGame(false);setTab(t.id);if(screen!=="home")setScreen("home");
+            }} style={{flex:t.center?0:1,width:t.center?60:undefined,padding:t.center?"0":"8px 0 0",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative"}}>
               {t.center?(
-                <>
-                  <div style={{width:52,height:52,borderRadius:26,background:`linear-gradient(135deg,${colors.primary},${colors.primaryLight})`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 6px 20px ${colors.primary}40`,border:"3px solid rgba(255,255,255,0.3)",marginTop:-18,marginBottom:2}}>
-                    <span style={{fontSize:26}}>{themeId==="yuki"?"❄️":"✦"}</span>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginTop:-24}}>
+                  <div style={{width:56,height:56,borderRadius:28,background:`linear-gradient(135deg,${colors.primary},${colors.primaryLight})`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 6px 24px ${colors.primary}45`,border:"3.5px solid rgba(255,255,255,0.5)"}}>
+                    <span style={{fontSize:28,lineHeight:1}}>{themeId==="yuki"?"❄️":"✦"}</span>
                   </div>
-                  <span style={{fontSize:10,fontWeight:700,color:showGame?colors.navActive:"rgba(255,255,255,0.5)"}}>{t.label}</span>
-                </>
+                  <span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.7)",marginTop:3}}>{t.label}</span>
+                </div>
               ):(
                 <>
-                  <span style={{fontSize:20,filter:(t.id==="game"?showGame:(!showGame&&tab===t.id))?"none":"grayscale(0.4) opacity(0.5)"}}>{t.icon}</span>
-                  <span style={{fontSize:10,fontWeight:700,color:(t.id==="game"?showGame:(!showGame&&tab===t.id))?colors.navActive:"rgba(255,255,255,0.45)"}}>{t.label}</span>
-                  {(t.id==="game"?showGame:(!showGame&&tab===t.id))&&<div style={{width:5,height:5,borderRadius:3,background:colors.navActive,marginTop:1}}/>}
+                  <span style={{fontSize:22,filter:(!showGame&&tab===t.id)?"none":"grayscale(0.3) opacity(0.5)"}}>{t.icon}</span>
+                  <span style={{fontSize:10,fontWeight:700,color:(!showGame&&tab===t.id)?colors.navActive:"rgba(255,255,255,0.45)"}}>{t.label}</span>
+                  {(!showGame&&tab===t.id)&&<div style={{width:5,height:5,borderRadius:3,background:colors.navActive,marginTop:1}}/>}
                 </>
               )}
             </button>
@@ -8838,8 +8840,9 @@ function VocabMasterInner() {
         <div style={{padding:"0 0 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
           {/* ═══ Top: Avatar + Name + Points ═══ */}
           <div style={{padding:"14px 20px 0",display:"flex",alignItems:"center",gap:12}}>
-            <div style={{width:56,height:56,borderRadius:28,border:`2.5px solid ${colors.primaryLight}40`,background:"rgba(255,255,255,0.5)",overflow:"hidden",flexShrink:0}}>
-              <img src={assets.heroAvatar} alt={skin.mascotName} style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";e.target.parentNode.innerHTML=`<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:24px;background:${colors.primaryLight}20">🧑‍🎓</div>`;}}/>
+            <div style={{width:56,height:56,borderRadius:28,border:`2.5px solid ${colors.primaryLight}40`,background:`${colors.primaryLight}15`,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <img src={assets.heroAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";}}/>
+              <span style={{fontSize:28,position:"absolute"}}>{themeId==="yuki"?"🧑‍🎓":"🧙‍♀️"}</span>
             </div>
             <div style={{flex:1}}>
               <div style={{fontSize:20,fontWeight:900,color:C.text}}>{skin.mascotName}</div>
@@ -8901,11 +8904,11 @@ function VocabMasterInner() {
 
           {/* ═══ 今日主题 Card ═══ */}
           <div style={{padding:"12px 16px 0"}}>
-            <div style={{background:C.card,borderRadius:22,padding:"18px 20px",border:`1px solid ${colors.primary}10`,boxShadow:`0 4px 16px ${colors.primary}05`,position:"relative",overflow:"hidden"}}>
+            <div style={{background:C.card,borderRadius:22,padding:"18px 20px",border:`1px solid ${colors.primary}10`,boxShadow:`0 4px 16px ${colors.primary}05`,position:"relative",overflow:"hidden",minHeight:100}}>
               <div style={{fontSize:12,color:C.tm,fontWeight:600,marginBottom:4}}>✦ 今日主题</div>
               <div style={{fontSize:22,fontWeight:900,color:C.text}}>词汇冒险</div>
               <div style={{fontSize:13,color:C.tm,marginTop:2}}>Vocabulary Adventure</div>
-              <img src={assets.bgHero} alt="" style={{position:"absolute",right:-10,bottom:-10,width:160,height:100,objectFit:"cover",opacity:0.3,borderRadius:12}} onError={e=>{e.target.style.display="none";}}/>
+              <img src={`/theme-assets/${themeId}/theme-illust.png`} alt="" style={{position:"absolute",right:0,bottom:0,width:160,height:100,objectFit:"cover",opacity:0.8,borderRadius:"0 0 22px 0"}} onError={e=>{e.target.style.display="none";}}/>
             </div>
           </div>
 
@@ -8966,7 +8969,7 @@ function VocabMasterInner() {
                 </div>
               );})}
               {/* 伙伴角色 */}
-              <img src={assets.petCharacter} alt={skin.petName} style={{position:"absolute",right:6,bottom:-8,width:75,height:85,objectFit:"contain",pointerEvents:"none"}} onError={e=>{e.target.style.display="none";}}/>
+              <img src={assets.petCharacter} alt={skin.petName} style={{position:"absolute",right:-4,bottom:-12,width:80,height:90,objectFit:"contain",pointerEvents:"none",opacity:0.9}} onError={e=>{e.target.style.display="none";}}/>
             </div>
           </div>
 
