@@ -3,6 +3,7 @@ import GameMode from './GameMode.jsx';
 import WordJump from './WordJump.jsx';
 import WordSlice from './WordSlice.jsx';
 import PetSystem, { addPetFood } from './PetSystem.jsx';
+import { ThemeProvider, useTheme } from './ThemeContext.jsx';
 
 /* ═══ SUPABASE CLIENT ═══ */
 const SUPABASE_URL = "https://pjrtgwmesbswwydhdbor.supabase.co";
@@ -456,31 +457,20 @@ const playCelebrationSound = () => {
   } catch(e) {}
 };
 
-/* ═══ COLORS ═══ */
-const C = {
-  // ══ Maxima 配色方案 ══
-  bg:"#EEF2FF",          // 淡蓝灰背景
-  card:"#FFFFFF",         // 卡片白
-  primary:"#2E57D8",      // 宝蓝 Cobalt - 主色
-  secondary:"#F14D2C",    // 橙红 Orange - 副色/CTA
-  accent:"#2BD0C4",       // 青绿 Teal - 成功/辅助按钮
-  success:"#2BD0C4",      // 青绿 Teal
-  error:"#F14D2C",        // 橙红 Orange
-  gold:"#FFB93C",         // 暖黄 Yellow - 积分/连击/卡片高亮
-  text:"#1A1A2E",         // 深色正文
-  tl:"#7A8BB5",           // 蓝灰 - 辅助文字
-  tm:"#3D4A6B",           // 中深蓝 - 次级文字
-  mint:"#D4F5EE",         // 淡青绿
-  lav:"#FFE8D8",          // 淡橙
-  peach:"#FFF5D8",        // 奶油 Cream
-  sky:"#D8E4FF",          // 淡宝蓝
-  nav:"#2E57D8",          // 宝蓝导航栏
-  pink:"#F9C5D1",         // 粉色装饰
-  // 渐变色（用于按钮/标题）
-  grad1:"linear-gradient(135deg,#2E57D8,#2BD0C4)",   // 宝蓝→青绿
-  grad2:"linear-gradient(135deg,#FFB93C,#F14D2C)",   // 暖黄→橙红（挑战赛）
-  grad3:"linear-gradient(135deg,#2BD0C4,#2E57D8)",   // 青绿→宝蓝（成功）
-  grad4:"linear-gradient(135deg,#F14D2C,#FFB93C)",   // 橙红→暖黄（高级词）
+/* ═══ COLORS — 默认配色（将被 ThemeProvider 覆盖）═══ */
+// 这个 C 对象仅作为「非组件作用域」的回退色（如顶层常量、工具函数）。
+// 所有 React 组件内部应通过 useTheme().C 获取主题色。
+let C = {
+  bg:"#E9F1FF", card:"#FFFFFF",
+  primary:"#4A6CDE", secondary:"#F6D58C", accent:"#7BA7FF",
+  success:"#34C759", error:"#FF3B30", gold:"#F6D58C",
+  text:"#1E2A5E", tl:"#A8B7E6", tm:"#5A6B8A",
+  mint:"#E8F9EE", lav:"#FFF4E0", peach:"#D7E0F5",
+  sky:"#7BA7FF", nav:"#4A6CDE", pink:"#FFEDED",
+  grad1:"linear-gradient(135deg,#4A6CDE,#7BA7FF)",
+  grad2:"linear-gradient(135deg,#F6D58C,#FF9500)",
+  grad3:"linear-gradient(135deg,#34C759,#4A6CDE)",
+  grad4:"linear-gradient(135deg,#FF9500,#F6D58C)",
 };
 AUDIO_HASH_MAP = _AUDIO_MAP; // alias for listen_fill
 
@@ -8114,6 +8104,19 @@ function getPetFood() {
 }
 
 export default function VocabMaster() {
+  return (
+    <ThemeProvider>
+      <VocabMasterInner />
+    </ThemeProvider>
+  );
+}
+
+function VocabMasterInner() {
+  // ── 主题系统：覆盖全局 C，让所有子组件自动获得当前主题色 ──
+  const themeCtx = useTheme();
+  C = themeCtx.C; // 用当前主题色覆盖顶层 let C，所有 C.xxx 引用自动生效
+  const { skin, colors, assets, styles, ornaments, copy, themeId, switchTheme, toggleTheme } = themeCtx;
+
   const [screen,setScreen]=useState("home");const [exs,setExs]=useState([]);const [idx,setIdx]=useState(0);
   const [res,setRes]=useState([]);const [streak,setStreak]=useState(0);const [best,setBest]=useState(0);
   const [total,setTotal]=useState(0);const [mastered,setMastered]=useState(new Set());const [daily,setDaily]=useState([]);
@@ -9394,7 +9397,27 @@ export default function VocabMaster() {
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div style={{background:C.card,borderRadius:20,padding:"20px",boxShadow:"0 4px 16px rgba(0,0,0,0.04)"}}>
               <div style={{fontSize:14,fontWeight:800,color:C.tm,marginBottom:4}}>📚 词汇大师</div>
-              <div style={{fontSize:13,color:C.tl}}>高考英语词汇学习 · 版本 1.0</div>
+              <div style={{fontSize:13,color:C.tl}}>高考英语词汇学习 · 版本 2.0</div>
+            </div>
+
+            {/* 🎨 主题切换 */}
+            <div style={{background:C.card,borderRadius:20,padding:"20px",boxShadow:"0 4px 16px rgba(0,0,0,0.04)"}}>
+              <div style={{fontSize:14,fontWeight:800,color:C.tm,marginBottom:12}}>🎨 主题皮肤</div>
+              <div style={{display:"flex",gap:10}}>
+                {Object.values(themeCtx.allThemes).map(t=>(
+                  <button key={t.id} onClick={()=>switchTheme(t.id)} style={{
+                    flex:1,padding:"14px 10px",borderRadius:16,border:"none",cursor:"pointer",
+                    background:themeId===t.id? colors.primary : "rgba(0,0,0,0.03)",
+                    color:themeId===t.id? "#fff" : C.text,
+                    fontWeight:800,fontSize:14,transition:"all 0.3s",
+                    boxShadow:themeId===t.id? `0 4px 16px ${colors.primary}40` : "none",
+                  }}>
+                    <div style={{fontSize:24,marginBottom:4}}>{t.id==="yuki"?"❄️":"🌙"}</div>
+                    <div>{t.name}</div>
+                    <div style={{fontSize:11,fontWeight:600,opacity:0.8}}>{t.label}</div>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* 访问码激活 */}
