@@ -283,25 +283,55 @@ export function AppBottomNav({ activeTab, onTabChange, onCenterPress }) {
   const { colors, assets, themeId } = useTheme();
 
   const tabs = [
-    { id: 'today', icon: assets.navIcons?.home, fallback: '🏠', label: '首页' },
-    { id: 'words', icon: assets.navIcons?.study, fallback: '📖', label: '学习' },
+    { id: 'today', icon: assets.navIcons?.home, iconId: 'home', label: '首页' },
+    { id: 'words', icon: assets.navIcons?.study, iconId: 'study', label: '学习' },
     { id: '_center', center: true },
-    { id: 'drills', icon: assets.navIcons?.wordbank, fallback: '📚', label: '词库' },
-    { id: 'settings', icon: assets.navIcons?.profile, fallback: '👤', label: '我的' },
+    { id: 'drills', icon: assets.navIcons?.wordbank, iconId: 'wordbank', label: '词库' },
+    { id: 'settings', icon: assets.navIcons?.profile, iconId: 'profile', label: '我的' },
   ];
 
-  const NavIcon = ({ src, fallback, active, size = 24 }) => {
-    if (!src) return <span style={{ fontSize: size, filter: active ? 'none' : 'grayscale(0.6) opacity(0.45)' }}>{fallback}</span>;
+  // 内联 SVG 图标库 — fallback 永远可见
+  const InlineIcon = ({ id, color, size = 24 }) => {
+    const stroke = color;
+    const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke, strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
+    if (id === 'home') return (<svg {...common}><path d="M3 11 L12 3 L21 11 V20 a1 1 0 0 1 -1 1 H15 V14 H9 V21 H4 a1 1 0 0 1 -1 -1 Z" /></svg>);
+    if (id === 'study') return (<svg {...common}><path d="M4 5 a2 2 0 0 1 2 -2 H11 V20 H6 a2 2 0 0 1 -2 -2 Z" /><path d="M13 3 H18 a2 2 0 0 1 2 2 V18 a2 2 0 0 1 -2 2 H13 Z" /></svg>);
+    if (id === 'wordbank') return (<svg {...common}><rect x="4" y="3" width="16" height="18" rx="2" /><line x1="8" y1="8" x2="16" y2="8" /><line x1="8" y1="12" x2="16" y2="12" /><line x1="8" y1="16" x2="13" y2="16" /></svg>);
+    if (id === 'profile') return (<svg {...common}><circle cx="12" cy="8" r="4" /><path d="M4 21 a8 8 0 0 1 16 0" /></svg>);
+    return null;
+  };
+
+  const NavIcon = ({ src, iconId, active, size = 24 }) => {
+    const inactiveColor = colors.textMuted;
+    const activeColor = colors.primary;
+    const color = active ? activeColor : inactiveColor;
+    // 优先 PNG, 失败回退 SVG (始终可见)
     return (
-      <img
-        src={src}
-        alt=""
-        style={{
-          width: size, height: size, objectFit: 'contain',
-          filter: active ? 'none' : 'grayscale(0.5) opacity(0.45)',
-        }}
-        onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'inline'); }}
-      />
+      <span style={{ position: 'relative', display: 'inline-flex', width: size, height: size }}>
+        {src && (
+          <img
+            src={src}
+            alt=""
+            style={{
+              position: 'absolute', inset: 0,
+              width: size, height: size, objectFit: 'contain',
+              filter: active ? 'none' : 'grayscale(0.5) opacity(0.55)',
+            }}
+            onError={e => {
+              e.target.style.display = 'none';
+              const sibling = e.target.nextSibling;
+              if (sibling) sibling.style.display = 'inline-flex';
+            }}
+          />
+        )}
+        <span style={{
+          position: 'absolute', inset: 0,
+          display: src ? 'none' : 'inline-flex',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <InlineIcon id={iconId} color={color} size={size} />
+        </span>
+      </span>
     );
   };
 
@@ -340,15 +370,22 @@ export function AppBottomNav({ activeTab, onTabChange, onCenterPress }) {
                 boxShadow: `0 8px 28px ${colors.primary}55, inset 0 2px 0 rgba(255,255,255,0.25)`,
                 border: '4px solid rgba(255,255,255,0.95)',
               }}>
-                <img
-                  src={assets.navIcons?.practice}
-                  alt=""
-                  style={{ width: 32, height: 32, objectFit: 'contain', filter: 'brightness(0) invert(1)' }}
-                  onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'inline'; }}
-                />
-                <span style={{ display: 'none', fontSize: 30, color: '#fff' }}>
-                  {themeId === 'yuki' ? '❄' : '✦'}
-                </span>
+                {/* 内联雪花 SVG — 不依赖外部 PNG, 永远显示 */}
+                {themeId === 'yuki' ? (
+                  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <line x1="12" y1="2" x2="12" y2="22" />
+                    <line x1="2" y1="12" x2="22" y2="12" />
+                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                    <line x1="4.93" y1="19.07" x2="19.07" y2="4.93" />
+                    <path d="M 12 5 L 10 7 M 12 5 L 14 7 M 12 19 L 10 17 M 12 19 L 14 17" />
+                    <path d="M 5 12 L 7 10 M 5 12 L 7 14 M 19 12 L 17 10 M 19 12 L 17 14" />
+                  </svg>
+                ) : (
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="#FFFFFF" aria-hidden="true">
+                    <path d="M12 2 L13.5 9.5 L21 11 L13.5 12.5 L12 20 L10.5 12.5 L3 11 L10.5 9.5 Z" />
+                    <circle cx="12" cy="11" r="1.5" />
+                  </svg>
+                )}
               </div>
             </button>
           );
@@ -361,8 +398,7 @@ export function AppBottomNav({ activeTab, onTabChange, onCenterPress }) {
             background: 'none', border: 'none', cursor: 'pointer', padding: '10px 0 0',
             flex: 1,
           }}>
-            <NavIcon src={t.icon} fallback={t.fallback} active={active} />
-            <span style={{ display: 'none' }}>{t.fallback}</span>
+            <NavIcon src={t.icon} iconId={t.iconId} active={active} />
             <span style={{
               fontSize: 11, fontWeight: active ? 800 : 600,
               color: active ? colors.primary : colors.textMuted,

@@ -8845,10 +8845,69 @@ function VocabMasterInner() {
             </div>
           </div>
 
+          {/* ═══ DaySelector — 选择哪一天的词 ═══ */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:12}}>
+            <button
+              onClick={()=>{const d=new Date(calendarDate);d.setDate(d.getDate()-1);setCalendarDate(d);}}
+              style={{
+                width:34,height:34,borderRadius:17,
+                background:"rgba(253,251,247,0.85)",
+                border:`1px solid rgba(232,220,192,0.85)`,
+                boxShadow:`0 2px 8px rgba(74,108,222,0.08), inset 0 0 0 1px ${colors.cardBorder}`,
+                color:colors.primary,fontSize:18,fontWeight:800,cursor:"pointer",
+                display:"flex",alignItems:"center",justifyContent:"center",
+              }}
+              aria-label="前一天"
+            >‹</button>
+            {(()=>{
+              const today=new Date();today.setHours(0,0,0,0);
+              const sel=new Date(calendarDate);sel.setHours(0,0,0,0);
+              const diff=Math.round((sel-today)/86400000);
+              const labelMain=diff===0?"今天":diff===-1?"昨天":diff===1?"明天":`${sel.getMonth()+1}月${sel.getDate()}日`;
+              const isToday=diff===0;
+              return (
+                <div
+                  onClick={()=>{const d=new Date();d.setHours(0,0,0,0);setCalendarDate(d);}}
+                  style={{
+                    minWidth:120,padding:"6px 16px",borderRadius:17,
+                    background:isToday?`linear-gradient(135deg,${colors.primary}15,${colors.primaryLight}20)`:"rgba(253,251,247,0.85)",
+                    border:`1px solid ${isToday?colors.primary+"40":"rgba(232,220,192,0.85)"}`,
+                    boxShadow:`0 2px 8px rgba(74,108,222,0.08)`,
+                    textAlign:"center",cursor:isToday?"default":"pointer",
+                  }}
+                  title={isToday?"今天":"点击回到今天"}
+                >
+                  <div style={{fontSize:13,fontWeight:800,color:colors.primary,lineHeight:1.2}}>{labelMain}</div>
+                  <div style={{fontSize:10,color:colors.textSecondary,fontWeight:600}}>
+                    {sel.getMonth()+1}/{sel.getDate()} · {todayWords.length} 词
+                  </div>
+                </div>
+              );
+            })()}
+            <button
+              onClick={()=>{const d=new Date(calendarDate);d.setDate(d.getDate()+1);setCalendarDate(d);}}
+              style={{
+                width:34,height:34,borderRadius:17,
+                background:"rgba(253,251,247,0.85)",
+                border:`1px solid rgba(232,220,192,0.85)`,
+                boxShadow:`0 2px 8px rgba(74,108,222,0.08), inset 0 0 0 1px ${colors.cardBorder}`,
+                color:colors.primary,fontSize:18,fontWeight:800,cursor:"pointer",
+                display:"flex",alignItems:"center",justifyContent:"center",
+              }}
+              aria-label="后一天"
+            >›</button>
+          </div>
+
           {/* ═══ TodayPlanHeroCard ═══ */}
           <FrostCard variant="hero" showCorners style={{marginBottom:14,position:"relative",minHeight:180,overflow:"hidden",padding:"22px 24px 22px"}}>
-            {/* 背景 hero 插画(雪山/天空) */}
-            <div style={{position:"absolute",inset:0,zIndex:0,opacity:0.18,backgroundImage:`url(${assets.bgHero})`,backgroundSize:"cover",backgroundPosition:"center"}}/>
+            {/* 右侧背景插画(雪山/天空)— 只盖右半,渐变淡入 */}
+            <div style={{
+              position:"absolute",right:0,top:0,bottom:0,width:"55%",zIndex:0,
+              backgroundImage:`linear-gradient(90deg, rgba(253,251,247,0.92) 0%, transparent 35%), url(${assets.bgHero})`,
+              backgroundSize:"cover",backgroundPosition:"right center",
+              opacity:0.65,
+              pointerEvents:"none",
+            }}/>
             {/* 文案区(左侧 ~50%) */}
             <div style={{position:"relative",zIndex:2,width:"50%"}}>
               <div style={{fontSize:14,fontWeight:800,color:colors.primary,marginBottom:10,letterSpacing:"0.02em"}}>✦ 今日学习计划</div>
@@ -8891,11 +8950,106 @@ function VocabMasterInner() {
             );
           })()}
 
-          {/* TodayThemeCard / StartPracticeButton / QuickEntryGrid 已按设计稿移除
-              - 今日主题改由「学习」页 / Word Bank 中的真实主题分类承担
-              - 开始今日练习改由底部导航中央雪花按钮承担 (onCenterPress -> startPractice)
-              - 错题斩 / 挑战赛保留在 game / drills 页面入口
-          */}
+          {/* TodayThemeCard 已按设计稿移除(原硬编码"冰川与自然"无意义) */}
+
+          {/* ═══ StartPracticeButton — 开始今日练习 ═══ */}
+          {(()=>{
+            const today=new Date();today.setHours(0,0,0,0);
+            const sel=new Date(calendarDate);sel.setHours(0,0,0,0);
+            const isToday=sel.getTime()===today.getTime();
+            const minutes=Math.max(2,Math.ceil(todayWords.length*0.7));
+            return (
+              <button
+                onClick={()=>startPractice(todayWords)}
+                style={{
+                  width:"100%",marginBottom:12,padding:"14px 20px",
+                  background:`linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryLight} 100%)`,
+                  border:"1.5px solid rgba(246,213,140,0.55)",
+                  borderRadius:22,
+                  boxShadow:`0 6px 20px ${colors.primary}40, inset 0 1px 0 rgba(255,255,255,0.25)`,
+                  color:"#FFFFFF",cursor:"pointer",
+                  display:"flex",alignItems:"center",gap:14,
+                  transition:"transform 0.15s ease",
+                }}
+                onMouseDown={e=>e.currentTarget.style.transform="scale(0.98)"}
+                onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
+                onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
+              >
+                <div style={{
+                  width:42,height:42,borderRadius:21,
+                  background:"rgba(255,255,255,0.22)",
+                  border:"1.5px solid rgba(255,255,255,0.35)",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  flexShrink:0,
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="#fff" aria-hidden="true">
+                    <path d="M3.5 2.5 L13 8 L3.5 13.5 Z"/>
+                  </svg>
+                </div>
+                <div style={{flex:1,textAlign:"left"}}>
+                  <div style={{fontSize:16,fontWeight:900,letterSpacing:"0.02em"}}>{isToday?"开始今日练习":"补学这天的词"}</div>
+                  <div style={{fontSize:12,fontWeight:600,opacity:0.9,marginTop:2}}>共 {todayWords.length} 词 · 约 {minutes} 分钟</div>
+                </div>
+                <span style={{fontSize:22,opacity:0.85,fontWeight:700}}>›</span>
+              </button>
+            );
+          })()}
+
+          {/* ═══ QuickEntryGrid — 错题斩 / 挑战赛 / 小游戏 / 宠物 ═══ */}
+          {(()=>{
+            const wrongWords=JSON.parse(localStorage.getItem("vm_wrong_words")||"[]");
+            const wrongVocab=VOCAB.filter(w=>wrongWords.includes(w.word));
+            const startWrongBook=()=>{if(wrongVocab.length>0)startPractice(wrongVocab.slice(0,10));};
+            const items=[
+              {key:"wrong",title:"错题本",sub:wrongVocab.length>0?wrongVocab.length+" 词待复习":"暂无错题",disabled:wrongVocab.length===0,onClick:startWrongBook,
+                iconBg:"linear-gradient(135deg,#FF8FA3 0%,#FF6B9D 100%)",
+                icon:(<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6" fill="#fff"/></svg>)},
+              {key:"challenge",title:"挑战赛",sub:"20题 · 全词库",onClick:startChallenge,
+                iconBg:"linear-gradient(135deg,#F6D58C 0%,#E8B855 100%)",
+                icon:(<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 4 H18 V8 a6 6 0 0 1 -12 0 Z"/><path d="M6 4 H4 V6 a3 3 0 0 0 2 3"/><path d="M18 4 H20 V6 a3 3 0 0 1 -2 3"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="14" x2="12" y2="20"/></svg>)},
+              {key:"game",title:"小游戏",sub:"单词射击 · 词义跳",onClick:()=>setShowGame(true),
+                iconBg:"linear-gradient(135deg,#7BA7FF 0%,#4A6CDE 100%)",
+                icon:(<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="7" width="18" height="11" rx="3"/><line x1="8" y1="11" x2="8" y2="14"/><line x1="6.5" y1="12.5" x2="9.5" y2="12.5"/><circle cx="15.5" cy="11.5" r="1"/><circle cx="17" cy="13.5" r="1"/></svg>)},
+              {key:"pet",title:"我的宠物",sub:"领养 · 喂养 ·成长",onClick:()=>setTab("progress"),
+                iconBg:"linear-gradient(135deg,#A8DAFF 0%,#7BA7FF 100%)",
+                icon:(<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8.5" cy="8" r="1.6"/><circle cx="15.5" cy="8" r="1.6"/><circle cx="6" cy="13" r="1.4"/><circle cx="18" cy="13" r="1.4"/><path d="M7 18 a5 5 0 0 1 10 0 c0 1.5 -1.5 3 -5 3 s-5 -1.5 -5 -3 Z"/></svg>)},
+            ];
+            return (
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+                {items.map(it=>(
+                  <div key={it.key}
+                    onClick={it.disabled?undefined:it.onClick}
+                    style={{
+                      position:"relative",
+                      background:"rgba(253,251,247,0.85)",
+                      border:`1px solid rgba(232,220,192,0.85)`,
+                      boxShadow:`0 2px 10px rgba(74,108,222,0.06), inset 0 0 0 1px ${colors.cardBorder}, inset 0 1px 0 rgba(255,255,255,0.6)`,
+                      borderRadius:18,
+                      padding:"14px 14px",
+                      display:"flex",alignItems:"center",gap:12,
+                      cursor:it.disabled?"default":"pointer",
+                      opacity:it.disabled?0.6:1,
+                      transition:"transform 0.15s ease",
+                    }}
+                    onMouseDown={e=>{if(!it.disabled)e.currentTarget.style.transform="scale(0.98)";}}
+                    onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
+                    onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
+                  >
+                    <div style={{
+                      width:40,height:40,borderRadius:12,flexShrink:0,
+                      background:it.iconBg,
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      boxShadow:`0 3px 8px rgba(74,108,222,0.18)`,
+                    }}>{it.icon}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:14,fontWeight:800,color:colors.text,lineHeight:1.2}}>{it.title}</div>
+                      <div style={{fontSize:11,color:colors.textSecondary,fontWeight:500,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{it.sub}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* ═══ TodayTasksCard ═══ */}
           <FrostCard showCorners style={{marginBottom:12,position:"relative",paddingBottom:24,minHeight:170}}>
@@ -8927,25 +9081,26 @@ function VocabMasterInner() {
 
       {screen==="home"&&tab==="words"&&(
         <div style={{padding:"24px 20px 100px",maxWidth:600,margin:"0 auto",position:"relative",zIndex:1}}>
-          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:22}}>
-            <h2 style={{fontSize:22,fontWeight:900,margin:0,color:"#fff"}}>📖 词汇表 · Word Bank</h2>
+          <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:18}}>
+            <h2 style={{fontSize:24,fontWeight:900,margin:0,color:colors.primary,letterSpacing:"-0.01em"}}>📖 词汇表</h2>
+            <span style={{fontSize:14,fontWeight:700,color:colors.textSecondary}}>Word Bank</span>
           </div>
           <div style={{display:"flex",gap:8,marginBottom:10}}>
-            <input type="text" placeholder="搜索单词..." value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1,background:C.card,border:"2px solid #ffe0cc",color:C.text,padding:"10px 14px",borderRadius:14,fontSize:15,outline:"none",fontWeight:600}}/>
+            <input type="text" placeholder="搜索单词..." value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1,background:"rgba(253,251,247,0.95)",border:`2px solid rgba(232,220,192,0.85)`,color:colors.text,padding:"12px 16px",borderRadius:14,fontSize:15,outline:"none",fontWeight:600,boxShadow:`0 2px 8px rgba(74,108,222,0.06)`}}/>
           </div>
           <div style={{display:"flex",gap:8,marginBottom:16}}>
-            <select value={posFilter} onChange={e=>setPosFilter(e.target.value)} style={{flex:1,background:C.card,border:"2px solid #D8EEFF",color:C.text,padding:"10px 12px",borderRadius:14,fontSize:13,outline:"none",cursor:"pointer",fontWeight:700}}>
+            <select value={posFilter} onChange={e=>setPosFilter(e.target.value)} style={{flex:1,background:"rgba(253,251,247,0.95)",border:`1.5px solid ${colors.cardBorder}`,color:colors.text,padding:"10px 12px",borderRadius:14,fontSize:13,outline:"none",cursor:"pointer",fontWeight:700}}>
               <option value="all">全部词性</option>
               <option value="n">名词 noun</option>
               <option value="v">动词 verb</option>
               <option value="adj">形容词 adj</option>
               <option value="adv">副词 adv</option>
             </select>
-            <select value={lvFilter} onChange={e=>setLvFilter(e.target.value)} style={{flex:1,background:C.card,border:"2px solid #D8EEFF",color:C.text,padding:"10px 12px",borderRadius:14,fontSize:13,outline:"none",cursor:"pointer",fontWeight:700}}>
+            <select value={lvFilter} onChange={e=>setLvFilter(e.target.value)} style={{flex:1,background:"rgba(253,251,247,0.95)",border:`1.5px solid ${colors.cardBorder}`,color:colors.text,padding:"10px 12px",borderRadius:14,fontSize:13,outline:"none",cursor:"pointer",fontWeight:700}}>
               <option value="all">全部难度</option><option value="basic">基础</option><option value="intermediate">中级</option><option value="advanced">高级</option>
             </select>
           </div>
-          <div style={{fontSize:13,color:"rgba(255,255,255,0.6)",marginBottom:14,fontWeight:600}}>{filtered.length} words</div>
+          <div style={{fontSize:13,color:colors.textSecondary,marginBottom:14,fontWeight:600}}>{filtered.length} words</div>
           <div style={{display:"flex",flexDirection:"column",gap:0,paddingBottom:40,background:"#fff",borderRadius:24,overflow:"hidden",boxShadow:"0 8px 30px rgba(0,0,0,0.12)"}}>
             {filtered.map((w,wi)=>{
               const open=expanded===w.word;
@@ -9222,8 +9377,8 @@ function VocabMasterInner() {
         <div style={{padding:"36px 20px 100px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1}}>
           <div style={{textAlign:"center",marginBottom:28}}>
             <div style={{fontSize:40,marginBottom:8}}>✏️</div>
-            <h2 style={{fontSize:24,fontWeight:900,margin:"0 0 6px",color:"#fff"}}>专项练习</h2>
-            <div style={{fontSize:13,color:"rgba(255,255,255,0.6)"}}>Grammar Drills · 10题/局</div>
+            <h2 style={{fontSize:26,fontWeight:900,margin:"0 0 6px",color:colors.primary,letterSpacing:"-0.01em"}}>专项练习</h2>
+            <div style={{fontSize:13,color:colors.textSecondary,fontWeight:600}}>Grammar Drills · 10题/局</div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             {[
