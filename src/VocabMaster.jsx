@@ -8817,35 +8817,57 @@ function VocabMasterInner() {
         <div style={{padding:"16px 16px 110px"}}>
 
           {/* ═══ AppTopBar: Avatar + Name + Points ═══ */}
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
-            <div style={{width:52,height:52,borderRadius:26,border:`2px solid ${colors.cardBorder}`,overflow:"hidden",flexShrink:0,background:colors.cardGlass}}>
-              <AssetImg src={assets.heroAvatar} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:18}}>
+            <div style={{
+              width:64,height:64,borderRadius:32,
+              border:`2.5px solid rgba(232,220,192,0.95)`,
+              boxShadow:`0 0 0 2px rgba(255,255,255,0.9), 0 4px 16px rgba(74,108,222,0.18)`,
+              overflow:"hidden",flexShrink:0,
+              background:`linear-gradient(135deg, rgba(123,167,255,0.15), rgba(255,255,255,0.6))`,
+              padding:0,
+            }}>
+              <AssetImg src={assets.heroAvatar} style={{width:"100%",height:"100%",objectFit:"cover",background:"transparent"}}/>
             </div>
             <div style={{flex:1}}>
-              <div style={{fontSize:18,fontWeight:800,color:colors.text}}>{skin.mascotName}</div>
-              <div style={{fontSize:12,color:colors.textSecondary,fontWeight:500}}>{skin.label}学徒 · Lv.{Math.min(99,Math.floor(mastered.size/5)+1)}</div>
+              <div style={{fontSize:20,fontWeight:900,color:colors.text,letterSpacing:"0.01em"}}>{skin.mascotName}</div>
+              <div style={{fontSize:12,color:colors.textSecondary,fontWeight:600,marginTop:2}}>{skin.label}学徒 · Lv.{Math.min(99,Math.floor(mastered.size/5)+1)}</div>
             </div>
-            <FrostCard variant="compact" style={{padding:"6px 14px",display:"flex",alignItems:"center",gap:6}}>
-              <AssetImg src={assets.navIcons?.practice} style={{width:16,height:16}}/>
+            <div style={{
+              display:"flex",alignItems:"center",gap:6,
+              background:"rgba(253,251,247,0.85)",
+              border:"1px solid rgba(232,220,192,0.85)",
+              borderRadius:16,padding:"6px 12px",
+              boxShadow:"0 2px 8px rgba(74,108,222,0.08)",
+            }}>
+              <span style={{fontSize:13,color:colors.primaryLight}}>✦</span>
               <span style={{fontSize:16,fontWeight:800,color:colors.text}}>{mastered.size>0?mastered.size*3:0}</span>
-              <span style={{fontSize:15}}>⭐</span>
-            </FrostCard>
+              <span style={{fontSize:14}}>⭐</span>
+            </div>
           </div>
 
           {/* ═══ TodayPlanHeroCard ═══ */}
-          <FrostCard variant="hero" showCorners style={{marginBottom:12,position:"relative",minHeight:160,overflow:"hidden"}}>
-            <div style={{position:"absolute",inset:0,zIndex:0,opacity:0.15}}>
-              <AssetImg src={assets.bgHero} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-            </div>
-            <div style={{position:"relative",zIndex:2,maxWidth:"55%"}}>
-              <div style={{fontSize:14,fontWeight:800,color:colors.text,marginBottom:8}}>✦ 今日学习计划</div>
+          <FrostCard variant="hero" showCorners style={{marginBottom:14,position:"relative",minHeight:180,overflow:"hidden",padding:"22px 24px 22px"}}>
+            {/* 背景 hero 插画(雪山/天空) */}
+            <div style={{position:"absolute",inset:0,zIndex:0,opacity:0.18,backgroundImage:`url(${assets.bgHero})`,backgroundSize:"cover",backgroundPosition:"center"}}/>
+            {/* 文案区(左侧 ~50%) */}
+            <div style={{position:"relative",zIndex:2,width:"50%"}}>
+              <div style={{fontSize:14,fontWeight:800,color:colors.primary,marginBottom:10,letterSpacing:"0.02em"}}>✦ 今日学习计划</div>
               <div style={{display:"flex",alignItems:"baseline",gap:3}}>
-                <span style={{fontSize:52,fontWeight:900,color:colors.primary,lineHeight:1,letterSpacing:"-0.02em"}}>{todayWords.length}</span>
-                <span style={{fontSize:17,fontWeight:600,color:colors.textSecondary}}>/20 词</span>
+                <span style={{fontSize:54,fontWeight:900,color:colors.primary,lineHeight:1,letterSpacing:"-0.03em"}}>{todayWords.length}</span>
+                <span style={{fontSize:18,fontWeight:700,color:colors.textSecondary}}>/20 词</span>
               </div>
-              <div style={{fontSize:12,color:colors.textMuted,marginTop:10}}>{themeCopy.studyMotivation}</div>
+              <div style={{fontSize:12,color:colors.textSecondary,marginTop:12,fontWeight:500,lineHeight:1.5}}>{themeCopy.studyMotivation}</div>
             </div>
-            <AssetImg src={assets.heroCharacter} style={{position:"absolute",right:-8,bottom:-8,width:160,height:200,zIndex:1,pointerEvents:"none"}}/>
+            {/* Yuki 角色图(右侧贴边贴底,无背景棋盘格) */}
+            <div style={{position:"absolute",right:-10,bottom:-12,width:200,height:210,zIndex:1,pointerEvents:"none"}}>
+              <AssetImg
+                src={assets.heroCharacter}
+                style={{
+                  width:"100%",height:"100%",objectFit:"contain",objectPosition:"right bottom",
+                  background:"transparent",
+                }}
+              />
+            </div>
           </FrostCard>
 
           {/* ═══ StatsRow ═══ */}
@@ -8869,76 +8891,35 @@ function VocabMasterInner() {
             );
           })()}
 
-          {/* ═══ TodayThemeCard ═══ */}
-          <FrostCard style={{marginBottom:12,position:"relative",overflow:"hidden",minHeight:90}}>
-            <div style={{position:"relative",zIndex:2}}>
-              <div style={{fontSize:12,color:colors.textSecondary,fontWeight:600,marginBottom:4}}>✦ 今日主题</div>
-              <div style={{fontSize:22,fontWeight:900,color:colors.text}}>冰川与自然</div>
-              <div style={{fontSize:13,color:colors.textSecondary,marginTop:2}}>Glaciers & Nature</div>
-            </div>
-            <AssetImg src={assets.themeIllust} style={{position:"absolute",right:0,bottom:0,width:160,height:100,objectFit:"cover",borderRadius:"0 0 22px 0",opacity:0.85}}/>
-          </FrostCard>
-
-          {/* ═══ StartPracticeButton ═══ */}
-          {(()=>{
-            const today=new Date();today.setHours(0,0,0,0);
-            const sel=new Date(calendarDate);sel.setHours(0,0,0,0);
-            const isToday=sel.getTime()===today.getTime();
-            return (
-              <FrostButton
-                variant="primary"
-                onClick={()=>startPractice(todayWords)}
-                icon={<span style={{width:40,height:40,borderRadius:20,background:"rgba(255,255,255,0.2)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>▶</span>}
-                style={{marginBottom:12,justifyContent:"flex-start",height:72}}
-              >
-                <div style={{textAlign:"left",flex:1}}>
-                  <div style={{fontSize:17,fontWeight:900}}>{isToday?"开始今日练习":"补学这天的词"}</div>
-                  <div style={{fontSize:13,fontWeight:600,opacity:0.8,marginTop:2}}>还剩 {todayWords.length} 个词 · 预计 {Math.ceil(todayWords.length*0.7)} 分钟</div>
-                </div>
-                <span style={{fontSize:22,opacity:0.6}}>›</span>
-              </FrostButton>
-            );
-          })()}
-
-          {/* ═══ QuickEntryGrid ═══ */}
-          {(()=>{
-            const wrongWords=JSON.parse(localStorage.getItem("vm_wrong_words")||"[]");
-            const wrongVocab=VOCAB.filter(w=>wrongWords.includes(w.word));
-            const startWrongBook=()=>{if(wrongVocab.length>0)startPractice(wrongVocab.slice(0,10));};
-            return (
-              <div style={{display:"flex",gap:10,marginBottom:12}}>
-                <FrostCard variant="compact" style={{flex:1,cursor:wrongVocab.length>0?"pointer":"default"}} onClick={startWrongBook}>
-                  <div style={{fontSize:22,marginBottom:6}}>🎯</div>
-                  <div style={{fontSize:15,fontWeight:800,color:colors.text}}>错题斩</div>
-                  <div style={{fontSize:12,color:colors.textSecondary}}>{wrongVocab.length>0?wrongVocab.length+"词待复习":"暂无错题"}</div>
-                </FrostCard>
-                <FrostCard variant="compact" style={{flex:1,cursor:"pointer"}} onClick={startChallenge}>
-                  <div style={{fontSize:22,marginBottom:6}}>🏆</div>
-                  <div style={{fontSize:15,fontWeight:800,color:colors.text}}>挑战赛</div>
-                  <div style={{fontSize:12,color:colors.textSecondary}}>20题 · 全词库</div>
-                </FrostCard>
-              </div>
-            );
-          })()}
+          {/* TodayThemeCard / StartPracticeButton / QuickEntryGrid 已按设计稿移除
+              - 今日主题改由「学习」页 / Word Bank 中的真实主题分类承担
+              - 开始今日练习改由底部导航中央雪花按钮承担 (onCenterPress -> startPractice)
+              - 错题斩 / 挑战赛保留在 game / drills 页面入口
+          */}
 
           {/* ═══ TodayTasksCard ═══ */}
-          <FrostCard showCorners style={{marginBottom:12,position:"relative"}}>
-            <div style={{fontSize:14,fontWeight:800,color:colors.text,marginBottom:14}}>✦ 今日任务</div>
+          <FrostCard showCorners style={{marginBottom:12,position:"relative",paddingBottom:24,minHeight:170}}>
+            <div style={{fontSize:14,fontWeight:800,color:colors.primary,marginBottom:14,letterSpacing:"0.02em"}}>✦ 今日任务</div>
             {[
               {label:"学习新词",done:Math.min(todayWords.length,mastered.size),total:todayWords.length},
               {label:"复习巩固",done:Math.floor(total*0.7),total:30},
               {label:"练习挑战",done:Math.min(5,Math.floor(total/4)),total:5},
             ].map((t,i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:i<2?12:0}}>
-                <div style={{width:22,height:22,borderRadius:11,flexShrink:0,background:t.done>0?colors.primary:`${colors.primary}20`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <span style={{fontSize:10,color:"#fff",fontWeight:700}}>✓</span>
+              <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:i<2?12:0,position:"relative",zIndex:2,maxWidth:"calc(100% - 110px)"}}>
+                <div style={{width:22,height:22,borderRadius:11,flexShrink:0,background:t.done>0?colors.primary:`${colors.primary}20`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:t.done>0?`0 2px 6px ${colors.primary}40`:"none"}}>
+                  <span style={{fontSize:11,color:"#fff",fontWeight:800}}>✓</span>
                 </div>
                 <span style={{fontSize:13,fontWeight:700,color:colors.text,width:68}}>{t.label}</span>
                 <FrostProgress value={t.done} max={t.total} height={7}/>
                 <span style={{fontSize:12,fontWeight:700,color:colors.textSecondary,minWidth:42,textAlign:"right"}}>{t.done}/{t.total}</span>
               </div>
             ))}
-            <AssetImg src={assets.petCharacter} style={{position:"absolute",right:0,bottom:-10,width:80,height:90,pointerEvents:"none",opacity:0.9}}/>
+            <div style={{position:"absolute",right:-6,bottom:-8,width:140,height:158,pointerEvents:"none",zIndex:1}}>
+              <AssetImg
+                src={assets.petCharacter}
+                style={{width:"100%",height:"100%",objectFit:"contain",objectPosition:"right bottom",background:"transparent"}}
+              />
+            </div>
           </FrostCard>
 
         </div>
