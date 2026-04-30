@@ -9079,6 +9079,231 @@ function VocabMasterInner() {
         </div>
       )}
 
+      {/* ═══════════════ PLAY SCREEN — 练习题渲染 ═══════════════ */}
+      {screen==="play"&&exs[idx]&&(()=>{
+        const cur = exs[idx];
+        const onDone = handleDone;
+        return (
+          <div style={{padding:"20px 16px 40px",maxWidth:500,margin:"0 auto",position:"relative",zIndex:1}}>
+            {/* 顶部:返回 + 进度 + 题型 */}
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+              <button
+                onClick={()=>{
+                  if(window.confirm("确定要退出本次练习吗?进度将不会保存。")){
+                    setScreen("home"); setExs([]); setIdx(0); setRes([]); setAnswered(false); setWrongQueue([]); setChallengeMode(false);
+                  }
+                }}
+                style={{
+                  width:36,height:36,borderRadius:18,
+                  background:"rgba(253,251,247,0.95)",
+                  border:`1px solid rgba(232,220,192,0.85)`,
+                  boxShadow:`0 2px 8px rgba(74,108,222,0.08)`,
+                  color:colors.primary,fontSize:18,fontWeight:800,cursor:"pointer",
+                  display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
+                }}
+                aria-label="退出练习"
+              >‹</button>
+              <div style={{flex:1}}>
+                <FrostProgress value={idx+1} max={exs.length} height={8}/>
+              </div>
+              <div style={{
+                fontSize:12,fontWeight:800,color:colors.primary,
+                background:"rgba(253,251,247,0.95)",
+                border:`1px solid ${colors.cardBorder}`,
+                padding:"4px 10px",borderRadius:12,
+                whiteSpace:"nowrap",
+              }}>
+                {idx+1}/{exs.length}
+              </div>
+            </div>
+            {/* 题型 badge */}
+            <div style={{textAlign:"center",marginBottom:12}}>
+              <span style={{
+                fontSize:11,fontWeight:800,color:colors.primary,letterSpacing:"0.05em",
+                background:`${colors.primary}15`,
+                border:`1px solid ${colors.primary}30`,
+                padding:"4px 12px",borderRadius:10,
+              }}>
+                {cur.type==="learn"&&"📖 LEARN · 学习"}
+                {cur.type==="mc"&&"🎯 MULTIPLE CHOICE · 选词义"}
+                {cur.type==="reverse"&&"🔁 REVERSE · 选单词"}
+                {cur.type==="dragfill"&&"✍️ FILL · 填单词"}
+                {cur.type==="wordfamily"&&"🌿 WORD FAMILY · 词族"}
+                {cur.type==="synant"&&"💎 SYNONYM · 近义"}
+                {cur.type==="errorspot"&&"🔍 ERROR SPOT · 找错"}
+                {cur.type==="phrasecomplete"&&"🧩 PHRASE · 短语"}
+                {cur.type==="match"&&"🔗 MATCH · 配对"}
+                {cur.type==="dialogue"&&"💬 DIALOGUE · 对话"}
+                {cur.type==="sentbuild"&&"🔤 BUILD · 造句"}
+                {cur.type==="verbforms"&&"⚙️ VERB FORMS · 动词变形"}
+                {cur.type==="listen_pick"&&"👂 LISTEN PICK · 听音"}
+                {cur.type==="listen_fill"&&"👂 LISTEN FILL · 听写"}
+                {cur.type==="listen_def"&&"👂 LISTEN DEF · 听释义"}
+                {cur.type==="follow_read"&&"🎙️ FOLLOW READ · 跟读"}
+              </span>
+              {challengeMode&&(
+                <span style={{
+                  marginLeft:8,fontSize:11,fontWeight:800,color:"#fff",
+                  background:`linear-gradient(135deg,${colors.gold} 0%,#E8B855 100%)`,
+                  padding:"4px 10px",borderRadius:10,
+                  boxShadow:`0 2px 6px ${colors.gold}40`,
+                }}>
+                  ⚡ {challengeScore}
+                </span>
+              )}
+            </div>
+
+            {/* 题目主体 */}
+            <div key={cur.id||idx}>
+              {cur.type==="learn"&&<LearnCard exercise={cur} onDone={onDone}/>}
+              {(cur.type==="mc"||cur.type==="reverse")&&<ChoiceQ exercise={cur} onDone={onDone}/>}
+              {cur.type==="dragfill"&&<DragFillQ exercise={cur} onDone={onDone}/>}
+              {cur.type==="wordfamily"&&<WordFamilyQ exercise={cur} onDone={onDone}/>}
+              {cur.type==="synant"&&<SynAntQ exercise={cur} onDone={onDone}/>}
+              {cur.type==="errorspot"&&<ErrorSpotQ exercise={cur} onDone={onDone}/>}
+              {cur.type==="phrasecomplete"&&<PhraseCompleteQ exercise={cur} onDone={onDone}/>}
+              {cur.type==="match"&&<MatchQ exercise={cur} onDone={onDone}/>}
+              {cur.type==="dialogue"&&<DialogueQ exercise={cur} onDone={onDone}/>}
+              {cur.type==="sentbuild"&&<SentBuildQ exercise={cur} onDone={onDone}/>}
+              {cur.type==="verbforms"&&<VerbFormsQ exercise={cur} onDone={onDone}/>}
+              {cur.type==="listen_pick"&&<ListenPickQ exercise={cur} onDone={onDone}/>}
+              {cur.type==="listen_fill"&&<ListenFillQ exercise={cur} onDone={onDone}/>}
+              {cur.type==="listen_def"&&<ListenDefQ exercise={cur} onDone={onDone}/>}
+              {cur.type==="follow_read"&&<FollowReadQ exercise={cur} onDone={onDone}/>}
+            </div>
+
+            {/* 下一题按钮 — 答完后显示 */}
+            {answered&&(
+              <div style={{marginTop:20,animation:"slideUp 0.3s ease"}}>
+                <button onClick={goNext} style={{
+                  width:"100%",
+                  background:`linear-gradient(135deg,${colors.primary} 0%,${colors.primaryLight} 100%)`,
+                  border:"1.5px solid rgba(246,213,140,0.5)",
+                  color:"#fff",padding:"16px",borderRadius:22,
+                  fontSize:16,fontWeight:900,cursor:"pointer",
+                  boxShadow:`0 6px 20px ${colors.primary}40, inset 0 1px 0 rgba(255,255,255,0.25)`,
+                  letterSpacing:"0.03em",
+                }}>
+                  {idx+1>=exs.length?(wrongQueue.length>0?`继续练习错题 (${wrongQueue.length}) ›`:"完成 ›"):"下一题 ›"}
+                </button>
+              </div>
+            )}
+            {/* 学习卡完成后也需要继续按钮(LearnCard 自己 onDone(true) 后) */}
+            {!answered&&cur.type==="learn"&&(
+              <div style={{marginTop:14,textAlign:"center"}}>
+                <button onClick={()=>{handleDone(true);}} style={{
+                  background:"rgba(253,251,247,0.85)",
+                  border:`1.5px solid ${colors.cardBorder}`,
+                  color:colors.primary,padding:"10px 24px",borderRadius:18,
+                  fontSize:13,fontWeight:700,cursor:"pointer",
+                }}>
+                  跳过 / Skip
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ═══════════════ RESULTS SCREEN — 练习结果 ═══════════════ */}
+      {screen==="results"&&(()=>{
+        const totalEx = res.length;
+        const correctCnt = res.filter(r=>r.correct).length;
+        const rate = totalEx>0?correctCnt/totalEx:0;
+        const stars = rate>=0.9?3:rate>=0.7?2:rate>=0.5?1:0;
+        const masteredNow = (()=>{ try { return Array.from(daily||[]).filter(w=>{
+          const wr = res.filter(r=>r.word?.word===w.word);
+          if(wr.length===0) return false;
+          return wr.filter(r=>r.correct).length / wr.length >= 0.7;
+        }); } catch(e){ return []; } })();
+        return (
+          <div style={{padding:"32px 20px 40px",maxWidth:460,margin:"0 auto",position:"relative",zIndex:1,textAlign:"center"}}>
+            {/* 顶部成就区 */}
+            <FrostCard variant="hero" showCorners style={{marginBottom:18,paddingBottom:24,position:"relative",overflow:"hidden",minHeight:200}}>
+              <div style={{position:"absolute",inset:0,zIndex:0,opacity:0.18,backgroundImage:`url(${assets.bgResult||assets.bgHero})`,backgroundSize:"cover",backgroundPosition:"center"}}/>
+              <div style={{position:"relative",zIndex:2}}>
+                <div style={{fontSize:14,fontWeight:800,color:colors.primary,marginBottom:8,letterSpacing:"0.04em"}}>
+                  {challengeFinalScore?"⚡ 挑战赛完成":"✦ 练习完成"}
+                </div>
+                <div style={{fontSize:26,fontWeight:900,color:colors.text,marginBottom:14,letterSpacing:"-0.01em"}}>
+                  {rate>=0.9?themeCopy.perfectTitle:themeCopy.successTitle}
+                </div>
+                {/* 三颗星 */}
+                <div style={{fontSize:36,letterSpacing:8,marginBottom:8}}>
+                  {[1,2,3].map(i=>(
+                    <span key={i} style={{
+                      color:i<=stars?colors.gold:`${colors.gold}30`,
+                      filter:i<=stars?`drop-shadow(0 2px 6px ${colors.gold}80)`:"none",
+                    }}>★</span>
+                  ))}
+                </div>
+                {challengeFinalScore>0&&(
+                  <div style={{fontSize:32,fontWeight:900,color:colors.gold,marginTop:6,letterSpacing:"-0.02em"}}>
+                    {challengeFinalScore} <span style={{fontSize:14,color:colors.textSecondary,fontWeight:600}}>分</span>
+                  </div>
+                )}
+              </div>
+            </FrostCard>
+
+            {/* 三张数据卡 */}
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              <StatCard label="正确率" value={Math.round(rate*100)} unit="%" icon="✦"/>
+              <StatCard label="答对题数" value={correctCnt} unit={"/"+totalEx} icon="✦"/>
+              <StatCard label="新掌握" value={masteredNow.length} unit="词" icon="✦"/>
+            </div>
+
+            {/* 鼓励语 + 小熊 */}
+            <FrostCard showCorners style={{marginBottom:18,position:"relative",paddingBottom:24,minHeight:130,textAlign:"left"}}>
+              <div style={{display:"flex",gap:10,alignItems:"flex-start",position:"relative",zIndex:2,maxWidth:"calc(100% - 110px)"}}>
+                <div style={{
+                  width:32,height:32,borderRadius:16,flexShrink:0,
+                  background:`linear-gradient(135deg,${colors.primary} 0%,${colors.primaryLight} 100%)`,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  color:"#fff",fontWeight:800,fontSize:14,
+                  boxShadow:`0 2px 8px ${colors.primary}50`,
+                }}>{skin.mascotName?.charAt(0)||"Y"}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:800,color:colors.primary,marginBottom:4}}>{themeCopy.hintLabel}</div>
+                  <div style={{fontSize:13,color:colors.text,fontWeight:600,lineHeight:1.5}}>
+                    {rate>=0.9?themeCopy.encourageCorrect:rate>=0.5?"做得不错!继续保持就能学得更好。":themeCopy.encourageWrong}
+                  </div>
+                </div>
+              </div>
+              <div style={{position:"absolute",right:-6,bottom:-8,width:120,height:130,pointerEvents:"none",zIndex:1}}>
+                <AssetImg src={assets.petCharacter} style={{width:"100%",height:"100%",objectFit:"contain",objectPosition:"right bottom",background:"transparent"}}/>
+              </div>
+            </FrostCard>
+
+            {/* 底部按钮 */}
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <button
+                onClick={()=>{ setScreen("home"); setExs([]); setIdx(0); setRes([]); setAnswered(false); setWrongQueue([]); setChallengeMode(false); setChallengeFinalScore(0); setTab("today"); }}
+                style={{
+                  width:"100%",
+                  background:`linear-gradient(135deg,${colors.primary} 0%,${colors.primaryLight} 100%)`,
+                  border:"1.5px solid rgba(246,213,140,0.5)",
+                  color:"#fff",padding:"16px",borderRadius:22,
+                  fontSize:16,fontWeight:900,cursor:"pointer",
+                  boxShadow:`0 6px 20px ${colors.primary}40`,
+                  letterSpacing:"0.03em",
+                }}
+              >🏠 回首页</button>
+              <button
+                onClick={()=>{ if(daily&&daily.length>0){ setChallengeFinalScore(0); startPractice(daily); } }}
+                style={{
+                  width:"100%",
+                  background:"rgba(253,251,247,0.85)",
+                  border:`2px solid ${colors.cardBorder}`,
+                  color:colors.primary,padding:"14px",borderRadius:22,
+                  fontSize:15,fontWeight:800,cursor:"pointer",
+                  boxShadow:`0 2px 8px rgba(74,108,222,0.08)`,
+                }}
+              >🔁 再学一次</button>
+            </div>
+          </div>
+        );
+      })()}
+
       {screen==="home"&&tab==="words"&&(
         <div style={{padding:"24px 20px 100px",maxWidth:600,margin:"0 auto",position:"relative",zIndex:1}}>
           <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:18}}>
