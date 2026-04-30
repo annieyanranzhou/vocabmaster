@@ -4,6 +4,7 @@
 // 严格按照 vocabmaster-yuki-ui-guide.md 第 7-9, 15 节实现
 // ═══════════════════════════════════════════════════════════════
 
+import { useState } from 'react';
 import { useTheme } from './ThemeContext.jsx';
 
 // ─────────────────────────────────────────
@@ -148,9 +149,18 @@ export function AppShell({ children }) {
 // FrostCard — 冰晶卡片
 // Guide §8: 半透明象牙白 + 金色细外边 + 蓝色内边 + 柔和阴影 + 冰晶角花
 // variant: "default" | "hero" | "compact"
+// 角花优先使用 ThemeContext 中的 PNG 资产 (cardCornerTL/TR/BL/BR), 失败 fallback 到 SVG CornerOrnament
+// 透传所有未知 props (className / role / aria-label / onMouseEnter 等)
 // ─────────────────────────────────────────
-export function FrostCard({ children, variant = 'default', style = {}, showCorners = false, onClick }) {
-  const { colors } = useTheme();
+export function FrostCard({
+  children,
+  variant = 'default',
+  style = {},
+  showCorners = false,
+  className = '',
+  ...props
+}) {
+  const { colors, assets } = useTheme();
 
   const baseStyle = {
     position: 'relative',
@@ -159,7 +169,7 @@ export function FrostCard({ children, variant = 'default', style = {}, showCorne
     boxShadow: `${colors.cardShadow}, inset 0 0 0 1px ${colors.cardBorder}, inset 0 1px 0 rgba(255,255,255,0.6)`,
     overflow: 'hidden',
     backdropFilter: 'blur(8px)',
-    cursor: onClick ? 'pointer' : undefined,
+    cursor: props.onClick ? 'pointer' : undefined,
   };
 
   const variants = {
@@ -170,19 +180,78 @@ export function FrostCard({ children, variant = 'default', style = {}, showCorne
 
   const cornerSize = variant === 'hero' ? 36 : variant === 'compact' ? 22 : 28;
 
+  // 单个角花: 优先用 PNG 资产, 失败时切换到 SVG fallback
+  const Corner = ({ position }) => {
+    const pngSrc = {
+      tl: assets.cardCornerTL,
+      tr: assets.cardCornerTR,
+      bl: assets.cardCornerBL,
+      br: assets.cardCornerBR,
+    }[position];
+
+    const pos = {
+      tl: { top: 4, left: 4 },
+      tr: { top: 4, right: 4 },
+      bl: { bottom: 4, left: 4 },
+      br: { bottom: 4, right: 4 },
+    }[position];
+
+    // 用 ref 跟踪 PNG 加载是否失败,失败时切到 SVG
+    return (
+      <CornerSlot pngSrc={pngSrc} position={position} pos={pos} size={cornerSize} primaryColor={colors.primary} />
+    );
+  };
+
   return (
-    <div style={{ ...baseStyle, ...variants[variant], ...style }} onClick={onClick}>
+    <div
+      className={className}
+      style={{ ...baseStyle, ...variants[variant], ...style }}
+      {...props}
+    >
       {showCorners && (
         <>
-          <CornerOrnament size={cornerSize} color={colors.primary} position="tl" />
-          <CornerOrnament size={cornerSize} color={colors.primary} position="tr" />
-          <CornerOrnament size={cornerSize} color={colors.primary} position="bl" />
-          <CornerOrnament size={cornerSize} color={colors.primary} position="br" />
+          <Corner position="tl" />
+          <Corner position="tr" />
+          <Corner position="bl" />
+          <Corner position="br" />
         </>
       )}
       {children}
     </div>
   );
+}
+
+// 角花槽位: PNG 优先, 失败回退 SVG
+function CornerSlot({ pngSrc, position, pos, size, primaryColor }) {
+  const [pngFailed, setPngFailed] = useState(false);
+
+  if (pngSrc && !pngFailed) {
+    return (
+      <img
+        src={pngSrc}
+        alt=""
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          width: size,
+          height: size,
+          objectFit: 'contain',
+          pointerEvents: 'none',
+          opacity: 0.85,
+          background: 'transparent',
+          ...pos,
+        }}
+        onError={(e) => {
+          if (typeof console !== 'undefined') {
+            console.warn('[FrostCard corner missing, fallback to SVG]', pngSrc);
+          }
+          setPngFailed(true);
+        }}
+      />
+    );
+  }
+  // SVG fallback
+  return <CornerOrnament size={size} color={primaryColor} position={position} />;
 }
 
 // ─────────────────────────────────────────
@@ -283,11 +352,11 @@ export function AppBottomNav({ activeTab, onTabChange, onCenterPress }) {
   const { colors, assets, themeId } = useTheme();
 
   const tabs = [
-    { id: 'today', icon: assets.navIcons?.home, iconId: 'home', label: '首页' },
-    { id: 'words', icon: assets.navIcons?.study, iconId: 'study', label: '学习' },
-    { id: '_center', center: true },
-    { id: 'drills', icon: assets.navIcons?.wordbank, iconId: 'wordbank', label: '词库' },
-    { id: 'settings', icon: assets.navIcons?.profile, iconId: 'profile', label: '我的' },
+    { id: 'today',    icon: assets.navIcons?.home,     iconId: 'home',     label: '首页' },
+    { id: 'drills',   icon: assets.navIcons?.study,    iconId: 'study',    label: '学习' },
+    { id: '_center',  center: true,                                                       label: '练习' },
+    { id: 'words',    icon: assets.navIcons?.wordbank, iconId: 'wordbank', label: '词库' },
+    { id: 'settings', icon: assets.navIcons?.profile,  iconId: 'profile',  label: '我的' },
   ];
 
   // 内联 SVG 图标库 — fallback 永远可见
@@ -318,6 +387,9 @@ export function AppBottomNav({ activeTab, onTabChange, onCenterPress }) {
               filter: active ? 'none' : 'grayscale(0.5) opacity(0.55)',
             }}
             onError={e => {
+              if (typeof console !== 'undefined') {
+                console.warn('[NavIcon missing]', src);
+              }
               e.target.style.display = 'none';
               const sibling = e.target.nextSibling;
               if (sibling) sibling.style.display = 'inline-flex';
@@ -448,17 +520,27 @@ export function StatCard({ label, value, unit, icon }) {
 }
 
 // ─────────────────────────────────────────
-// AssetImg — 安全图片加载(onError 隐藏)
+// AssetImg — 安全图片加载
 // background: transparent 防 PNG 透明区域显示棋盘格
+// 失败时 console.warn 输出实际 src,便于诊断 404
+// 同时透传 className / onClick 等 props,onError 可被覆盖
 // ─────────────────────────────────────────
-export function AssetImg({ src, alt = '', style = {}, fallback = null }) {
+export function AssetImg({ src, alt = '', style = {}, fallback = null, onError, className = '', ...props }) {
   if (!src) return fallback;
   return (
     <img
       src={src}
       alt={alt}
+      className={className}
       style={{ background: 'transparent', ...style, objectFit: style.objectFit || 'contain' }}
-      onError={e => { e.target.style.display = 'none'; }}
+      onError={(e) => {
+        if (typeof console !== 'undefined') {
+          console.warn('[AssetImg missing]', src);
+        }
+        e.currentTarget.style.display = 'none';
+        if (typeof onError === 'function') onError(e);
+      }}
+      {...props}
     />
   );
 }

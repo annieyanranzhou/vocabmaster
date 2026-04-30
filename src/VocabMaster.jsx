@@ -8805,7 +8805,7 @@ function VocabMasterInner() {
             }
           }}/>
       )}
-      {(showGame||screen!=="play"&&screen!=="results")&&(
+      {(!showGame&&screen!=="play"&&screen!=="results")&&(
         <AppBottomNav
           activeTab={showGame?'_game':tab}
           onTabChange={(id)=>{setShowGame(false);setTab(id);if(screen!=="home")setScreen("home");}}
