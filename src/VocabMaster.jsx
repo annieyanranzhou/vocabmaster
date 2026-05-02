@@ -8809,7 +8809,7 @@ function VocabMasterInner() {
         <AppBottomNav
           activeTab={showGame?'_game':tab}
           onTabChange={(id)=>{setShowGame(false);setTab(id);if(screen!=="home")setScreen("home");}}
-          onCenterPress={()=>startPractice(todayWords)}
+          onCenterPress={()=>{setShowGame(false);setTab("today");if(screen!=="home")setScreen("home");}}
         />
       )}
 
@@ -9007,7 +9007,7 @@ function VocabMasterInner() {
               {key:"challenge",title:"挑战赛",sub:"20题 · 全词库",onClick:startChallenge,
                 iconBg:"linear-gradient(135deg,#F6D58C 0%,#E8B855 100%)",
                 icon:(<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 4 H18 V8 a6 6 0 0 1 -12 0 Z"/><path d="M6 4 H4 V6 a3 3 0 0 0 2 3"/><path d="M18 4 H20 V6 a3 3 0 0 1 -2 3"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="14" x2="12" y2="20"/></svg>)},
-              {key:"game",title:"小游戏",sub:"单词射击 · 词义跳",onClick:()=>setShowGame(true),
+              {key:"game",title:"小游戏",sub:"单词射击 · 词义跳",onClick:()=>setTab("game"),
                 iconBg:"linear-gradient(135deg,#7BA7FF 0%,#4A6CDE 100%)",
                 icon:(<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="7" width="18" height="11" rx="3"/><line x1="8" y1="11" x2="8" y2="14"/><line x1="6.5" y1="12.5" x2="9.5" y2="12.5"/><circle cx="15.5" cy="11.5" r="1"/><circle cx="17" cy="13.5" r="1"/></svg>)},
               {key:"pet",title:"我的宠物",sub:"领养 · 喂养 ·成长",onClick:()=>setTab("progress"),
@@ -9303,6 +9303,28 @@ function VocabMasterInner() {
           </div>
         );
       })()}
+
+      {screen==="home"&&tab==="game"&&(
+        <GameMode supabase={supabase} authUser={authUser} onClose={()=>setTab("today")}
+          onProgress={({answered, correct})=>{
+            setTotal(t=>{ const nt=t+answered; totalRef.current=nt; return nt; });
+            setBest(prev=>{ const nb=Math.max(prev,correct); bestRef.current=nb; return nb; });
+            userDidActivity.current=true;
+            try {
+              const _todayKey = "vm_daily_answered_" + new Date().toDateString();
+              const _cnt = parseInt(localStorage.getItem(_todayKey)||"0") + answered;
+              localStorage.setItem(_todayKey, _cnt);
+            } catch(e){}
+            const curUser=authUserRef.current;
+            if(curUser){
+              setTimeout(()=>{
+                supabase.saveProgress(curUser.id,[...mastered],totalRef.current,bestRef.current,getPetFood())
+                  .then(()=>console.log("[saveProgress game tab] OK",{total:totalRef.current,best:bestRef.current}))
+                  .catch(e=>console.log("[saveProgress game tab] error",e));
+              },100);
+            }
+          }}/>
+      )}
 
       {screen==="home"&&tab==="words"&&(
         <div style={{padding:"24px 20px 100px",maxWidth:600,margin:"0 auto",position:"relative",zIndex:1}}>

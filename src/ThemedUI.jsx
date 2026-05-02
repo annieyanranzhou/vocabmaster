@@ -15,16 +15,18 @@ const IVORY_GLASS = 'rgba(253,251,247,0.78)';
 const GOLD_BORDER = 'rgba(232,220,192,0.85)';   // 金色细边
 const GOLD_BORDER_SOFT = 'rgba(232,220,192,0.55)';
 
+// 4 角镜像 transform — PNG 角花和 SVG fallback 共用
+const CORNER_TRANSFORMS = {
+  tl: 'none',
+  tr: 'scaleX(-1)',
+  bl: 'scaleY(-1)',
+  br: 'scale(-1,-1)',
+};
+
 // ─────────────────────────────────────────
 // 角花 SVG(替代缺失的 PNG,效果稳定)
 // ─────────────────────────────────────────
 const CornerOrnament = ({ size = 28, color = '#7BA7FF', goldColor = '#E8DCC0', position = 'tl', opacity = 0.7 }) => {
-  const transforms = {
-    tl: 'none',
-    tr: 'scaleX(-1)',
-    bl: 'scaleY(-1)',
-    br: 'scale(-1,-1)',
-  };
   const pos = {
     tl: { top: 6, left: 6 },
     tr: { top: 6, right: 6 },
@@ -39,7 +41,7 @@ const CornerOrnament = ({ size = 28, color = '#7BA7FF', goldColor = '#E8DCC0', p
       style={{
         position: 'absolute',
         ...pos[position],
-        transform: transforms[position],
+        transform: CORNER_TRANSFORMS[position],
         pointerEvents: 'none',
         opacity,
       }}
@@ -239,6 +241,7 @@ function CornerSlot({ pngSrc, position, pos, size, primaryColor }) {
           pointerEvents: 'none',
           opacity: 0.85,
           background: 'transparent',
+          transform: CORNER_TRANSFORMS[position],
           ...pos,
         }}
         onError={(e) => {
@@ -352,10 +355,10 @@ export function AppBottomNav({ activeTab, onTabChange, onCenterPress }) {
   const { colors, assets, themeId } = useTheme();
 
   const tabs = [
-    { id: 'today',    icon: assets.navIcons?.home,     iconId: 'home',     label: '首页' },
-    { id: 'drills',   icon: assets.navIcons?.study,    iconId: 'study',    label: '学习' },
-    { id: '_center',  center: true,                                                       label: '练习' },
-    { id: 'words',    icon: assets.navIcons?.wordbank, iconId: 'wordbank', label: '词库' },
+    { id: 'drills',   icon: assets.navIcons?.study,    iconId: 'study',    label: '专项练习' },
+    { id: 'game',     icon: assets.navIcons?.wordbank, iconId: 'wordbank', label: '闯关模式' },
+    { id: '_center',  center: true                                                                     },
+    { id: 'words',    icon: assets.navIcons?.home,     iconId: 'home',     label: '词库' },
     { id: 'settings', icon: assets.navIcons?.profile,  iconId: 'profile',  label: '我的' },
   ];
 

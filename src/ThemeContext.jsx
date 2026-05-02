@@ -34,16 +34,17 @@ const YUKI = {
 
   colors: {
     primary:'#4A6CDE', primaryLight:'#7BA7FF', primaryDark:'#3A56B8',
-    secondary:'#F6D58C', accent:'#7BA7FF',
+    secondary:'#F6D58C', accent:'#F6D58C', accentDark:'#E8B855',
     bg:'#E9F1FF', bgSoft:'#D7E0F5', bgGlass:'rgba(233,241,255,0.85)',
     bgOverlay:'rgba(30,50,120,0.6)',
     nav:'#4A6CDE', navDark:'#3A56B8', navActive:'#F6D58C',
     navInactive:'rgba(255,255,255,0.5)', navText:'rgba(255,255,255,0.6)', navTextActive:'#FFFFFF',
     card:'#FFFFFF', cardGlass:'rgba(255,255,255,0.78)',
     cardBorder:'rgba(74,108,222,0.18)', cardShadow:'0 4px 20px rgba(74,108,222,0.12)',
-    text:'#1A1A2E', textSecondary:'#5A6B8A', textMuted:'#A8B7E6', textOnPrimary:'#FFFFFF',
-    success:'#34C759', successBg:'#E8F9EE', error:'#FF3B30', errorBg:'#FFEDED',
+    text:'#1A1A2E', textDeep:'#2A3D7C', textSecondary:'#5A6B8A', textMuted:'#A8B7E6', textOnPrimary:'#FFFFFF',
+    success:'#7FCFA0', successBg:'#E8F4ED', error:'#E89090', errorBg:'#F9E8E8',
     warning:'#FF9500', warningBg:'#FFF4E0', gold:'#F6D58C',
+    ivory:'#FDFBF7', goldBorder:'#E8DCC0',
     progressBar:'linear-gradient(90deg,#4A6CDE 0%,#7BA7FF 100%)',
     progressTrack:'rgba(74,108,222,0.12)', progressGlow:'0 0 8px rgba(74,108,222,0.4)',
     btnPrimary:'linear-gradient(135deg,#4A6CDE 0%,#5B7FEE 50%,#7BA7FF 100%)',
@@ -53,8 +54,8 @@ const YUKI = {
     optionBg:'#FFFFFF', optionBorder:'rgba(74,108,222,0.15)',
     optionSelected:'#4A6CDE', optionSelectedBg:'rgba(74,108,222,0.08)',
     optionSelectedBorder:'#4A6CDE', optionSelectedText:'#4A6CDE',
-    optionCorrectBg:'#E8F9EE', optionCorrectBorder:'#34C759',
-    optionWrongBg:'#FFEDED', optionWrongBorder:'#FF3B30',
+    optionCorrectBg:'#7FCFA0', optionCorrectBorder:'#5FB888',
+    optionWrongBg:'#E89090', optionWrongBorder:'#C87070',
     decorStar:'#F6D58C', decorParticle:'rgba(255,255,255,0.8)', decorGlow:'rgba(123,167,255,0.3)',
   },
 
@@ -135,8 +136,8 @@ const YUKI = {
         color:'#4A6CDE',fontWeight:700,fontSize:14,
       },
       selected:{background:'rgba(74,108,222,0.06)',border:'2px solid #4A6CDE',boxShadow:'0 0 0 3px rgba(74,108,222,0.12)'},
-      correct:{background:'#E8F9EE',border:'2px solid #34C759'},
-      wrong:{background:'#FFEDED',border:'2px solid #FF3B30'},
+      correct:{background:'#7FCFA0',border:'2px solid #5FB888'},
+      wrong:{background:'#E89090',border:'2px solid #C87070'},
     },
     primaryButton: {
       background:'linear-gradient(135deg,#4A6CDE 0%,#5B7FEE 50%,#7BA7FF 100%)',
@@ -413,6 +414,8 @@ export function ThemeProvider({ children }) {
     tl:skin.colors.textMuted, tm:skin.colors.textSecondary, nav:skin.colors.nav,
     mint:skin.colors.successBg, lav:skin.colors.warningBg, peach:skin.colors.bgSoft,
     sky:skin.colors.primaryLight, pink:skin.colors.errorBg,
+    accentDark:skin.colors.accentDark, textDeep:skin.colors.textDeep,
+    ivory:skin.colors.ivory, goldBorder:skin.colors.goldBorder,
   };
 
   return (
